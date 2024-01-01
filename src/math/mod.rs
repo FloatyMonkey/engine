@@ -1,0 +1,52 @@
+#![allow(dead_code)]
+
+pub mod matrix;
+pub mod num;
+pub mod isometry;
+pub mod transform;
+
+mod complex;
+mod dual;
+mod quaternion;
+mod unit;
+
+pub use complex::{Complex, UnitComplex};
+pub use dual::Dual;
+pub use quaternion::{Quaternion, UnitQuaternion};
+pub use unit::Unit;
+
+use num::{cast, Number, NumberOps};
+
+pub const E: f32 = 2.71828182845904523536;
+pub const PI: f32 = 3.14159265358979323846;
+
+/// Clamps x to be in the range [min, max].
+pub fn clamp<T: Number + NumberOps<T>>(x: T, min: T, max: T) -> T {
+	T::max(min, T::min(max, x))
+}
+
+/// Wraps x to be in the range [min, max].
+pub fn wrap<T: Number>(mut x: T, min: T, max: T) -> T {
+	let range = max - min;
+
+	while x < min { x += range; }
+	while x > max { x -= range; }
+
+	x
+}
+
+/// Unwinds an angle in radians to the range [-pi, pi].
+pub fn unwind_radians<T: Number>(radians: T) -> T {
+	wrap(radians, cast(-PI), cast(PI))
+}
+
+/// Unwinds an angle in degrees to the range [-180, 180].
+pub fn unwind_degrees<T: Number>(degrees: T) -> T {
+	wrap(degrees, cast(-180.0), cast(180.0))
+}
+
+/// Remaps a value from one range to another.
+/// The minimum of either range may be larger or smaller than the maximum.
+pub fn map_range<T: Number>(x: T, min: T, max: T, new_min: T, new_max: T) -> T {
+	(x - min) * (new_max - new_min) / (max - min) + new_min
+}

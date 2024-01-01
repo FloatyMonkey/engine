@@ -1,0 +1,892 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+use crate::os::NativeHandle;
+
+use std::ffi::CString;
+
+use ash::vk;
+
+fn map_offset(offset: &[u32; 3]) -> vk::Offset3D {
+	vk::Offset3D {
+		x: offset[0] as _,
+		y: offset[1] as _,
+		z: offset[2] as _,
+	}
+}
+
+fn map_extent(extent: &[u32; 3]) -> vk::Extent3D {
+	vk::Extent3D {
+		width: extent[0],
+		height: extent[1],
+		depth: extent[2],
+	}
+}
+
+fn map_format(format: super::Format) -> vk::Format {
+	match format {
+		super::Format::Unknown => vk::Format::UNDEFINED,
+
+		super::Format::R8UNorm => vk::Format::R8_UNORM,
+		super::Format::R8SNorm => vk::Format::R8_SNORM,
+		super::Format::R8UInt  => vk::Format::R8_UINT,
+		super::Format::R8SInt  => vk::Format::R8_SINT,
+
+		super::Format::R16UNorm => vk::Format::R16_UNORM,
+		super::Format::R16SNorm => vk::Format::R16_SNORM,
+		super::Format::R16UInt  => vk::Format::R16_UINT,
+		super::Format::R16SInt  => vk::Format::R16_SINT,
+		super::Format::R16Float => vk::Format::R16_SFLOAT,
+
+		super::Format::R32UInt  => vk::Format::R32_UINT,
+		super::Format::R32SInt  => vk::Format::R32_SINT,
+		super::Format::R32Float => vk::Format::R32_SFLOAT,
+
+		super::Format::RG8UNorm => vk::Format::R8G8_UNORM,
+		super::Format::RG8SNorm => vk::Format::R8G8_SNORM,
+		super::Format::RG8UInt  => vk::Format::R8G8_UINT,
+		super::Format::RG8SInt  => vk::Format::R8G8_SINT,
+
+		super::Format::RG16UNorm => vk::Format::R16G16_UNORM,
+		super::Format::RG16SNorm => vk::Format::R16G16_SNORM,
+		super::Format::RG16UInt  => vk::Format::R16G16_UINT,
+		super::Format::RG16SInt  => vk::Format::R16G16_SINT,
+		super::Format::RG16Float => vk::Format::R16G16_SFLOAT,
+
+		super::Format::RG32UInt  => vk::Format::R32G32_UINT,
+		super::Format::RG32SInt  => vk::Format::R32G32_SINT,
+		super::Format::RG32Float => vk::Format::R32G32_SFLOAT,
+
+		super::Format::RGB32UInt  => vk::Format::R32G32B32_UINT,
+		super::Format::RGB32SInt  => vk::Format::R32G32B32_SINT,
+		super::Format::RGB32Float => vk::Format::R32G32B32_SFLOAT,
+
+		super::Format::RGBA8UNorm => vk::Format::R8G8B8A8_UNORM,
+		super::Format::RGBA8SNorm => vk::Format::R8G8B8A8_SNORM,
+		super::Format::RGBA8UInt  => vk::Format::R8G8B8A8_UINT,
+		super::Format::RGBA8SInt  => vk::Format::R8G8B8A8_SINT,
+
+		super::Format::RGBA16UNorm => vk::Format::R16G16B16A16_UNORM,
+		super::Format::RGBA16SNorm => vk::Format::R16G16B16A16_SNORM,
+		super::Format::RGBA16UInt  => vk::Format::R16G16B16A16_UINT,
+		super::Format::RGBA16SInt  => vk::Format::R16G16B16A16_SINT,
+		super::Format::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
+
+		super::Format::RGBA32UInt  => vk::Format::R32G32B32A32_UINT,
+		super::Format::RGBA32SInt  => vk::Format::R32G32B32A32_SINT,
+		super::Format::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
+
+		super::Format::BGRA8UNorm => vk::Format::B8G8R8A8_UNORM,
+
+		super::Format::D16UNorm          => vk::Format::D16_UNORM,
+		super::Format::D24UNormS8UInt    => vk::Format::D24_UNORM_S8_UINT,
+		super::Format::D32Float          => vk::Format::D32_SFLOAT,
+		super::Format::D32FloatS8UIntX24 => vk::Format::D32_SFLOAT_S8_UINT,
+	}
+}
+
+fn map_index_format(format: super::Format) -> vk::IndexType {
+	match format {
+		super::Format::Unknown => vk::IndexType::NONE_KHR,
+		super::Format::R8UInt  => vk::IndexType::UINT8_EXT,
+		super::Format::R16UInt => vk::IndexType::UINT16,
+		super::Format::R32UInt => vk::IndexType::UINT32,
+		_ => panic!(),
+	}
+}
+
+fn map_address_mode(address_mode: super::AddressMode) -> vk::SamplerAddressMode {
+	match address_mode {
+		super::AddressMode::Clamp      => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+		super::AddressMode::Repeat     => vk::SamplerAddressMode::REPEAT,
+		super::AddressMode::Mirror     => vk::SamplerAddressMode::MIRRORED_REPEAT,
+		super::AddressMode::MirrorOnce => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
+		super::AddressMode::Border     => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+	}
+}
+
+fn map_compare_op(compare_op: super::CompareOp) -> vk::CompareOp {
+	match compare_op {
+		super::CompareOp::Never        => vk::CompareOp::NEVER,
+		super::CompareOp::Always       => vk::CompareOp::ALWAYS,
+		super::CompareOp::Equal        => vk::CompareOp::EQUAL,
+		super::CompareOp::NotEqual     => vk::CompareOp::NOT_EQUAL,
+		super::CompareOp::Less         => vk::CompareOp::LESS,
+		super::CompareOp::LessEqual    => vk::CompareOp::LESS_OR_EQUAL,
+		super::CompareOp::Greater      => vk::CompareOp::GREATER,
+		super::CompareOp::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
+	}
+}
+
+fn map_topology(topology: super::Topology) -> vk::PrimitiveTopology {
+	match topology {
+		super::Topology::PointList        => vk::PrimitiveTopology::POINT_LIST,
+		super::Topology::LineList         => vk::PrimitiveTopology::LINE_LIST,
+		super::Topology::LineStrip        => vk::PrimitiveTopology::LINE_STRIP,
+		super::Topology::TriangleList     => vk::PrimitiveTopology::TRIANGLE_LIST,
+		super::Topology::TriangleStrip    => vk::PrimitiveTopology::TRIANGLE_STRIP,
+	}
+}
+
+fn map_stencil_op(stencil_op: &super::StencilOp) -> vk::StencilOp {
+	match stencil_op {
+		super::StencilOp::Keep           => vk::StencilOp::KEEP,
+		super::StencilOp::Zero           => vk::StencilOp::ZERO,
+		super::StencilOp::Replace        => vk::StencilOp::REPLACE,
+		super::StencilOp::Invert         => vk::StencilOp::INVERT,
+		super::StencilOp::IncrementWrap  => vk::StencilOp::INCREMENT_AND_WRAP,
+		super::StencilOp::IncrementClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
+		super::StencilOp::DecrementWrap  => vk::StencilOp::DECREMENT_AND_WRAP,
+		super::StencilOp::DecrementClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
+	}
+}
+
+fn map_polygon_mode(polygon_mode: &super::PolygonMode) -> vk::PolygonMode {
+	match polygon_mode {
+		super::PolygonMode::Line => vk::PolygonMode::LINE,
+		super::PolygonMode::Fill => vk::PolygonMode::FILL,
+	}
+}
+
+fn map_cull_mode(cull_mode: &super::CullMode) -> vk::CullModeFlags {
+	match cull_mode {
+		super::CullMode::None  => vk::CullModeFlags::NONE,
+		super::CullMode::Front => vk::CullModeFlags::FRONT,
+		super::CullMode::Back  => vk::CullModeFlags::BACK,
+	}
+}
+
+fn map_blend_factor(blend_factor: &super::BlendFactor) -> vk::BlendFactor {
+	match blend_factor {
+		super::BlendFactor::Zero             => vk::BlendFactor::ZERO,
+		super::BlendFactor::One              => vk::BlendFactor::ONE,
+		super::BlendFactor::SrcColor         => vk::BlendFactor::SRC_COLOR,
+		super::BlendFactor::InvSrcColor      => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+		super::BlendFactor::SrcAlpha         => vk::BlendFactor::SRC_ALPHA,
+		super::BlendFactor::InvSrcAlpha      => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+		super::BlendFactor::DstColor         => vk::BlendFactor::DST_COLOR,
+		super::BlendFactor::InvDstColor      => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+		super::BlendFactor::DstAlpha         => vk::BlendFactor::DST_ALPHA,
+		super::BlendFactor::InvDstAlpha      => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+		super::BlendFactor::Src1Color        => vk::BlendFactor::SRC1_COLOR,
+		super::BlendFactor::InvSrc1Color     => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
+		super::BlendFactor::Src1Alpha        => vk::BlendFactor::SRC1_ALPHA,
+		super::BlendFactor::InvSrc1Alpha     => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
+		super::BlendFactor::SrcAlphaSat      => vk::BlendFactor::SRC_ALPHA_SATURATE,
+		super::BlendFactor::ConstantColor    => vk::BlendFactor::CONSTANT_COLOR,
+		super::BlendFactor::InvConstantColor => vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR,
+	}
+}
+
+fn map_blend_op(blend_op: &super::BlendOp) -> vk::BlendOp {
+	match blend_op {
+		super::BlendOp::Add         => vk::BlendOp::ADD,
+		super::BlendOp::Subtract    => vk::BlendOp::SUBTRACT,
+		super::BlendOp::RevSubtract => vk::BlendOp::REVERSE_SUBTRACT,
+		super::BlendOp::Min         => vk::BlendOp::MIN,
+		super::BlendOp::Max         => vk::BlendOp::MAX,
+	}
+}
+
+fn map_acceleration_structure_flags(flags: super::AccelerationStructureBuildFlags) -> vk::BuildAccelerationStructureFlagsKHR {
+	let mut vk_flags = vk::BuildAccelerationStructureFlagsKHR::empty();
+	
+	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_UPDATE)      { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_UPDATE; }
+	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_COMPACTION)  { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION; }
+	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_TRACE) { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE; }
+	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_BUILD) { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_BUILD; }
+	if flags.contains(super::AccelerationStructureBuildFlags::MINIMIZE_MEMORY)   { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::LOW_MEMORY; }
+
+	vk_flags
+}
+
+fn map_acceleration_structure_bottom_level_flags(flags: super::AccelerationStructureBottomLevelFlags) -> vk::GeometryFlagsKHR {
+	let mut vk_flags = vk::GeometryFlagsKHR::empty();
+
+	if flags.contains(super::AccelerationStructureBottomLevelFlags::OPAQUE)                          { vk_flags |= vk::GeometryFlagsKHR::OPAQUE; }
+	if flags.contains(super::AccelerationStructureBottomLevelFlags::NO_DUPLICATE_ANY_HIT_INVOCATION) { vk_flags |= vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION; }
+
+	vk_flags
+}
+
+fn map_acceleration_structure_instance_flags(flags: super::AccelerationStructureInstanceFlags) -> vk::GeometryInstanceFlagsKHR {
+	let mut vk_flags = vk::GeometryInstanceFlagsKHR::empty();
+
+	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_CULL_DISABLE) { vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE; }
+	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_FRONT_CCW)    { vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE; }
+	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_OPAQUE)          { vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE; }
+	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_NON_OPAQUE)      { vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_NO_OPAQUE; }
+
+	vk_flags
+}
+
+struct SwapChain {}
+
+impl super::SwapChainImpl<Device> for SwapChain {
+	fn update(&mut self, device: &mut Device, size: [u32; 2]) {
+		todo!()
+	}
+
+	fn wait_for_last_frame(&mut self) {
+		todo!()
+	}
+
+	fn num_buffers(&self) -> u32 {
+		todo!()
+	}
+
+	fn backbuffer_index(&self) -> u32 {
+		todo!()
+	}
+
+	fn backbuffer_texture(&self) -> &Texture {
+		todo!()
+	}
+
+	fn swap(&mut self, device: &Device) {
+		todo!()
+	}
+}
+
+struct Shader {}
+impl super::ShaderImpl<Device> for Shader {
+	
+}
+
+struct Buffer {
+	buffer: vk::Buffer,
+}
+
+impl super::BufferImpl<Device> for Buffer {
+	fn srv_index(&self) -> Option<u32> {
+		todo!()
+	}
+
+	fn uav_index(&self) -> Option<u32> {
+		todo!()
+	}
+	
+	fn cpu_ptr(&self) -> *mut u8 {
+		todo!()
+	}
+
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		todo!()
+	}
+}
+
+struct Texture {
+	image: vk::Image,
+}
+
+impl super::TextureImpl<Device> for Texture {
+	fn srv_index(&self) -> Option<u32> {
+		todo!()
+	}
+
+	fn uav_index(&self) -> Option<u32> {
+		todo!()
+	}
+}
+
+struct AccelerationStructure {}
+impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
+	fn srv_index(&self) -> u32 {
+		todo!()
+	}
+
+	fn instance_descriptor_size() -> usize {
+		todo!()
+	}
+
+	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
+		todo!()
+	}
+}
+
+struct GraphicsPipeline {
+	pipeline: vk::Pipeline,
+}
+
+impl super::GraphicsPipelineImpl<Device> for GraphicsPipeline {
+	
+}
+
+struct ComputePipeline {
+	pipeline: vk::Pipeline,
+}
+
+impl super::ComputePipelineImpl<Device> for ComputePipeline {
+	
+}
+
+struct RaytracingPipeline {
+	pipeline: vk::Pipeline,
+}
+
+impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
+	fn shader_identifier_size(&self) -> usize {
+		todo!()
+	}
+
+	fn write_shader_identifier(&self, name: &str, slice: &mut [u8]) {
+		todo!()
+	}
+}
+
+struct Device {
+	device: vk::Device,
+}
+
+impl super::DeviceImpl for Device {
+	type SwapChain = SwapChain;
+	type CmdList = CmdList;
+	type Shader = Shader;
+	type Buffer = Buffer;
+	type Texture = Texture;
+	type AccelerationStructure = AccelerationStructure;
+	type GraphicsPipeline = GraphicsPipeline;
+	type ComputePipeline = ComputePipeline;
+	type RaytracingPipeline = RaytracingPipeline;
+
+	fn new(desc: &super::DeviceDesc) -> Self {
+		todo!()
+	}
+
+	fn create_swap_chain(&mut self, desc: &super::SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, super::Error> {
+		todo!()
+	}
+
+	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList {
+		todo!()
+	}
+
+	fn create_shader(&self, desc: &super::ShaderDesc, src: &[u8]) -> Result<Self::Shader, super::Error> {
+		todo!()
+	}
+
+	fn create_buffer(&mut self, desc: &super::BufferDesc, data: Option<&[u8]>) -> Result<Self::Buffer, super::Error> {
+		todo!()
+	}
+
+	fn create_texture(&mut self, desc: &super::TextureDesc, data: Option<&[u8]>) -> Result<Self::Texture, super::Error> {
+		todo!()
+	}
+
+	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, super::Error> {
+		todo!()
+	}
+
+	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc<Self>) -> Result<Self::GraphicsPipeline, super::Error> {
+		/*let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
+			.topology(map_topology(desc.topology));
+
+		let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+			.viewport_count(1)
+			.scissor_count(1);
+
+		let mut rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
+			.depth_clamp_enable(true)
+			.polygon_mode(map_polygon_mode(&desc.rasterizer.polygon_mode))
+			.cull_mode(map_cull_mode(&desc.rasterizer.cull_mode))
+			.front_face(if desc.rasterizer.front_ccw { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE })
+			.line_width(1.0);
+
+		let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
+			.rasterization_samples(vk::SampleCountFlags::TYPE_1)
+			.sample_mask(&[1]);
+
+		let mut depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder();
+
+		if let Some(ref depth_stencil) = desc.depth_stencil {
+			depth_stencil_state = depth_stencil_state
+				// depth_test_enable
+				// depth_write_enable
+				// stencil_test_enable
+				.front(map_depth_stencil_face_desc(&depth_stencil.front, depth_stencil.read_mask, depth_stencil.write_mask))
+				.back(map_depth_stencil_face_desc(&depth_stencil.back, depth_stencil.read_mask, depth_stencil.write_mask));
+
+			if depth_stencil.bias.constant != 0.0 || depth_stencil.bias.slope != 0.0 {
+				rasterization_state = rasterization_state
+					.depth_bias_enable(true)
+					.depth_bias_constant_factor(depth_stencil.bias.constant as f32)
+					.depth_bias_clamp(depth_stencil.bias.clamp)
+					.depth_bias_slope_factor(depth_stencil.bias.slope);
+			}
+		}
+
+		let color_attachments = desc.color_attachments.iter().map(|attachment| {
+			let mut vk_attachment = vk::PipelineColorBlendAttachmentState::builder()
+				.color_write_mask(vk::ColorComponentFlags::from_raw(attachment.write_mask.bits() as u32));
+
+			if let Some(ref blend) = attachment.blend {
+				vk_attachment = vk_attachment
+					.blend_enable(true)
+					.src_color_blend_factor(map_blend_factor(&blend.src_color))
+					.dst_color_blend_factor(map_blend_factor(&blend.dst_color))
+					.color_blend_op(map_blend_op(&blend.color_op))
+					.src_alpha_blend_factor(map_blend_factor(&blend.src_alpha))
+					.dst_alpha_blend_factor(map_blend_factor(&blend.dst_alpha))
+					.alpha_blend_op(map_blend_op(&blend.alpha_op));
+			}
+
+			vk_attachment.build()
+		}).collect::<Vec<_>>();
+
+		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+			.attachments(&color_attachments);
+
+		let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
+			.dynamic_states(&[
+				vk::DynamicState::VIEWPORT,
+				vk::DynamicState::SCISSOR,
+				vk::DynamicState::BLEND_CONSTANTS,
+				vk::DynamicState::STENCIL_REFERENCE,
+			]);
+
+		let color_target_formats = desc.color_attachments
+			.iter()
+			.map(|attachment| map_format(attachment.format))
+			.collect::<Vec<_>>();
+
+		let depth_stencil_format = desc.depth_stencil
+			.map_or(vk::Format::UNDEFINED, |ds| map_format(ds.format));
+
+		let mut rendering = vk::PipelineRenderingCreateInfo::builder()
+			.color_attachment_formats(&color_target_formats)
+			.depth_attachment_format(depth_stencil_format)
+			.stencil_attachment_format(depth_stencil_format);
+
+		let graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
+			// layout
+			// stages
+			.input_assembly_state(&input_assembly_state)
+			.viewport_state(&viewport_state)
+			.rasterization_state(&rasterization_state)
+			.multisample_state(&multisample_state)
+			.depth_stencil_state(&depth_stencil_state)
+			.color_blend_state(&color_blend_state)
+			.dynamic_state(&dynamic_state)
+			.push_next(&mut rendering)
+			.build();
+
+		unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[graphics_pipeline_create_info], None) }.unwrap()[0]*/
+		todo!()
+	}
+
+	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc<Self>) -> Result<Self::ComputePipeline, super::Error> {
+		todo!()
+	}
+
+	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
+		todo!()
+	}
+
+	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
+		todo!()
+	}
+
+	fn submit(&self, cmd: &Self::CmdList) {
+		todo!()
+	}
+
+	fn adapter_info(&self) -> &super::AdapterInfo {
+		todo!()
+	}
+
+	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
+		todo!()
+	}
+}
+
+struct CmdList {
+	command_buffer: vk::CommandBuffer,
+	device: ash::Device,
+
+	debug_utils: Option<ash::extensions::ext::DebugUtils>, // TODO: initialize variable
+}
+
+impl CmdList {
+	fn cmd(&self) -> vk::CommandBuffer {
+		self.command_buffer
+	}
+}
+
+impl super::CmdListImpl<Device> for CmdList {
+	fn reset(&mut self, device: &Device, swap_chain: &SwapChain) {
+		todo!()
+	}
+	
+	fn backbuffer_index(&self) -> u32 {
+		todo!()
+	}
+
+	fn copy_buffer(
+		&self,
+		src: &Buffer,
+		src_offset: u64,
+		dst: &Buffer,
+		dst_offset: u64,
+		size: u64,
+	) {
+		unsafe {
+			self.device.cmd_copy_buffer(self.command_buffer, src.buffer, dst.buffer, &[vk::BufferCopy {
+				src_offset,
+				dst_offset,
+				size,
+			}]);
+		}
+	}
+
+	fn copy_texture(
+		&self,
+		src: &Texture,
+		src_mip_level: u32,
+		src_array_slice: u32,
+		src_offset: [u32; 3],
+		dst: &Texture,
+		dst_mip_level: u32,
+		dst_array_slice: u32,
+		dst_offset: [u32; 3],
+		size: [u32; 3],
+	) {
+		unsafe {
+			self.device.cmd_copy_image(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::ImageCopy {
+				src_subresource: vk::ImageSubresourceLayers {
+					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+					mip_level: src_mip_level,
+					base_array_layer: src_array_slice,
+					layer_count: 1,
+				},
+				src_offset: map_offset(&src_offset),
+				dst_subresource: vk::ImageSubresourceLayers {
+					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+					mip_level: dst_mip_level,
+					base_array_layer: dst_array_slice,
+					layer_count: 1,
+				},
+				dst_offset: map_offset(&dst_offset),
+				extent: map_extent(&size),
+			}]);
+		}
+	}
+
+	fn copy_buffer_to_texture(
+		&self,
+		src: &Buffer,
+		src_offset: u64,
+		src_bytes_per_row: u32,
+		dst: &Texture,
+		dst_mip_level: u32,
+		dst_array_slice: u32,
+		dst_offset: [u32; 3],
+		size: [u32; 3],
+	) {
+		unsafe {
+			self.device.cmd_copy_buffer_to_image(self.command_buffer, src.buffer, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::BufferImageCopy {
+				buffer_offset: src_offset,
+				buffer_row_length: src_bytes_per_row,
+				buffer_image_height: 0,
+				image_subresource: vk::ImageSubresourceLayers {
+					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+					mip_level: dst_mip_level,
+					base_array_layer: dst_array_slice,
+					layer_count: 1,
+				},
+				image_offset: map_offset(&dst_offset),
+				image_extent: map_extent(&size),
+			}]);
+		}
+	}
+
+	fn copy_texture_to_buffer(
+		&self,
+		src: &Texture,
+		src_mip_level: u32,
+		src_array_slice: u32,
+		src_offset: [u32; 3],
+		dst: &Buffer,
+		dst_offset: u64,
+		dst_bytes_per_row: u32,
+		size: [u32; 3],
+	) {
+		unsafe {
+			self.device.cmd_copy_image_to_buffer(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.buffer, &[vk::BufferImageCopy {
+				buffer_offset: dst_offset,
+				buffer_row_length: dst_bytes_per_row,
+				buffer_image_height: 0,
+				image_subresource: vk::ImageSubresourceLayers {
+					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+					mip_level: src_mip_level,
+					base_array_layer: src_array_slice,
+					layer_count: 1,
+				},
+				image_offset: map_offset(&src_offset),
+				image_extent: map_extent(&size),
+			}]);
+		}
+	}
+
+	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
+		let vk_info = vk::RenderingInfo::builder();
+
+		// TODO: Implement
+
+		unsafe {
+			self.device.cmd_begin_rendering(self.command_buffer, &vk_info);
+		}
+	}
+
+	fn render_pass_end(&self) {
+		unsafe {
+			self.device.cmd_end_rendering(self.command_buffer);
+		}
+	}
+
+	fn barriers(&self, barriers: &[super::Barrier<Device>]) {
+		todo!()
+	}
+
+	fn set_viewport(&self, viewport: &super::Viewport) {
+		let vk_viewport = vk::Viewport {
+			x: viewport.x,
+			y: viewport.y + viewport.height,
+			width: viewport.width,
+			height: -viewport.height,
+			min_depth: viewport.min_depth,
+			max_depth: viewport.max_depth,
+		};
+
+		unsafe {
+			self.device.cmd_set_viewport(self.command_buffer, 0, &[vk_viewport]);
+		}
+	}
+
+	fn set_scissor(&self, scissor: &super::Scissor) {
+		let vk_rect = vk::Rect2D {
+			offset: vk::Offset2D {
+				x: scissor.left as _,
+				y: scissor.top as _,
+			},
+			extent: vk::Extent2D {
+				width: (scissor.right - scissor.left),
+				height: (scissor.top - scissor.bottom),
+			},
+		};
+
+		unsafe {
+			self.device.cmd_set_scissor(self.command_buffer, 0, &[vk_rect]);
+		}
+	}
+
+	fn set_blend_constant(&self, color: super::Color<f32>) {
+		unsafe {
+			self.device.cmd_set_blend_constants(self.command_buffer, &[color.r, color.g, color.b, color.a]);
+		}
+	}
+
+	fn set_stencil_reference(&self, reference: u32) {
+		unsafe {
+			self.device.cmd_set_stencil_reference(self.command_buffer, vk::StencilFaceFlags::FRONT_AND_BACK, reference);
+		}
+	}
+
+	fn set_index_buffer(&self, buffer: &Buffer, offset: u64, format: super::Format) {
+		let vk_format = map_index_format(format);
+
+		unsafe {
+			self.device.cmd_bind_index_buffer(self.command_buffer, buffer.buffer, offset, vk_format);
+		}
+	}
+
+	fn set_graphics_pipeline(&self, pipeline: &GraphicsPipeline) {
+		unsafe {
+			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+		}
+	}
+
+	fn set_compute_pipeline(&self, pipeline: &ComputePipeline) {
+		unsafe {
+			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
+		}
+	}
+
+	fn set_raytracing_pipeline(&self, pipeline: &RaytracingPipeline) {
+		unsafe {
+			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, pipeline.pipeline);
+		}
+	}
+
+	fn set_graphics_root_table(&self, device: &Device, slot: u32, offset: usize) {
+		todo!()
+	}
+
+	fn set_compute_root_table(&self, device: &Device, slot: u32, offset: usize) {
+		todo!()
+	}
+
+	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
+		/*unsafe {
+			self.device.cmd_push_constants(
+				self.command_buffer,
+				self.pipeline_layout,
+				vk::ShaderStageFlags::ALL_GRAPHICS,
+				0,
+				data,
+			);
+		}*/
+		todo!()
+	}
+
+	fn compute_push_constants(&self, offset: u32, data: &[u8]) {
+		/*unsafe {
+			self.device.cmd_push_constants(
+				self.command_buffer,
+				self.pipeline_layout,
+				vk::ShaderStageFlags::COMPUTE,
+				0,
+				data,
+			);
+		}*/
+		todo!()
+	}
+
+	fn draw(&self, vertex_count: u32, instance_count: u32, start_vertex: u32, start_instance: u32) {
+		unsafe {
+			self.device.cmd_draw(self.command_buffer, vertex_count, instance_count, start_vertex, start_instance);
+		}
+	}
+
+	fn draw_indexed(&self, index_count: u32, instance_count: u32, start_index: u32, base_vertex: i32, start_instance: u32) {
+		unsafe {
+			self.device.cmd_draw_indexed(self.command_buffer, index_count, instance_count, start_index, base_vertex, start_instance);
+		}
+	}
+
+	fn dispatch(&self, x: u32, y: u32, z: u32) {
+		unsafe {
+			self.device.cmd_dispatch(self.command_buffer, x, y, z);
+		}
+	}
+
+	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc<Device>) {
+		todo!()
+	}
+
+	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
+		todo!()
+	}
+
+	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
+		if let Some(debug_utils) = &self.debug_utils {
+			let label = CString::new(name).unwrap();
+			let label = vk::DebugUtilsLabelEXT::builder()
+				.label_name(&label)
+				.color(color.to_f32().into());
+
+			unsafe {
+				debug_utils.cmd_insert_debug_utils_label(self.command_buffer, &label);
+			}
+		}
+	}
+
+	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
+		if let Some(debug_utils) = &self.debug_utils {
+			let label = CString::new(name).unwrap();
+			let label = vk::DebugUtilsLabelEXT::builder()
+				.label_name(&label)
+				.color(color.to_f32().into());
+
+			unsafe {
+				debug_utils.cmd_begin_debug_utils_label(self.command_buffer, &label);
+			}
+		}
+	}
+
+	fn debug_event_pop(&self) {
+		if let Some(debug_utils) = &self.debug_utils {
+			unsafe {
+				debug_utils.cmd_end_debug_utils_label(self.command_buffer);
+			}
+		}
+	}
+}
+
+/*
+fn create_acceleration_structure() {
+
+	let accel: vk::AccelerationStructureBuildGeometryInfoKHR;
+	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
+
+	let instance: super::AccelerationStructureInstance = todo!();
+	let vk_instance = vk::AccelerationStructureInstanceKHR {
+		transform: vk::TransformMatrixKHR {
+			matrix: instance.transform,
+		},
+		instance_custom_index_and_mask: vk::Packed24_8::new(
+			instance.user_id,
+			instance.mask,
+		),
+		instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
+			instance.contribution_to_hit_group_index,
+			map_acceleration_structure_instance_flags(instance.flags).as_raw() as _,
+		),
+		acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+			device_handle: instance.bottom_level.0,
+		},
+	};
+}
+
+fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildInputs) {
+
+	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
+	let primitive_counts: Vec<usize> = Vec::new();
+	//let range_infos: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = Vec::new();
+
+	for geo in inputs.geometry {
+		let vk_geo = match geo.part {
+
+			// TODO: pass count to next struct
+			super::GeometryPart::AABBs(aabbs) => vk::AccelerationStructureGeometryKHR {
+				geometry_type: vk::GeometryTypeKHR::AABBS,
+				flags: map_acceleration_structure_bottom_level_flags(geo.flags),
+				geometry: vk::AccelerationStructureGeometryDataKHR {
+					aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+						data: vk::DeviceOrHostAddressConstKHR {
+							device_address: aabbs.data.0,
+						},
+						stride: aabbs.stride as _,
+						..Default::default()
+					},
+				},
+				..Default::default()
+			},
+
+			// TODO: pass index_count / 3 to next struct
+			super::GeometryPart::Triangles(triangles) => vk::AccelerationStructureGeometryKHR {
+				geometry_type: vk::GeometryTypeKHR::TRIANGLES,
+				flags: map_acceleration_structure_bottom_level_flags(geo.flags),
+				geometry: vk::AccelerationStructureGeometryDataKHR {
+					triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+						vertex_format: map_format(triangles.vertex_format),
+						vertex_data: vk::DeviceOrHostAddressConstKHR {
+							device_address: triangles.vertex_data.0,
+						},
+						vertex_stride: triangles.vertex_stride as _,
+						max_vertex: triangles.vertex_count as _,
+						index_type: map_index_format(triangles.index_format),
+						index_data: vk::DeviceOrHostAddressConstKHR {
+							device_address: triangles.index_data.0,
+						},
+						transform_data: vk::DeviceOrHostAddressConstKHR {
+							device_address: triangles.transform.0,
+						},
+						..Default::default()
+					},
+				},
+				..Default::default()
+			},
+		};
+	}
+}
+*/

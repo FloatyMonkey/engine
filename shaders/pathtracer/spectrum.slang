@@ -1,0 +1,1 @@
+typealias SampledSpectrum = float3;

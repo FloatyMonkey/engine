@@ -148,6 +148,11 @@ pub struct Texture {
 	dsv: Option<D3D12_CPU_DESCRIPTOR_HANDLE>,
 }
 
+#[derive(Clone)]
+pub struct Sampler {
+	_sampler: D3D12_CPU_DESCRIPTOR_HANDLE,
+}
+
 fn map_box(offset: &[u32; 3], size: &[u32; 3]) -> D3D12_BOX {
 	D3D12_BOX {
 		left: offset[0],
@@ -237,7 +242,7 @@ fn map_filter_mode(filter_mode: super::FilterMode) -> D3D12_FILTER_TYPE {
 }
 
 fn map_sampler_filter(desc: &super::SamplerDesc) -> D3D12_FILTER {
-	let reduction = match desc.compare_op {
+	let reduction = match desc.compare {
 		Some(_) => D3D12_FILTER_REDUCTION_TYPE_COMPARISON,
 		None    => D3D12_FILTER_REDUCTION_TYPE_STANDARD,
 	};
@@ -263,6 +268,22 @@ fn map_address_mode(address_mode: super::AddressMode) -> D3D12_TEXTURE_ADDRESS_M
 		super::AddressMode::Mirror     => D3D12_TEXTURE_ADDRESS_MODE_MIRROR,
 		super::AddressMode::MirrorOnce => D3D12_TEXTURE_ADDRESS_MODE_MIRROR_ONCE,
 		super::AddressMode::Border     => D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+	}
+}
+
+fn map_border_color(border_color: super::BorderColor) -> [f32; 4] {
+	match border_color {
+		super::BorderColor::TransparentBlack => [0.0, 0.0, 0.0, 0.0],
+		super::BorderColor::OpaqueBlack      => [0.0, 0.0, 0.0, 1.0],
+		super::BorderColor::White            => [1.0, 1.0, 1.0, 1.0],
+	}
+}
+
+fn map_static_border_color(border_color: super::BorderColor) -> D3D12_STATIC_BORDER_COLOR {
+	match border_color {
+		super::BorderColor::TransparentBlack => D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
+		super::BorderColor::OpaqueBlack      => D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK,
+		super::BorderColor::White            => D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
 	}
 }
 
@@ -668,7 +689,7 @@ impl Device {
 				ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
 			});
 		}
-		
+
 		let mut static_samplers: Vec<D3D12_STATIC_SAMPLER_DESC> = Vec::new();
 		if let Some(samplers) = &layout.static_samplers {
 			for sampler in samplers {
@@ -679,8 +700,8 @@ impl Device {
 					AddressW: map_address_mode(sampler.sampler_desc.address_w),
 					MipLODBias: sampler.sampler_desc.lod_bias,
 					MaxAnisotropy: sampler.sampler_desc.max_anisotropy,
-					ComparisonFunc: map_address_compare_op(sampler.sampler_desc.compare_op),
-					BorderColor: D3D12_STATIC_BORDER_COLOR(sampler.sampler_desc.border_color.map_or(0, |c| c.to_u32()) as i32),
+					ComparisonFunc: map_address_compare_op(sampler.sampler_desc.compare),
+					BorderColor: sampler.sampler_desc.border_color.map_or(D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK, map_static_border_color),
 					MinLOD: sampler.sampler_desc.min_lod,
 					MaxLOD: sampler.sampler_desc.max_lod,
 					ShaderRegister: sampler.shader_register,
@@ -738,6 +759,7 @@ impl super::DeviceImpl for Device {
 	type Shader = Shader;
 	type Buffer = Buffer;
 	type Texture = Texture;
+	type Sampler = Sampler;
 	type AccelerationStructure = AccelerationStructure;
 	type GraphicsPipeline = GraphicsPipeline;
 	type ComputePipeline = ComputePipeline;
@@ -1257,6 +1279,26 @@ impl super::DeviceImpl for Device {
 				dsv,
 			})
 		}
+	}
+
+	fn create_sampler(&mut self, desc: &SamplerDesc) -> result::Result<Self::Sampler, super::Error> {
+		let dx_desc = D3D12_SAMPLER_DESC {
+			Filter: map_sampler_filter(desc),
+			AddressU: map_address_mode(desc.address_u),
+			AddressV: map_address_mode(desc.address_v),
+			AddressW: map_address_mode(desc.address_w),
+			MipLODBias: desc.lod_bias,
+			MaxAnisotropy: desc.max_anisotropy,
+			ComparisonFunc: map_address_compare_op(desc.compare),
+			BorderColor: desc.border_color.map_or([0.0; 4], map_border_color),
+			MinLOD: desc.min_lod,
+			MaxLOD: desc.max_lod,
+		};
+
+		let h = self.sampler_heap.allocate();
+		unsafe { self.device.CreateSampler(&dx_desc, h) };
+
+		Ok(Sampler { _sampler: h })
 	}
 
 	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> result::Result<AccelerationStructure, super::Error> {
@@ -2166,6 +2208,8 @@ impl super::TextureImpl<Device> for Texture {
 		self.uav_index.map(|i| i as u32)
 	}
 }
+
+impl super::SamplerImpl<Device> for Sampler {}
 
 impl super::ShaderImpl<Device> for Shader {}
 

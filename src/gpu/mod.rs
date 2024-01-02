@@ -12,6 +12,7 @@ pub type SwapChain = <d3d12::Device as DeviceImpl>::SwapChain;
 pub type CmdList = <d3d12::Device as DeviceImpl>::CmdList;
 pub type Buffer = <d3d12::Device as DeviceImpl>::Buffer;
 pub type Texture = <d3d12::Device as DeviceImpl>::Texture;
+pub type Sampler = <d3d12::Device as DeviceImpl>::Sampler;
 pub type Shader = <d3d12::Device as DeviceImpl>::Shader;
 pub type GraphicsPipeline = <d3d12::Device as DeviceImpl>::GraphicsPipeline;
 pub type ComputePipeline = <d3d12::Device as DeviceImpl>::ComputePipeline;
@@ -386,6 +387,13 @@ pub enum AddressMode {
 }
 
 #[derive(Clone, Copy)]
+pub enum BorderColor {
+	TransparentBlack,
+	OpaqueBlack,
+	White,
+}
+
+#[derive(Clone, Copy)]
 pub struct SamplerDesc {
 	pub address_u: AddressMode,
 	pub address_v: AddressMode,
@@ -398,12 +406,12 @@ pub struct SamplerDesc {
 	pub min_lod: f32,
 	pub max_lod: f32,
 	pub lod_bias: f32,
-	
-	pub compare_op: Option<CompareOp>,
+
+	pub compare: Option<CompareOp>,
 	/// Must be at least 1. If higher, all filter modes must be [`FilterMode::Nearest`].
 	pub max_anisotropy: u32,
 	/// Border color to use if address mode is [`AddressMode::Border`].
-	pub border_color: Option<Color<u8>>,
+	pub border_color: Option<BorderColor>,
 }
 
 #[derive(Clone, Copy)]
@@ -705,6 +713,7 @@ pub trait TextureImpl<D: DeviceImpl> {
 	fn uav_index(&self) -> Option<u32>;
 }
 
+pub trait SamplerImpl<D: DeviceImpl> {}
 pub trait ShaderImpl<D: DeviceImpl> {}
 pub trait GraphicsPipelineImpl<D: DeviceImpl> {}
 pub trait ComputePipelineImpl<D: DeviceImpl> {}
@@ -727,11 +736,12 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 	type Shader: ShaderImpl<Self>;
 	type Buffer: BufferImpl<Self>;
 	type Texture: TextureImpl<Self>;
+	type Sampler: SamplerImpl<Self>;
 	type AccelerationStructure: AccelerationStructureImpl<Self>;
 	type GraphicsPipeline: GraphicsPipelineImpl<Self>;
 	type ComputePipeline: ComputePipelineImpl<Self>;
 	type RaytracingPipeline: RaytracingPipelineImpl<Self>;
-	
+
 	fn new(desc: &DeviceDesc) -> Self;
 
 	fn create_swap_chain(&mut self, desc: &SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, Error>;
@@ -739,6 +749,7 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 	fn create_shader(&self, desc: &ShaderDesc, src: &[u8]) -> Result<Self::Shader, Error>;
 	fn create_buffer(&mut self, desc: &BufferDesc, data: Option<&[u8]>) -> Result<Self::Buffer, Error>;
 	fn create_texture(&mut self, desc: &TextureDesc, data: Option<&[u8]>) -> Result<Self::Texture, Error>;
+	fn create_sampler(&mut self, desc: &SamplerDesc) -> Result<Self::Sampler, Error>;
 	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, Error>;
 
 	fn create_graphics_pipeline(&self, desc: &GraphicsPipelineDesc<Self>) -> Result<Self::GraphicsPipeline, Error>;
@@ -885,7 +896,7 @@ impl Default for SamplerDesc {
 			min_lod: 0.0,
 			max_lod: 32.0,
 			lod_bias: 0.0,
-			compare_op: None,
+			compare: None,
 			max_anisotropy: 1,
 			border_color: None,
 		}

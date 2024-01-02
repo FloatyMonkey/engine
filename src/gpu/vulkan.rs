@@ -95,6 +95,20 @@ fn map_index_format(format: super::Format) -> vk::IndexType {
 	}
 }
 
+fn map_filter_mode(filter_mode: super::FilterMode) -> vk::Filter {
+	match filter_mode {
+		super::FilterMode::Nearest => vk::Filter::NEAREST,
+		super::FilterMode::Linear  => vk::Filter::LINEAR,
+	}
+}
+
+fn map_mip_filter_mode(filter_mode: super::FilterMode) -> vk::SamplerMipmapMode {
+	match filter_mode {
+		super::FilterMode::Nearest => vk::SamplerMipmapMode::NEAREST,
+		super::FilterMode::Linear  => vk::SamplerMipmapMode::LINEAR,
+	}
+}
+
 fn map_address_mode(address_mode: super::AddressMode) -> vk::SamplerAddressMode {
 	match address_mode {
 		super::AddressMode::Clamp      => vk::SamplerAddressMode::CLAMP_TO_EDGE,
@@ -102,6 +116,14 @@ fn map_address_mode(address_mode: super::AddressMode) -> vk::SamplerAddressMode 
 		super::AddressMode::Mirror     => vk::SamplerAddressMode::MIRRORED_REPEAT,
 		super::AddressMode::MirrorOnce => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
 		super::AddressMode::Border     => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+	}
+}
+
+fn map_border_color(border_color: super::BorderColor) -> vk::BorderColor {
+	match border_color {
+		super::BorderColor::TransparentBlack => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
+		super::BorderColor::OpaqueBlack      => vk::BorderColor::FLOAT_OPAQUE_BLACK,
+		super::BorderColor::White            => vk::BorderColor::FLOAT_OPAQUE_WHITE,
 	}
 }
 
@@ -289,6 +311,12 @@ impl super::TextureImpl<Device> for Texture {
 	}
 }
 
+struct Sampler {
+	sampler: vk::Sampler,
+}
+
+impl super::SamplerImpl<Device> for Sampler {}
+
 struct AccelerationStructure {}
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> u32 {
@@ -335,7 +363,7 @@ impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
 }
 
 struct Device {
-	device: vk::Device,
+	device: ash::Device,
 }
 
 impl super::DeviceImpl for Device {
@@ -344,6 +372,7 @@ impl super::DeviceImpl for Device {
 	type Shader = Shader;
 	type Buffer = Buffer;
 	type Texture = Texture;
+	type Sampler = Sampler;
 	type AccelerationStructure = AccelerationStructure;
 	type GraphicsPipeline = GraphicsPipeline;
 	type ComputePipeline = ComputePipeline;
@@ -371,6 +400,36 @@ impl super::DeviceImpl for Device {
 
 	fn create_texture(&mut self, desc: &super::TextureDesc, data: Option<&[u8]>) -> Result<Self::Texture, super::Error> {
 		todo!()
+	}
+
+	fn create_sampler(&mut self, desc: &super::SamplerDesc) -> Result<Self::Sampler, super::Error> {
+		let mut create_info = vk::SamplerCreateInfo::builder()
+			.address_mode_u(map_address_mode(desc.address_u))
+			.address_mode_v(map_address_mode(desc.address_v))
+			.address_mode_w(map_address_mode(desc.address_w))
+			.min_filter(map_filter_mode(desc.filter_min))
+			.mag_filter(map_filter_mode(desc.filter_mag))
+			.mipmap_mode(map_mip_filter_mode(desc.filter_mip))
+			.min_lod(desc.min_lod)
+			.max_lod(desc.max_lod)
+			.mip_lod_bias(desc.lod_bias)
+			.anisotropy_enable(desc.max_anisotropy > 1)
+			.max_anisotropy(desc.max_anisotropy as f32);
+
+		if let Some(compare) = desc.compare {
+			create_info = create_info
+				.compare_enable(true)
+				.compare_op(map_compare_op(compare));
+		}
+
+		if let Some(border_color) = desc.border_color {
+			create_info = create_info
+				.border_color(map_border_color(border_color));
+		}
+
+		let sampler = unsafe { self.device.create_sampler(&create_info, None) }.unwrap();
+
+		Ok(Sampler { sampler })
 	}
 
 	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, super::Error> {

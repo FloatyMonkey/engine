@@ -37,24 +37,26 @@ impl EguiRenderer {
 			size: std::mem::size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::WRITE,
-		}, None).unwrap();
+		}).unwrap();
 
 		let ib = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<u32>() * INDEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::WRITE,
-		}, None).unwrap();
+		}).unwrap();
 		
 		let slang_vs = shader_compiler.compile("shaders/egui.slang", "main_vs");
 		let slang_ps = shader_compiler.compile("shaders/egui.slang", "main_ps");
 
 		let vs = device.create_shader(&gpu::ShaderDesc {
 			ty: gpu::ShaderType::Vertex,
-		}, &slang_vs).unwrap();
+			src: &slang_vs,
+		}).unwrap();
 
 		let fs = device.create_shader(&gpu::ShaderDesc {
 			ty: gpu::ShaderType::Pixel,
-		}, &slang_ps).unwrap();
+			src: &slang_ps,
+		}).unwrap();
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
 			vs: Some(&vs),
@@ -243,9 +245,10 @@ impl EguiRenderer {
 				format: gpu::Format::RGBA8UNorm,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
 				state: gpu::ResourceState::ShaderResource,
-			}, Some(&pixels));
+			}).unwrap();
+			device.upload_texture(&texture, &pixels);
 
-			self.textures.insert(id, texture.unwrap());
+			self.textures.insert(id, texture);
 		}
 	}
 

@@ -97,13 +97,16 @@ impl GpuMeshData {
 			size: std::mem::size_of::<Vertex>() * vertices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, Some(gpu::slice_as_u8_slice(&vertices))).unwrap();
+		}).unwrap();
 
 		let index_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<u32>() * indices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, Some(gpu::slice_as_u8_slice(&indices))).unwrap();
+		}).unwrap();
+
+		device.upload_buffer(&vertex_buffer, gpu::slice_as_u8_slice(&vertices));
+		device.upload_buffer(&index_buffer, gpu::slice_as_u8_slice(&indices));
 
 		let blas = Blas::create(device, &vertex_buffer, &index_buffer, vertices.len(), indices.len(), std::mem::size_of::<Vertex>());
 
@@ -137,13 +140,13 @@ impl Scene {
 			size: std::mem::size_of::<Instance>() * MAX_INSTANCES,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::WRITE,
-		}, None).unwrap();
+		}).unwrap();
 
 		let light_data_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<GpuLight>() * MAX_LIGHTS,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::WRITE,
-		}, None).unwrap();
+		}).unwrap();
 
 		let importance_map = ImportanceMap::setup(device, shader_compiler);
 
@@ -269,7 +272,7 @@ impl Scene {
 		if !self.texture_cache.contains_key(&asset.id()) {
 			let image = assets.get(asset).unwrap();
 
-			let texture_desc = gpu::TextureDesc {
+			let texture = device.create_texture(&gpu::TextureDesc {
 				width: image.width as u64,
 				height: image.height as u64,
 				depth: 1,
@@ -279,9 +282,10 @@ impl Scene {
 				format: gpu::Format::RGBA32Float,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
 				state: gpu::ResourceState::ShaderResource,
-			};
+			}).unwrap();
 
-			let texture = device.create_texture(&texture_desc, Some(gpu::slice_as_u8_slice(&image.data))).unwrap();
+			device.upload_texture(&texture, gpu::slice_as_u8_slice(&image.data));
+
 			self.texture_cache.insert(asset.id(), texture);
 		}
 		

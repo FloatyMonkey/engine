@@ -306,8 +306,9 @@ pub enum ShaderType {
 	Callable,
 }
 
-pub struct ShaderDesc {
+pub struct ShaderDesc<'a> {
 	pub ty: ShaderType,
+	pub src: &'a [u8],
 }
 
 bitflags! {
@@ -746,9 +747,9 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	fn create_swap_chain(&mut self, desc: &SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, Error>;
 	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList;
-	fn create_shader(&self, desc: &ShaderDesc, src: &[u8]) -> Result<Self::Shader, Error>;
-	fn create_buffer(&mut self, desc: &BufferDesc, data: Option<&[u8]>) -> Result<Self::Buffer, Error>;
-	fn create_texture(&mut self, desc: &TextureDesc, data: Option<&[u8]>) -> Result<Self::Texture, Error>;
+	fn create_shader(&self, desc: &ShaderDesc) -> Result<Self::Shader, Error>;
+	fn create_buffer(&mut self, desc: &BufferDesc) -> Result<Self::Buffer, Error>;
+	fn create_texture(&mut self, desc: &TextureDesc) -> Result<Self::Texture, Error>;
 	fn create_sampler(&mut self, desc: &SamplerDesc) -> Result<Self::Sampler, Error>;
 	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, Error>;
 
@@ -758,6 +759,9 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	// TODO: Only supports 2D texture UAVs
 	fn create_texture_view(&mut self, desc: &TextureViewDesc, texture: &Self::Texture) -> TextureView;
+
+	fn upload_buffer(&mut self, buffer: &Self::Buffer, data: &[u8]);
+	fn upload_texture(&mut self, texture: &Self::Texture, data: &[u8]);
 
 	fn submit(&self, cmd: &Self::CmdList);
 	fn adapter_info(&self) -> &AdapterInfo;

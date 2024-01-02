@@ -53,7 +53,8 @@ impl ImportanceMap {
 
 		let cs = device.create_shader(&gpu::ShaderDesc {
 			ty: gpu::ShaderType::Compute,
-		}, &shader).unwrap();
+			src: &shader,
+		}).unwrap();
 
 		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
 			cs, descriptor_layout: &descriptor_layout,
@@ -63,7 +64,7 @@ impl ImportanceMap {
 
 		let mip_levels = gpu::max_mip_level(RESOLUTION as u32) + 1;
 
-		let texture_desc = gpu::TextureDesc {
+		let importance_map = device.create_texture(&gpu::TextureDesc {
 			width: RESOLUTION as u64,
 			height: RESOLUTION as u64,
 			depth: 1,
@@ -73,9 +74,7 @@ impl ImportanceMap {
 			format: gpu::Format::R32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			state: gpu::ResourceState::ShaderResource,
-		};
-
-		let importance_map = device.create_texture(&texture_desc, None).unwrap();
+		}).unwrap();
 
 		let uavs = (1..mip_levels).map(|i| {
 			device.create_texture_view(&gpu::TextureViewDesc {

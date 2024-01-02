@@ -141,6 +141,7 @@ pub struct Buffer {
 
 #[derive(Clone)]
 pub struct Texture {
+	desc: TextureDesc,
 	resource: ID3D12Resource,
 	srv_index: Option<usize>,
 	uav_index: Option<usize>,
@@ -559,6 +560,7 @@ fn create_swap_chain_rtv(
 			let h = device.rtv_heap.allocate();
 			device.device.CreateRenderTargetView(&render_target, None, h);
 			textures.push(Texture {
+				desc: std::mem::zeroed(), // TODO: Fill this in.
 				resource: render_target.clone(),
 				rtv: Some(h),
 				dsv: None,
@@ -909,13 +911,13 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn create_shader(&self, _desc: &super::ShaderDesc, src: &[u8]) -> std::result::Result<Shader, super::Error> {
+	fn create_shader(&self, desc: &super::ShaderDesc) -> std::result::Result<Shader, super::Error> {
 		Ok(Shader {
-			binary: src.to_vec(),
+			binary: desc.src.to_vec(),
 		})
 	}
 
-	fn create_buffer(&mut self, desc: &super::BufferDesc, data: Option<&[u8]>) -> result::Result<Buffer, super::Error> {
+	fn create_buffer(&mut self, desc: &super::BufferDesc) -> result::Result<Buffer, super::Error> {
 		let mut resource: Option<ID3D12Resource> = None;
 		unsafe {
 			self.device.CreateCommittedResource(
@@ -959,73 +961,6 @@ impl super::DeviceImpl for Device {
 				None,
 				&mut resource,
 			)?;
-
-			if let Some(data) = &data {
-				assert_eq!(desc.size, data.len());
-				let mut upload: Option<ID3D12Resource> = None;
-				self.device.CreateCommittedResource(
-					&D3D12_HEAP_PROPERTIES {
-						Type: D3D12_HEAP_TYPE_UPLOAD,
-						..Default::default()
-					},
-					D3D12_HEAP_FLAG_NONE,
-					&D3D12_RESOURCE_DESC {
-						Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-						Alignment: 0,
-						Width: desc.size as u64,
-						Height: 1,
-						DepthOrArraySize: 1,
-						MipLevels: 1,
-						Format: DXGI_FORMAT_UNKNOWN,
-						SampleDesc: DXGI_SAMPLE_DESC {
-							Count: 1,
-							Quality: 0,
-						},
-						Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-						Flags: D3D12_RESOURCE_FLAG_NONE,
-					},
-					D3D12_RESOURCE_STATE_GENERIC_READ,
-					None,
-					&mut upload,
-				)?;
-
-				let range = D3D12_RANGE {
-					Begin: 0,
-					End: desc.size,
-				};
-				let mut map_data = std::ptr::null_mut();
-				let res = upload.clone().unwrap();
-				res.Map(0, Some(&range), Some(&mut map_data))?;
-				if !map_data.is_null() {
-					let src = data.as_ptr() as *mut u8;
-					std::ptr::copy_nonoverlapping(src, map_data as *mut u8, desc.size);
-				}
-				res.Unmap(0, None);
-
-				let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE).unwrap();
-
-				self.command_list.CopyResource(&resource.clone().unwrap(), &upload.clone().unwrap());
-
-				let barrier = transition_barrier(
-					&resource.clone().unwrap(),
-					D3D12_RESOURCE_STATE_COPY_DEST,
-					D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-				);
-
-				self.command_list.ResourceBarrier(&[barrier.clone()]);
-				self.command_list.Close()?;
-
-				let cmd = Some(self.command_list.can_clone_into());
-				self.command_queue.ExecuteCommandLists(&[cmd]);
-				self.command_queue.Signal(&fence, 1)?;
-
-				let event = CreateEventA(None, false, false, None)?;
-				fence.SetEventOnCompletion(1, event)?;
-				WaitForSingleObject(event, INFINITE);
-
-				self.command_list.Reset(&self.command_allocator, None)?;
-				let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
-			}
 
 			// TODO: We assume the srv is for a raw buffer (ByteAddressBuffer)
 			// This is actually a 'Word' Buffer, since it must contain a multiple of 4 bytes, assert this!
@@ -1093,10 +1028,9 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn create_texture(&mut self, desc: &super::TextureDesc, data: Option<&[u8]>) -> result::Result<Texture, super::Error> {
+	fn create_texture(&mut self, desc: &super::TextureDesc) -> result::Result<Texture, super::Error> {
 		let mut resource: Option<ID3D12Resource> = None;
 		let dxgi_format = map_format(desc.format);
-		let size_bytes = desc.format.size(desc.width, desc.height, desc.depth) as usize;
 		let initial_state = map_resource_state(desc.state);
 		unsafe {
 			self.device.CreateCommittedResource(
@@ -1120,117 +1054,10 @@ impl super::DeviceImpl for Device {
 					Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
 					Flags: map_texture_usage_flags(desc.usage),
 				},
-				if data.is_some() {
-					D3D12_RESOURCE_STATE_COPY_DEST
-				} else {
-					initial_state
-				},
+				initial_state,
 				None,
 				&mut resource,
 			)?;
-
-			if let Some(data) = &data {
-				assert_eq!(size_bytes, data.len());
-				// TODO: Relax constraints below, make texture uploading more robust in general.
-				assert_eq!(desc.mip_levels, 1);
-				assert_eq!(desc.depth, 1);
-
-				let row_pitch = desc.format.row_pitch(desc.width);
-				let upload_pitch = super::align_pow2(row_pitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT as u64);
-				let upload_size = desc.height * upload_pitch;
-
-				let mut upload: Option<ID3D12Resource> = None;
-				self.device.CreateCommittedResource(
-					&D3D12_HEAP_PROPERTIES {
-						Type: D3D12_HEAP_TYPE_UPLOAD,
-						..Default::default()
-					},
-					D3D12_HEAP_FLAG_NONE,
-					&D3D12_RESOURCE_DESC {
-						Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-						Alignment: 0,
-						Width: upload_size,
-						Height: 1,
-						DepthOrArraySize: 1,
-						MipLevels: 1,
-						Format: DXGI_FORMAT_UNKNOWN,
-						SampleDesc: DXGI_SAMPLE_DESC {
-							Count: 1,
-							Quality: 0,
-						},
-						Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-						Flags: D3D12_RESOURCE_FLAG_NONE,
-					},
-					D3D12_RESOURCE_STATE_GENERIC_READ,
-					None,
-					&mut upload,
-				)?;
-
-				let range = D3D12_RANGE {
-					Begin: 0,
-					End: upload_size as usize,
-				};
-				let mut map_data = std::ptr::null_mut();
-				let res = upload.clone().unwrap();
-				res.Map(0, Some(&range), Some(&mut map_data))?;
-				if !map_data.is_null() {
-					for y in 0..desc.height {
-						let src = data.as_ptr().offset((y * row_pitch) as isize) as *const u8;
-						let dst = (map_data as *mut u8).offset((y * upload_pitch) as isize);
-						std::ptr::copy_nonoverlapping(src, dst, (row_pitch) as usize);
-					}
-				}
-				res.Unmap(0, None);
-
-				let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
-
-				let src = D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&upload.unwrap()),
-					Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-							Offset: 0,
-							Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
-								Format: dxgi_format,
-								Width: desc.width as u32,
-								Height: desc.height as u32,
-								Depth: 1,
-								RowPitch: upload_pitch as u32,
-							},
-						},
-					},
-				};
-
-				let dst = D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&resource.clone().unwrap()),
-					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: 0,
-					},
-				};
-
-				self.command_list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
-
-				let barrier = transition_barrier(
-					&resource.clone().unwrap(),
-					D3D12_RESOURCE_STATE_COPY_DEST,
-					initial_state,
-				);
-				
-				self.command_list.ResourceBarrier(&[barrier.clone()]);
-				let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
-
-				self.command_list.Close()?;
-				
-				let cmd = Some(self.command_list.can_clone_into());
-				self.command_queue.ExecuteCommandLists(&[cmd]);
-				self.command_queue.Signal(&fence, 1)?;
-
-				let event = CreateEventA(None, false, false, None)?;
-				fence.SetEventOnCompletion(1, event)?;
-				WaitForSingleObject(event, INFINITE);
-				self.command_list.Reset(&self.command_allocator, None)?;
-			}
 
 			let srv_index = desc.usage.contains(super::TextureUsage::SHADER_RESOURCE).then(|| {
 				let h = self.resource_heap.allocate();
@@ -1272,6 +1099,7 @@ impl super::DeviceImpl for Device {
 			});
 
 			Ok(Texture {
+				desc: desc.clone(),
 				resource: resource.unwrap(),
 				srv_index,
 				uav_index,
@@ -1553,6 +1381,194 @@ impl super::DeviceImpl for Device {
 
 		super::TextureView {
 			index: index as u32,
+		}
+	}
+
+	fn upload_buffer(&mut self, buffer: &Self::Buffer, data: &[u8]) {
+		unsafe {
+			let size = data.len();
+			let mut upload: Option<ID3D12Resource> = None;
+			self.device.CreateCommittedResource(
+				&D3D12_HEAP_PROPERTIES {
+					Type: D3D12_HEAP_TYPE_UPLOAD,
+					..Default::default()
+				},
+				D3D12_HEAP_FLAG_NONE,
+				&D3D12_RESOURCE_DESC {
+					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+					Alignment: 0,
+					Width: size as u64,
+					Height: 1,
+					DepthOrArraySize: 1,
+					MipLevels: 1,
+					Format: DXGI_FORMAT_UNKNOWN,
+					SampleDesc: DXGI_SAMPLE_DESC {
+						Count: 1,
+						Quality: 0,
+					},
+					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+					Flags: D3D12_RESOURCE_FLAG_NONE,
+				},
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				None,
+				&mut upload,
+			).unwrap();
+
+			let range = D3D12_RANGE {
+				Begin: 0,
+				End: size,
+			};
+			let mut map_data = std::ptr::null_mut();
+			let res = upload.clone().unwrap();
+			res.Map(0, Some(&range), Some(&mut map_data)).unwrap();
+			if !map_data.is_null() {
+				let src = data.as_ptr() as *mut u8;
+				std::ptr::copy_nonoverlapping(src, map_data as *mut u8, size);
+			}
+			res.Unmap(0, None);
+
+			let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE).unwrap();
+
+			self.command_list.CopyResource(&buffer.resource.clone(), &upload.clone().unwrap());
+
+			let barrier = transition_barrier(
+				&buffer.resource.clone(),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			);
+
+			self.command_list.ResourceBarrier(&[barrier.clone()]);
+			self.command_list.Close().unwrap();
+
+			let cmd = Some(self.command_list.can_clone_into());
+			self.command_queue.ExecuteCommandLists(&[cmd]);
+			self.command_queue.Signal(&fence, 1).unwrap();
+
+			let event = CreateEventA(None, false, false, None).unwrap();
+			fence.SetEventOnCompletion(1, event).unwrap();
+			WaitForSingleObject(event, INFINITE);
+
+			self.command_list.Reset(&self.command_allocator, None).unwrap();
+			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
+		}
+	}
+
+	fn upload_texture(&mut self, texture: &Self::Texture, data: &[u8]) {
+		unsafe {
+			let desc = &texture.desc;
+
+			let size_bytes = desc.format.size(desc.width, desc.height, desc.depth) as usize;
+			assert_eq!(size_bytes, data.len());
+
+			// TODO: Relax constraints below, make texture uploading more robust in general.
+			assert_eq!(desc.mip_levels, 1);
+			assert_eq!(desc.depth, 1);
+
+			let row_pitch = desc.format.row_pitch(desc.width);
+			let upload_pitch = super::align_pow2(row_pitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT as u64);
+			let upload_size = desc.height * upload_pitch;
+			let initial_state = map_resource_state(desc.state);
+
+			let mut upload: Option<ID3D12Resource> = None;
+			self.device.CreateCommittedResource(
+				&D3D12_HEAP_PROPERTIES {
+					Type: D3D12_HEAP_TYPE_UPLOAD,
+					..Default::default()
+				},
+				D3D12_HEAP_FLAG_NONE,
+				&D3D12_RESOURCE_DESC {
+					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+					Alignment: 0,
+					Width: upload_size,
+					Height: 1,
+					DepthOrArraySize: 1,
+					MipLevels: 1,
+					Format: DXGI_FORMAT_UNKNOWN,
+					SampleDesc: DXGI_SAMPLE_DESC {
+						Count: 1,
+						Quality: 0,
+					},
+					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+					Flags: D3D12_RESOURCE_FLAG_NONE,
+				},
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				None,
+				&mut upload,
+			).unwrap();
+
+			let range = D3D12_RANGE {
+				Begin: 0,
+				End: upload_size as usize,
+			};
+			let mut map_data = std::ptr::null_mut();
+			let res = upload.clone().unwrap();
+			res.Map(0, Some(&range), Some(&mut map_data)).unwrap();
+			if !map_data.is_null() {
+				for y in 0..desc.height {
+					let src = data.as_ptr().offset((y * row_pitch) as isize) as *const u8;
+					let dst = (map_data as *mut u8).offset((y * upload_pitch) as isize);
+					std::ptr::copy_nonoverlapping(src, dst, (row_pitch) as usize);
+				}
+			}
+			res.Unmap(0, None);
+
+			let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE).unwrap();
+
+			let src = D3D12_TEXTURE_COPY_LOCATION {
+				pResource: std::mem::transmute_copy(&upload.unwrap()),
+				Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+				Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+					PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
+						Offset: 0,
+						Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
+							Format: map_format(desc.format),
+							Width: desc.width as u32,
+							Height: desc.height as u32,
+							Depth: 1,
+							RowPitch: upload_pitch as u32,
+						},
+					},
+				},
+			};
+
+			let dst = D3D12_TEXTURE_COPY_LOCATION {
+				pResource: std::mem::transmute_copy(&texture.resource.clone()),
+				Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+				Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+					SubresourceIndex: 0,
+				},
+			};
+
+			let barrier = transition_barrier(
+				&texture.resource.clone(),
+				initial_state,
+				D3D12_RESOURCE_STATE_COPY_DEST,
+			);
+
+			self.command_list.ResourceBarrier(&[barrier.clone()]);
+			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
+
+			self.command_list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
+
+			let barrier = transition_barrier(
+				&texture.resource.clone(),
+				D3D12_RESOURCE_STATE_COPY_DEST,
+				initial_state,
+			);
+
+			self.command_list.ResourceBarrier(&[barrier.clone()]);
+			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
+
+			self.command_list.Close().unwrap();
+
+			let cmd = Some(self.command_list.can_clone_into());
+			self.command_queue.ExecuteCommandLists(&[cmd]);
+			self.command_queue.Signal(&fence, 1).unwrap();
+
+			let event = CreateEventA(None, false, false, None).unwrap();
+			fence.SetEventOnCompletion(1, event).unwrap();
+			WaitForSingleObject(event, INFINITE);
+			self.command_list.Reset(&self.command_allocator, None).unwrap();
 		}
 	}
 

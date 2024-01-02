@@ -106,13 +106,14 @@ impl PathTracer {
 			size: shader_table_data.len(),
 			usage: gpu::BufferUsage::empty(),
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, Some(&shader_table_data)).unwrap();
+		}).unwrap();
+		device.upload_buffer(&shader_table, &shader_table_data);
 
 		// Create the output texture
 
 		let resolution = [1920_u32, 1080_u32]; // TODO: Hardcoded
 
-		let output_texture_desc = gpu::TextureDesc {
+		let output_texture = device.create_texture(&gpu::TextureDesc {
 			width: resolution[0] as _,
 			height: resolution[1] as _,
 			depth: 1,
@@ -122,9 +123,7 @@ impl PathTracer {
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			state: gpu::ResourceState::UnorderedAccess,
-		};
-
-		let output_texture = device.create_texture(&output_texture_desc, None).unwrap();
+		}).unwrap();
 
 		Self {
 			pipeline,
@@ -220,7 +219,8 @@ impl PostProcessor {
 
 		let cs = device.create_shader(&gpu::ShaderDesc {
 			ty: gpu::ShaderType::Compute,
-		}, &shader).unwrap();
+			src: &shader
+		}).unwrap();
 
 		let pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
 			cs, descriptor_layout: &descriptor_layout,
@@ -236,7 +236,7 @@ impl PostProcessor {
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			state: gpu::ResourceState::UnorderedAccess,
-		}, None).unwrap();
+		}).unwrap();
 
 		Self {
 			res,

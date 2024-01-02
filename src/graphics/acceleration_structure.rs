@@ -37,13 +37,13 @@ impl Blas {
 			size: gpu::align_pow2(sizes.acceleration_structure_size as u64, 256) as usize, // TODO: hardcoded alignment
 			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, None).unwrap();
+		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: gpu::align_pow2(sizes.build_scratch_buffer_size as u64, 256) as usize, // TODO: hardcoded alignment
 			usage: gpu::BufferUsage::empty(),
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, None).unwrap();
+		}).unwrap();
 
 		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
 			kind: gpu::AccelerationStructureKind::BottomLevel,
@@ -92,7 +92,7 @@ impl Tlas {
 			size: instance_descriptor_size * count,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			cpu_access: gpu::CpuAccessFlags::WRITE,
-		}, None).unwrap();
+		}).unwrap();
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
 			kind: gpu::AccelerationStructureKind::TopLevel,
@@ -107,13 +107,13 @@ impl Tlas {
 			size: gpu::align_pow2(sizes.acceleration_structure_size as u64, 256) as usize, // TODO: hardcoded alignment
 			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, None).unwrap();
+		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: gpu::align_pow2(sizes.build_scratch_buffer_size as u64, 256) as usize, // TODO: hardcoded alignment
 			usage: gpu::BufferUsage::empty(),
 			cpu_access: gpu::CpuAccessFlags::empty(),
-		}, None).unwrap();
+		}).unwrap();
 
 		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
 			kind: gpu::AccelerationStructureKind::TopLevel,

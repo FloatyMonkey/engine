@@ -40,7 +40,8 @@ impl MipGen {
 
 		let cs = device.create_shader(&gpu::ShaderDesc {
 			ty: gpu::ShaderType::Compute,
-		}, &shader).unwrap();
+			src: &shader,
+		}).unwrap();
 
 		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
 			cs, descriptor_layout: &descriptor_layout,

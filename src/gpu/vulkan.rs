@@ -390,15 +390,15 @@ impl super::DeviceImpl for Device {
 		todo!()
 	}
 
-	fn create_shader(&self, desc: &super::ShaderDesc, src: &[u8]) -> Result<Self::Shader, super::Error> {
+	fn create_shader(&self, desc: &super::ShaderDesc) -> Result<Self::Shader, super::Error> {
 		todo!()
 	}
 
-	fn create_buffer(&mut self, desc: &super::BufferDesc, data: Option<&[u8]>) -> Result<Self::Buffer, super::Error> {
+	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
 		todo!()
 	}
 
-	fn create_texture(&mut self, desc: &super::TextureDesc, data: Option<&[u8]>) -> Result<Self::Texture, super::Error> {
+	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
 		todo!()
 	}
 
@@ -542,6 +542,14 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
+		todo!()
+	}
+
+	fn upload_buffer(&mut self, buffer: &Self::Buffer, data: &[u8]) {
+		todo!()
+	}
+
+	fn upload_texture(&mut self, texture: &Self::Texture, data: &[u8]) {
 		todo!()
 	}
 

@@ -13,6 +13,8 @@ use windows::{
 	Win32::System::{LibraryLoader::*, Threading::*},
 };
 
+use gpu_allocator::d3d12::*;
+
 type BeginEventOnCommandList = extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32;
 type EndEventOnCommandList = extern "stdcall" fn(*const core::ffi::c_void) -> i32;
 type SetMarkerOnCommandList = extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32;
@@ -71,7 +73,8 @@ impl WinPixEventRuntime {
 pub struct Device {
 	adapter_info: super::AdapterInfo,
 	dxgi_factory: IDXGIFactory6,
-	device: ID3D12Device5,
+	device: ID3D12Device10,
+	allocator: Allocator,
 	command_allocator: ID3D12CommandAllocator,
 	command_list: ID3D12GraphicsCommandList,
 	command_queue: ID3D12CommandQueue,
@@ -317,27 +320,27 @@ fn map_srv_dimension(desc: &super::TextureDesc) -> D3D12_SRV_DIMENSION {
 	return D3D12_SRV_DIMENSION_TEXTURE1D;
 }
 
-fn map_resource_state(resource_state: super::ResourceState) -> D3D12_RESOURCE_STATES {
+fn map_texture_layout(resource_state: super::TextureLayout) -> D3D12_RESOURCE_STATES {
 	match resource_state {
-		super::ResourceState::Common                          => D3D12_RESOURCE_STATE_COMMON,
-
-		super::ResourceState::CopySrc                         => D3D12_RESOURCE_STATE_COPY_SOURCE,
-		super::ResourceState::CopyDst                         => D3D12_RESOURCE_STATE_COPY_DEST,
-
-		super::ResourceState::ShaderResource                  => D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-		super::ResourceState::UnorderedAccess                 => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-
-		super::ResourceState::IndexBuffer                     => D3D12_RESOURCE_STATE_INDEX_BUFFER,
-		super::ResourceState::ConstantBuffer                  => D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
-
-		super::ResourceState::RenderTarget                    => D3D12_RESOURCE_STATE_RENDER_TARGET,
-		super::ResourceState::DepthStencil                    => D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		super::ResourceState::DepthStencilReadOnly            => D3D12_RESOURCE_STATE_DEPTH_READ,
-		super::ResourceState::Present                         => D3D12_RESOURCE_STATE_PRESENT,
-
-		super::ResourceState::AccelerationStructure           => D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
-		super::ResourceState::AccelerationStructureBuildInput => D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		super::TextureLayout::Common            => D3D12_RESOURCE_STATE_COMMON,
+		super::TextureLayout::Present           => D3D12_RESOURCE_STATE_PRESENT,
+		super::TextureLayout::CopySrc           => D3D12_RESOURCE_STATE_COPY_SOURCE,
+		super::TextureLayout::CopyDst           => D3D12_RESOURCE_STATE_COPY_DEST,
+		super::TextureLayout::ShaderResource    => D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		super::TextureLayout::UnorderedAccess   => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		super::TextureLayout::RenderTarget      => D3D12_RESOURCE_STATE_RENDER_TARGET,
+		super::TextureLayout::DepthStencilWrite => D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		super::TextureLayout::DepthStencilRead  => D3D12_RESOURCE_STATE_DEPTH_READ,
 	}
+}
+
+fn map_buffer_usage_flags(usage: super::BufferUsage) -> D3D12_RESOURCE_FLAGS {
+	let mut dx_flags = D3D12_RESOURCE_FLAG_NONE;
+
+	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { dx_flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS; }
+	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) { dx_flags |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE; }
+
+	dx_flags
 }
 
 fn map_texture_usage_flags(usage: super::TextureUsage) -> D3D12_RESOURCE_FLAGS {
@@ -582,7 +585,7 @@ struct Heap {
 }
 
 impl Heap {
-	fn new(device: &ID3D12Device5, ty: D3D12_DESCRIPTOR_HEAP_TYPE, num_descriptors: usize) -> Heap {
+	fn new(device: &ID3D12Device10, ty: D3D12_DESCRIPTOR_HEAP_TYPE, num_descriptors: usize) -> Heap {
 		let heap_desc = D3D12_DESCRIPTOR_HEAP_DESC {
 			Type: ty,
 			NumDescriptors: std::cmp::max(num_descriptors, 1) as u32,
@@ -797,13 +800,19 @@ impl super::DeviceImpl for Device {
 				D3D_FEATURE_LEVEL_11_0,
 			];
 
-			let mut device: Option<ID3D12Device5> = None;
+			let mut device: Option<ID3D12Device10> = None;
 			for feature_level in feature_levels {
 				if D3D12CreateDevice(&adapter, feature_level, &mut device).is_ok() {
 					break;
 				}
 			}
 			let device = device.unwrap();
+
+			let allocator = Allocator::new(&AllocatorCreateDesc {
+				device: ID3D12DeviceVersion::Device10(device.clone()),
+				debug_settings: Default::default(),
+				allocation_sizes: Default::default(),
+			}).unwrap();
 
 			let command_allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT).unwrap();
 			let command_list = device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &command_allocator, None).unwrap();
@@ -825,8 +834,9 @@ impl super::DeviceImpl for Device {
 
 			Device {
 				adapter_info,
-				device,
 				dxgi_factory,
+				device,
+				allocator,
 				command_allocator,
 				command_list,
 				command_queue,
@@ -918,46 +928,44 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> result::Result<Buffer, super::Error> {
-		let mut resource: Option<ID3D12Resource> = None;
 		unsafe {
-			self.device.CreateCommittedResource(
-				&D3D12_HEAP_PROPERTIES {
-					Type: if desc.cpu_access.contains(super::CpuAccessFlags::WRITE) {
-						D3D12_HEAP_TYPE_UPLOAD
-					} else {
-						D3D12_HEAP_TYPE_DEFAULT
-					},
-					..Default::default()
+			let resource_desc = D3D12_RESOURCE_DESC1 {
+				Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
+				Alignment: 0,
+				Width: desc.size as u64,
+				Height: 1,
+				DepthOrArraySize: 1,
+				MipLevels: 1,
+				Format: DXGI_FORMAT_UNKNOWN,
+				SampleDesc: DXGI_SAMPLE_DESC {
+					Count: 1,
+					Quality: 0,
 				},
-				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
-					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
-					Alignment: 0,
-					Width: desc.size as u64,
-					Height: 1,
-					DepthOrArraySize: 1,
-					MipLevels: 1,
-					Format: DXGI_FORMAT_UNKNOWN,
-					SampleDesc: DXGI_SAMPLE_DESC {
-						Count: 1,
-						Quality: 0,
-					},
-					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
-					Flags: if desc.usage.intersects(super::BufferUsage::UNORDERED_ACCESS | super::BufferUsage::ACCELERATION_STRUCTURE) {
-						D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-					} else {
-						D3D12_RESOURCE_FLAG_NONE
-					},
+				Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+				Flags: map_buffer_usage_flags(desc.usage),
+				SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
+			};
+
+			let allocation_desc = AllocationCreateDesc::from_d3d12_resource_desc(
+				&self.allocator.device(),
+				&*(&resource_desc as *const _ as *const D3D12_RESOURCE_DESC),
+				"Allocation",
+				match desc.memory {
+					super::Memory::GpuOnly  => gpu_allocator::MemoryLocation::GpuOnly,
+					super::Memory::CpuToGpu => gpu_allocator::MemoryLocation::CpuToGpu,
+					super::Memory::GpuToCpu => gpu_allocator::MemoryLocation::GpuToCpu,
 				},
-				if desc.cpu_access.contains(super::CpuAccessFlags::WRITE) {
-					D3D12_RESOURCE_STATE_GENERIC_READ
-				}
-				else if desc.usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
-					D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE
-				}
-				else {
-					D3D12_RESOURCE_STATE_COMMON
-				},
+			);
+
+			let allocation = self.allocator.allocate(&allocation_desc).unwrap();
+			let mut resource: Option<ID3D12Resource> = None;
+
+			self.device.CreatePlacedResource2(
+				allocation.heap(),
+				allocation.offset(),
+				&resource_desc,
+				D3D12_BARRIER_LAYOUT_UNDEFINED,
+				None,
 				None,
 				&mut resource,
 			)?;
@@ -1011,8 +1019,8 @@ impl super::DeviceImpl for Device {
 
 			let mapped_ptr = {
 				let mut ptr = std::ptr::null_mut();
-				if !desc.cpu_access.is_empty() {
-					let read_range = (!desc.cpu_access.contains(super::CpuAccessFlags::READ)).then_some(&D3D12_RANGE::default() as *const _);
+				if !matches!(desc.memory, super::Memory::GpuOnly) {
+					let read_range = matches!(desc.memory, super::Memory::CpuToGpu).then_some(&D3D12_RANGE::default() as *const _);
 					resource.clone().unwrap().Map(0, read_range, Some(&mut ptr))?;
 				}
 				ptr as *mut u8
@@ -1029,32 +1037,41 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> result::Result<Texture, super::Error> {
-		let mut resource: Option<ID3D12Resource> = None;
 		let dxgi_format = map_format(desc.format);
-		let initial_state = map_resource_state(desc.state);
 		unsafe {
-			self.device.CreateCommittedResource(
-				&D3D12_HEAP_PROPERTIES {
-					Type: D3D12_HEAP_TYPE_DEFAULT,
-					..Default::default()
+			let resource_desc = D3D12_RESOURCE_DESC1 {
+				Dimension: map_resource_dimension(desc),
+				Alignment: 0,
+				Width: desc.width,
+				Height: desc.height as u32,
+				DepthOrArraySize: if desc.depth > 1 { desc.depth as u16 } else { desc.array_size as u16 },
+				MipLevels: desc.mip_levels as u16,
+				Format: dxgi_format,
+				SampleDesc: DXGI_SAMPLE_DESC {
+					Count: desc.samples,
+					Quality: 0,
 				},
-				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
-					Dimension: map_resource_dimension(desc),
-					Alignment: 0,
-					Width: desc.width,
-					Height: desc.height as u32,
-					DepthOrArraySize: if desc.depth > 1 { desc.depth as u16 } else { desc.array_size as u16 },
-					MipLevels: desc.mip_levels as u16,
-					Format: dxgi_format,
-					SampleDesc: DXGI_SAMPLE_DESC {
-						Count: desc.samples,
-						Quality: 0,
-					},
-					Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
-					Flags: map_texture_usage_flags(desc.usage),
-				},
-				initial_state,
+				Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
+				Flags: map_texture_usage_flags(desc.usage),
+				SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
+			};
+
+			let allocation_desc = AllocationCreateDesc::from_d3d12_resource_desc(
+				&self.allocator.device(),
+				&*(&resource_desc as *const _ as *const D3D12_RESOURCE_DESC),
+				"Allocation",
+				gpu_allocator::MemoryLocation::GpuOnly,
+			);
+
+			let allocation = self.allocator.allocate(&allocation_desc).unwrap();
+			let mut resource: Option<ID3D12Resource> = None;
+
+			self.device.CreatePlacedResource2(
+				allocation.heap(),
+				allocation.offset(),
+				&resource_desc,
+				D3D12_BARRIER_LAYOUT_COMMON,
+				None,
 				None,
 				&mut resource,
 			)?;
@@ -1409,7 +1426,7 @@ impl super::DeviceImpl for Device {
 					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 					Flags: D3D12_RESOURCE_FLAG_NONE,
 				},
-				D3D12_RESOURCE_STATE_GENERIC_READ,
+				D3D12_RESOURCE_STATE_COMMON,
 				None,
 				&mut upload,
 			).unwrap();
@@ -1467,7 +1484,7 @@ impl super::DeviceImpl for Device {
 			let row_pitch = desc.format.row_pitch(desc.width);
 			let upload_pitch = super::align_pow2(row_pitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT as u64);
 			let upload_size = desc.height * upload_pitch;
-			let initial_state = map_resource_state(desc.state);
+			let initial_state = map_texture_layout(desc.layout);
 
 			let mut upload: Option<ID3D12Resource> = None;
 			self.device.CreateCommittedResource(
@@ -1491,7 +1508,7 @@ impl super::DeviceImpl for Device {
 					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 					Flags: D3D12_RESOURCE_FLAG_NONE,
 				},
-				D3D12_RESOURCE_STATE_GENERIC_READ,
+				D3D12_RESOURCE_STATE_COMMON,
 				None,
 				&mut upload,
 			).unwrap();
@@ -1981,8 +1998,8 @@ impl super::CmdListImpl<Device> for CmdList {
 				Anonymous: D3D12_RESOURCE_BARRIER_0 {
 					Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
 						pResource: unsafe { std::mem::transmute_copy(&tex.resource) },
-						StateBefore: map_resource_state(barriers[0].state_before),
-						StateAfter: map_resource_state(barriers[0].state_after),
+						StateBefore: map_texture_layout(barriers[0].old_layout),
+						StateAfter: map_texture_layout(barriers[0].new_layout),
 						Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
 					})
 				},

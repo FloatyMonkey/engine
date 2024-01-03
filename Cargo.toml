@@ -13,6 +13,7 @@ egui = "0.24.1"
 egui_extras = "0.24.1"
 egui-gizmo = "0.13.0"
 exr = "1.71.0"
+gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "cf1a8ec" }
 rand = "0.8.5"
 slang = { path = "../slang-rs" }
 

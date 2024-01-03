@@ -105,7 +105,7 @@ impl PathTracer {
 		let shader_table = device.create_buffer(&gpu::BufferDesc {
 			size: shader_table_data.len(),
 			usage: gpu::BufferUsage::empty(),
-			cpu_access: gpu::CpuAccessFlags::empty(),
+			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 		device.upload_buffer(&shader_table, &shader_table_data);
 
@@ -122,7 +122,7 @@ impl PathTracer {
 			samples: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			state: gpu::ResourceState::UnorderedAccess,
+			layout: gpu::TextureLayout::UnorderedAccess,
 		}).unwrap();
 
 		Self {
@@ -235,7 +235,7 @@ impl PostProcessor {
 			samples: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			state: gpu::ResourceState::UnorderedAccess,
+			layout: gpu::TextureLayout::UnorderedAccess,
 		}).unwrap();
 
 		Self {

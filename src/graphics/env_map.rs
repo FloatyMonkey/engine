@@ -73,7 +73,7 @@ impl ImportanceMap {
 			samples: 1,
 			format: gpu::Format::R32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			state: gpu::ResourceState::ShaderResource,
+			layout: gpu::TextureLayout::ShaderResource,
 		}).unwrap();
 
 		let uavs = (1..mip_levels).map(|i| {

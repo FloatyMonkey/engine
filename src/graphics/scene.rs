@@ -96,13 +96,13 @@ impl GpuMeshData {
 		let vertex_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<Vertex>() * vertices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::empty(),
+			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		let index_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<u32>() * indices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::empty(),
+			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		device.upload_buffer(&vertex_buffer, gpu::slice_as_u8_slice(&vertices));
@@ -139,13 +139,13 @@ impl Scene {
 		let instance_data_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<Instance>() * MAX_INSTANCES,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::WRITE,
+			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let light_data_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<GpuLight>() * MAX_LIGHTS,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::WRITE,
+			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let importance_map = ImportanceMap::setup(device, shader_compiler);
@@ -281,7 +281,7 @@ impl Scene {
 				samples: 1,
 				format: gpu::Format::RGBA32Float,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
-				state: gpu::ResourceState::ShaderResource,
+				layout: gpu::TextureLayout::ShaderResource,
 			}).unwrap();
 
 			device.upload_texture(&texture, gpu::slice_as_u8_slice(&image.data));

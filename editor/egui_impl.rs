@@ -36,13 +36,13 @@ impl EguiRenderer {
 		let vb = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::WRITE,
+			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let ib = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<u32>() * INDEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			cpu_access: gpu::CpuAccessFlags::WRITE,
+			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 		
 		let slang_vs = shader_compiler.compile("shaders/egui.slang", "main_vs");
@@ -244,7 +244,7 @@ impl EguiRenderer {
 				samples: 1,
 				format: gpu::Format::RGBA8UNorm,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
-				state: gpu::ResourceState::ShaderResource,
+				layout: gpu::TextureLayout::ShaderResource,
 			}).unwrap();
 			device.upload_texture(&texture, &pixels);
 

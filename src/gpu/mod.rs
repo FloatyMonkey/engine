@@ -241,6 +241,13 @@ pub struct SwapChainDesc {
 	pub format: Format,
 }
 
+#[derive(Clone, Copy)]
+pub enum Memory {
+	GpuOnly,
+	CpuToGpu,
+	GpuToCpu,
+}
+
 bitflags! {
 	#[derive(Clone, Copy)]
 	pub struct BufferUsage: u32 {
@@ -255,7 +262,20 @@ bitflags! {
 pub struct BufferDesc {
 	pub size: usize,
 	pub usage: BufferUsage,
-	pub cpu_access: CpuAccessFlags,
+	pub memory: Memory,
+}
+
+#[derive(Clone, Copy)]
+pub enum TextureLayout {
+	Common,
+	Present,
+	CopySrc,
+	CopyDst,
+	ShaderResource,
+	UnorderedAccess,
+	RenderTarget,
+	DepthStencilWrite,
+	DepthStencilRead,
 }
 
 bitflags! {
@@ -280,7 +300,7 @@ pub struct TextureDesc {
 
 	pub format: Format,
 	pub usage: TextureUsage,
-	pub state: ResourceState,
+	pub layout: TextureLayout,
 }
 
 pub struct TextureView {
@@ -318,12 +338,6 @@ bitflags! {
 		const BLUE  = 1 << 2;
 		const ALPHA = 1 << 3;
 		const ALL   = Self::RED.bits() | Self::GREEN.bits() | Self::BLUE.bits() | Self::ALPHA.bits();
-	}
-
-	#[derive(Clone, Copy)]
-	pub struct CpuAccessFlags: u8 {
-		const READ  = 1 << 0;
-		const WRITE = 1 << 1;
 	}
 }
 
@@ -646,8 +660,8 @@ pub struct RenderPassDesc<'a, D: DeviceImpl> {
 pub struct Barrier<'a, D: DeviceImpl> {
 	pub buffer: Option<&'a D::Buffer>,
 	pub texture: Option<&'a D::Texture>,
-	pub state_before: ResourceState,
-	pub state_after: ResourceState,
+	pub old_layout: TextureLayout,
+	pub new_layout: TextureLayout,
 }
 
 impl<'a, D: DeviceImpl> Barrier<'a, D> {
@@ -655,50 +669,28 @@ impl<'a, D: DeviceImpl> Barrier<'a, D> {
 		Self {
 			buffer: None,
 			texture: None,
-			state_before: ResourceState::Common,
-			state_after: ResourceState::Common,
+			old_layout: TextureLayout::Common,
+			new_layout: TextureLayout::Common,
 		}
 	}
 
-	pub fn buffer(buffer: &'a D::Buffer, state_before: ResourceState, state_after: ResourceState) -> Self {
+	pub fn buffer(buffer: &'a D::Buffer, old_layout: TextureLayout, new_layout: TextureLayout) -> Self {
 		Self {
 			buffer: Some(buffer),
 			texture: None,
-			state_before,
-			state_after,
+			old_layout,
+			new_layout,
 		}
 	}
 
-	pub fn texture(texture: &'a D::Texture, state_before: ResourceState, state_after: ResourceState) -> Self {
+	pub fn texture(texture: &'a D::Texture, old_layout: TextureLayout, new_layout: TextureLayout) -> Self {
 		Self {
 			buffer: None,
 			texture: Some(texture),
-			state_before,
-			state_after,
+			old_layout,
+			new_layout,
 		}
 	}
-}
-
-#[derive(Clone, Copy)]
-pub enum ResourceState {
-	Common,
-
-	CopySrc,
-	CopyDst,
-
-	ShaderResource,
-	UnorderedAccess,
-
-	IndexBuffer,
-	ConstantBuffer,
-
-	RenderTarget,
-	DepthStencil,
-	DepthStencilReadOnly,
-	Present,
-
-	AccelerationStructure,
-	AccelerationStructureBuildInput,
 }
 
 pub trait BufferImpl<D: DeviceImpl> {

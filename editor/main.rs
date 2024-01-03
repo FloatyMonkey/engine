@@ -93,8 +93,8 @@ fn main() {
 
 		cmd.barriers(&[gpu::Barrier::texture(
 			swap_chain.backbuffer_texture(),
-			gpu::ResourceState::Present,
-			gpu::ResourceState::RenderTarget
+			gpu::TextureLayout::Present,
+			gpu::TextureLayout::RenderTarget
 		)]);
 
 		let render_pass = gpu::RenderPassDesc {
@@ -116,8 +116,8 @@ fn main() {
 
 		cmd.barriers(&[gpu::Barrier::texture(
 			swap_chain.backbuffer_texture(),
-			gpu::ResourceState::RenderTarget,
-			gpu::ResourceState::Present,
+			gpu::TextureLayout::RenderTarget,
+			gpu::TextureLayout::Present,
 		)]);
 
 		cmd.debug_event_pop();

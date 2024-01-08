@@ -92,7 +92,7 @@ impl ImportanceMap {
 		}
 	}
 
-	pub fn update(&mut self, device: &gpu::Device, cmd: &mut gpu::CmdList, env_map_srv_index: u32) {
+	pub fn update(&mut self, cmd: &mut gpu::CmdList, env_map_srv_index: u32) {
 		if !self.dirty {
 			return;
 		}
@@ -119,7 +119,6 @@ impl ImportanceMap {
 		};
 
 		cmd.set_compute_pipeline(&self.prepare_pipeline);
-		cmd.set_compute_root_table(&device, 1, 0);
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch(dimension.div_ceil(16), dimension.div_ceil(16), 1);
@@ -127,7 +126,7 @@ impl ImportanceMap {
 		cmd.barriers(&[gpu::Barrier::global()]);
 
 		// Generate mips.
-		self.mipgen.generate_mips(device, cmd, &self.importance_map, dimension, &self.uavs);
+		self.mipgen.generate_mips(cmd, &self.importance_map, dimension, &self.uavs);
 
 		self.dirty = false;
 	}

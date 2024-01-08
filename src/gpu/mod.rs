@@ -1,6 +1,8 @@
 mod d3d12;
 mod vulkan;
 
+use std::ops::Range;
+
 use crate::os::NativeHandle;
 use slang;
 
@@ -831,15 +833,13 @@ pub trait CmdListImpl<D: DeviceImpl> {
 	fn set_graphics_pipeline(&self, pipeline: &D::GraphicsPipeline);
 	fn set_compute_pipeline(&self, pipeline: &D::ComputePipeline);
 	fn set_raytracing_pipeline(&self, pipeline: &D::RaytracingPipeline);
-	/// slot: index into root signature (parameters), slot 0 is reserved for push constants if there are.
-	fn set_graphics_root_table(&self, device: &D, slot: u32, offset: usize); // TODO: Remove device as param
-	fn set_compute_root_table(&self, device: &D, slot: u32, offset: usize);
+
 	fn graphics_push_constants(&self, offset: u32, data: &[u8]);
 	fn compute_push_constants(&self, offset: u32, data: &[u8]);
 
-	fn draw(&self, vertex_count: u32, instance_count: u32, start_vertex: u32, start_instance: u32);
-	/// NOTE: base_vertex and start_instance aren't added to SV_VertexID, pass them manually when needed!
-	fn draw_indexed(&self, index_count: u32, instance_count: u32, start_index: u32, base_vertex: i32, start_instance: u32);
+	fn draw(&self, vertices: Range<u32>, instances: Range<u32>);
+	/// NOTE: base_vertex and instances.start aren't added to SV_VertexID, pass them manually when needed!
+	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 
 	fn dispatch(&self, x: u32, y: u32, z: u32);
 	fn dispatch_rays(&self, desc: &DispatchRaysDesc<D>);

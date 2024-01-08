@@ -136,7 +136,7 @@ impl PathTracer {
 		}
 	}
 
-	pub fn render(&mut self, device: &gpu::Device, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
+	pub fn render(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
 		let push_constants = PushConstants {
 			camera: GpuCamera::from_camera(&scene.camera, &scene.camera_transform),
 			tlas_index: scene.tlas.accel.srv_index(),
@@ -150,7 +150,6 @@ impl PathTracer {
 		};
 
 		cmd.set_raytracing_pipeline(&self.pipeline);
-		cmd.set_compute_root_table(&device, 1, 0);
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch_rays(&gpu::DispatchRaysDesc {
@@ -245,9 +244,8 @@ impl PostProcessor {
 		}
 	}
 
-	pub fn process(&mut self, device: &gpu::Device, cmd: &mut gpu::CmdList, input: &gpu::Texture) {
+	pub fn process(&mut self, cmd: &mut gpu::CmdList, input: &gpu::Texture) {
 		cmd.set_compute_pipeline(&self.pipeline);
-		cmd.set_compute_root_table(&device, 1, 0);
 
 		let push_constants = PostProcessPushConstants {
 			input_id: input.srv_index().unwrap(),

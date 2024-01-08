@@ -27,7 +27,7 @@ pub struct EguiRenderer {
 	pipeline: gpu::GraphicsPipeline,
 	vb: gpu::Buffer,
 	ib: gpu::Buffer,
-	ib_ranges: Vec<Range<usize>>,
+	ib_ranges: Vec<Range<u32>>,
 	textures: HashMap<egui::TextureId, gpu::Texture>,
 }
 
@@ -44,7 +44,7 @@ impl EguiRenderer {
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
-		
+
 		let slang_vs = shader_compiler.compile("shaders/egui.slang", "main_vs");
 		let slang_ps = shader_compiler.compile("shaders/egui.slang", "main_ps");
 
@@ -109,7 +109,7 @@ impl EguiRenderer {
 		}
 	}
 
-	pub fn paint(&mut self, device: &gpu::Device, cmd: &gpu::CmdList, clipped_primitives: &[egui::ClippedPrimitive], screen_desc: &ScreenDesc) {
+	pub fn paint(&mut self, cmd: &gpu::CmdList, clipped_primitives: &[egui::ClippedPrimitive], screen_desc: &ScreenDesc) {
 		self.update_buffers(clipped_primitives);
 
 		let size_in_pixels = screen_desc.size_in_pixels;
@@ -127,7 +127,6 @@ impl EguiRenderer {
 
 		cmd.set_index_buffer(&self.ib, 0, gpu::Format::R32UInt);
 		cmd.set_graphics_pipeline(&self.pipeline);
-		cmd.set_graphics_root_table(&device, 1, 0);
 		cmd.graphics_push_constants(0, gpu::slice_as_u8_slice(&size_in_points));
 		cmd.graphics_push_constants(2 * 4, gpu::as_u8_slice(&vb_id));
 
@@ -166,11 +165,11 @@ impl EguiRenderer {
 
 					for i in 0..mesh.indices.len() {
 						unsafe {
-							*map_ib.add(index_offset + i) = mesh.indices[i] + vertex_offset as u32;
+							*map_ib.add(index_offset as usize + i) = mesh.indices[i] + vertex_offset as u32;
 						}
 					}
 
-					self.ib_ranges.push(index_offset..(mesh.indices.len() + index_offset));
+					self.ib_ranges.push(index_offset..(mesh.indices.len() as u32 + index_offset));
 
 					vertex_offset += mesh.vertices.len();
 				}
@@ -214,10 +213,8 @@ impl EguiRenderer {
 			egui::TextureId::User(id) => *id as u32,
 		};
 
-		let ib_range = &self.ib_ranges[i];
-
 		cmd.graphics_push_constants(3 * 4, gpu::as_u8_slice(&texture_id));
-		cmd.draw_indexed(ib_range.len() as u32, 1, ib_range.start as u32, 0, 0);
+		cmd.draw_indexed(self.ib_ranges[i].clone(), 0, 0..1);
 	}
 
 	pub fn create_texture(&mut self, device: &mut gpu::Device, id: egui::TextureId, delta: &egui::epaint::ImageDelta) {

@@ -89,7 +89,7 @@ func sample_uniform_triangle(u: float2) -> float3 {
 	} else {
 		b1 = u[1] / 2.0;
 		b0 = u[0] - b1;
-	};
+	}
 
 	return float3(1.0 - b0 - b1, b0, b1);
 }

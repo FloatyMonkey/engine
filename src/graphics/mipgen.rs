@@ -54,7 +54,6 @@ impl MipGen {
 
 	pub fn generate_mips(
 		&self,
-		device: &gpu::Device,
 		cmd: &gpu::CmdList,
 		texture: &gpu::Texture,
 		base_resolution: u32,
@@ -63,7 +62,6 @@ impl MipGen {
 		let mip_levels = uavs.len() + 1; // TODO: Get from texture.
 
 		cmd.set_compute_pipeline(&self.mipgen_pipeline);
-		cmd.set_compute_root_table(&device, 1, 0);
 
 		for i in 1..mip_levels {
 			let output_res = gpu::at_mip_level(base_resolution, i as u32);

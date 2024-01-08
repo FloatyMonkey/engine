@@ -2,7 +2,7 @@ cbuffer ConstantBuffer : register(b0) {
 	float2 screen_size;
 	uint vb_index;
 	uint texture_index;
-};
+}
 
 ByteAddressBuffer buffers[] : register(t0, space1);
 Texture2D<float4> textures_2d_float4[] : register(t0, space2);
@@ -28,13 +28,13 @@ struct Vertex {
 
 struct VsInput {
 	uint vertex_id : SV_VertexID;
-};
+}
 
 struct PsInput {
 	float4 position : SV_POSITION;
 	float4 color    : COLOR0;
 	float2 uv       : TEXCOORD0;
-};
+}
 
 [shader("vertex")]
 PsInput main_vs(VsInput input) {

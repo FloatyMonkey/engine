@@ -42,4 +42,4 @@ struct PCG32si: SampleGenerator {
 		pcg_oneseq_32_step_r();
 		return pcg_output_rxs_m_xs_32_32(old_state);
 	}
-};
+}

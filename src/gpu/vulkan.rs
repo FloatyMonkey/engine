@@ -3,7 +3,7 @@
 
 use crate::os::NativeHandle;
 
-use std::ffi::CString;
+use std::{ffi::CString, ops::Range};
 
 use ash::vk;
 
@@ -784,14 +784,6 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn set_graphics_root_table(&self, device: &Device, slot: u32, offset: usize) {
-		todo!()
-	}
-
-	fn set_compute_root_table(&self, device: &Device, slot: u32, offset: usize) {
-		todo!()
-	}
-
 	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
 		/*unsafe {
 			self.device.cmd_push_constants(
@@ -818,15 +810,15 @@ impl super::CmdListImpl<Device> for CmdList {
 		todo!()
 	}
 
-	fn draw(&self, vertex_count: u32, instance_count: u32, start_vertex: u32, start_instance: u32) {
+	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
 		unsafe {
-			self.device.cmd_draw(self.command_buffer, vertex_count, instance_count, start_vertex, start_instance);
+			self.device.cmd_draw(self.command_buffer, vertices.len() as u32, instances.len() as u32, vertices.start, vertices.start);
 		}
 	}
 
-	fn draw_indexed(&self, index_count: u32, instance_count: u32, start_index: u32, base_vertex: i32, start_instance: u32) {
+	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
 		unsafe {
-			self.device.cmd_draw_indexed(self.command_buffer, index_count, instance_count, start_index, base_vertex, start_instance);
+			self.device.cmd_draw_indexed(self.command_buffer, indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
 		}
 	}
 

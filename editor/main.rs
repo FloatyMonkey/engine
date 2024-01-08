@@ -81,9 +81,9 @@ fn main() {
 		scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
 		path_tracer.reset();
 		for _ in 0..20 {
-			path_tracer.render(&device, &mut cmd, &scene);
+			path_tracer.render(&mut cmd, &scene);
 		}
-		post_processor.process(&device, &mut cmd, &path_tracer.output_texture);
+		post_processor.process(&mut cmd, &path_tracer.output_texture);
 		editor.context.viewport_texture_srv = post_processor.texture().srv_index().unwrap();
 
 		cmd.debug_event_pop();
@@ -107,7 +107,7 @@ fn main() {
 
 		cmd.render_pass_begin(&render_pass);
 
-		egui_renderer.paint(&device, &cmd, &clipped_primitives, &ScreenDesc {
+		egui_renderer.paint(&cmd, &clipped_primitives, &ScreenDesc {
 			size_in_pixels: window.size().into(),
 			pixels_per_point: window.scale_factor(),
 		});

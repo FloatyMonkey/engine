@@ -127,6 +127,7 @@ pub struct CmdList {
 	command_allocator: Vec<ID3D12CommandAllocator>,
 	command_list: Vec<ID3D12GraphicsCommandList6>,
 	pix: Option<WinPixEventRuntime>,
+	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
 
 pub struct Shader {
@@ -917,6 +918,7 @@ impl super::DeviceImpl for Device {
 				command_allocator: command_allocators,
 				command_list: command_lists,
 				pix: self.pix,
+				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
 		}
 	}
@@ -2070,6 +2072,7 @@ impl super::CmdListImpl<Device> for CmdList {
 			cmd.SetGraphicsRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState(&pipeline.pipeline_state);
 			cmd.IASetPrimitiveTopology(pipeline.topology);
+			cmd.SetGraphicsRootDescriptorTable(1, self.resource_heap_base);
 		}
 	}
 
@@ -2078,6 +2081,7 @@ impl super::CmdListImpl<Device> for CmdList {
 		unsafe {
 			cmd.SetComputeRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState(&pipeline.pipeline_state);
+			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
 		}
 	}
 
@@ -2086,24 +2090,7 @@ impl super::CmdListImpl<Device> for CmdList {
 		unsafe {
 			cmd.SetComputeRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState1(&pipeline.state_object);
-		}
-	}
-
-	fn set_graphics_root_table(&self, device: &Device, slot: u32, offset: usize) {
-		unsafe {
-			let mut base = device.resource_heap.heap.GetGPUDescriptorHandleForHeapStart();
-			base.ptr += (offset * device.resource_heap.increment_size) as u64;
-
-			self.cmd().SetGraphicsRootDescriptorTable(slot, base);
-		}
-	}
-
-	fn set_compute_root_table(&self, device: &Device, slot: u32, offset: usize) {
-		unsafe {
-			let mut base = device.resource_heap.heap.GetGPUDescriptorHandleForHeapStart();
-			base.ptr += (offset * device.resource_heap.increment_size) as u64;
-
-			self.cmd().SetComputeRootDescriptorTable(slot, base);
+			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
 		}
 	}
 
@@ -2125,15 +2112,15 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn draw(&self, vertex_count: u32, instance_count: u32, start_vertex: u32, start_instance: u32) {
+	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
 		unsafe {
-			self.cmd().DrawInstanced(vertex_count, instance_count, start_vertex, start_instance);
+			self.cmd().DrawInstanced(vertices.len() as u32, instances.len() as u32, vertices.start, instances.start);
 		}
 	}
 
-	fn draw_indexed(&self, index_count: u32, instance_count: u32, start_index: u32, base_vertex: i32, start_instance: u32) {
+	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
 		unsafe {
-			self.cmd().DrawIndexedInstanced(index_count, instance_count, start_index, base_vertex, start_instance);
+			self.cmd().DrawIndexedInstanced(indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
 		}
 	}
 

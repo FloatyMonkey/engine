@@ -7,7 +7,7 @@ struct DomeLightData {
 	uint env_map_id;
 	uint importance_map_id;
 	uint base_mip;
-};
+}
 
 struct DomeLight: Light {
 	Texture2D<float4> env_map;
@@ -38,4 +38,4 @@ struct DomeLight: Light {
 		let uv = ndir_to_oct_equal_area_unorm(wi);
 		return importance_map.pdf(uv) / (4.0 * PI);
 	}
-};
+}

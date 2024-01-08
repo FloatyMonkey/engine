@@ -104,7 +104,7 @@ impl BoneDeform {
 		unsafe { std::ptr::copy_nonoverlapping(transforms.as_ptr(), ptr, transforms.len()); }
 	}
 
-	pub fn execute(&self, device: &gpu::Device, cmd: &gpu::CmdList, vertex_srv: u32) {
+	pub fn execute(&self, cmd: &gpu::CmdList, vertex_srv: u32) {
 		let push_constants = PushConstants {
 			num_vertices: self.num_vertices as u32,
 			in_vertices: vertex_srv,
@@ -115,7 +115,6 @@ impl BoneDeform {
 		};
 
 		cmd.set_compute_pipeline(&self.compute_pipeline);
-		cmd.set_compute_root_table(&device, 1, 0);
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch(push_constants.num_vertices.div_ceil(32), 1, 1);

@@ -179,7 +179,7 @@ impl Scene {
 			let env_map_srv_index = self.get_texture_from_cache(&light.image, device, assets).srv_index().unwrap();
 
 			// TODO: Currently only supports single dome light
-			self.importance_map.update(device, cmd, env_map_srv_index);
+			self.importance_map.update(cmd, env_map_srv_index);
 
 			lights[light_index].dome = GpuDomeLight {
 				ty: GpuLightType::Dome as _,

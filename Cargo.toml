@@ -9,11 +9,11 @@ license = "MIT OR Apache-2.0"
 ash = "0.37.3"
 bitflags = "2.4.1"
 byteorder = "1"
-egui = "0.24.1"
-egui_extras = "0.24.1"
-egui-gizmo = "0.13.0"
+egui = "0.25.0"
+egui_extras = "0.25.0"
+egui-gizmo = "0.14.1"
 exr = "1.71.0"
-gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "cf1a8ec" }
+gpu-allocator = "0.25.0"
 rand = "0.8.5"
 slang = { path = "../slang-rs" }
 

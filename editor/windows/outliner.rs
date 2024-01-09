@@ -35,6 +35,7 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 	fn ui(&mut self, ui: &mut egui::Ui, ctx: &mut MyContext) {
 		egui::Frame::none().inner_margin(4.0).show(ui, |ui| {
 			egui_extras::TableBuilder::new(ui)
+				.sense(egui::Sense::click_and_drag())
 				.striped(true)
 				.column(egui_extras::Column::exact(20.0))
 				.column(egui_extras::Column::exact(150.0))
@@ -51,7 +52,9 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 				.body(|mut body| {
 					let mut cmds = ecs::Commands::new();
 					for (entity, name) in &ctx.world.query::<(Entity, &crate::scene::Name)>() {
-						body.row(18.0, |mut row| {
+						body.row(16.0, |mut row| {
+							row.set_selected(ctx.selection.contains(&entity));
+
 							row.col(|ui| {
 								ui.label(
 									egui::RichText::new(format!("{}", icon_for_entity(&ctx.world, entity)))
@@ -59,31 +62,29 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 										.size(18.0),
 								);
 							});
-							row.col(|ui| {
-								let text = egui::RichText::new(format!("{}", name.name))
-									.color(if ctx.selection.contains(&entity) {
-										egui::Color32::from_rgb(224, 162, 59)
-									} else {
-										ui.style().visuals.text_color()
-									});
-									
-								let res = ui.add(egui::Label::new(text).sense(egui::Sense::click()));
-
-								if res.clicked() {
-									ctx.selection.clear();
-									ctx.selection.insert(entity);
-								}
-
-								res.context_menu(|ui| {
-									if ui.button("Delete").clicked() {
-										ctx.selection.remove(&entity);
-										cmds.despawn(entity);
-										ui.close_menu();
-									}
-								});
-							});
+							let name_response = row.col(|ui| {
+								ui.label(format!("{}", name.name));
+							}).1;
 							row.col(|ui| {
 								ui.label(format!("({},{})", entity.index(), entity.generation()));
+							});
+
+							let res = row.response();
+
+							if res.clicked() {
+								ctx.selection.clear();
+								ctx.selection.insert(entity);
+							}
+
+							// TODO: Since `res` uses the id (and location) of the first column,
+							// this will only open the context menu when right-clicking that column.
+							// Fix `row.response()` to open the menu from any column, needs to be done upstream in egui_extras.
+							name_response.context_menu(|ui| {
+								if ui.button("Delete").clicked() {
+									ctx.selection.remove(&entity);
+									cmds.despawn(entity);
+									ui.close_menu();
+								}
 							});
 						})
 					}

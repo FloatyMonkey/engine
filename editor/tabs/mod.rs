@@ -421,7 +421,7 @@ impl Style {
 			.align_size_within_rect(galley.size(), rect.shrink2(egui::vec2(8.0, 0.0)))
 			.min;
 
-		ui.painter().galley(pos, galley);
+		ui.painter().galley(pos, galley, Color32::PLACEHOLDER);
 
 		response
 	}

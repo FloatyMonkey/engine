@@ -568,7 +568,7 @@ fn map_key(key: VIRTUAL_KEY) -> Option<super::Key> {
 		VK_NEXT => Key::PageDown,
 
 		VK_OEM_MINUS => Key::Minus,
-		VK_OEM_PLUS => Key::PlusEquals,
+		VK_OEM_PLUS => Key::Plus,
 
 		VK_0 | VK_NUMPAD0 => Key::Num0,
 		VK_1 | VK_NUMPAD1 => Key::Num1,

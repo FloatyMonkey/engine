@@ -269,7 +269,7 @@ pub fn get_raw_input(app: &os::platform::App, window: &os::platform::Window) -> 
 	for event in app.events() {
 		match event {
 			os::Event::Key { key, pressed } => {
-				events.push(egui::Event::Key { key: map_key(key), pressed, repeat: false, modifiers: Default::default() });
+				events.push(egui::Event::Key { key: map_key(key), physical_key: None, pressed, repeat: false, modifiers: Default::default() });
 			},
 			os::Event::Text { character } => {
 				if is_printable_char(character) {
@@ -361,7 +361,7 @@ fn map_key(key: os::Key) -> egui::Key {
 		os::Key::PageDown => egui::Key::PageDown,
 
 		os::Key::Minus => egui::Key::Minus,
-		os::Key::PlusEquals => egui::Key::PlusEquals,
+		os::Key::Plus => egui::Key::Plus,
 
 		os::Key::Num0 => egui::Key::Num0,
 		os::Key::Num1 => egui::Key::Num1,

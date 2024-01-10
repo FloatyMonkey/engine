@@ -270,11 +270,6 @@ impl super::SwapChainImpl<Device> for SwapChain {
 	}
 }
 
-struct Shader {}
-impl super::ShaderImpl<Device> for Shader {
-	
-}
-
 struct Buffer {
 	buffer: vk::Buffer,
 }
@@ -369,7 +364,6 @@ struct Device {
 impl super::DeviceImpl for Device {
 	type SwapChain = SwapChain;
 	type CmdList = CmdList;
-	type Shader = Shader;
 	type Buffer = Buffer;
 	type Texture = Texture;
 	type Sampler = Sampler;
@@ -387,10 +381,6 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList {
-		todo!()
-	}
-
-	fn create_shader(&self, desc: &super::ShaderDesc) -> Result<Self::Shader, super::Error> {
 		todo!()
 	}
 
@@ -436,7 +426,7 @@ impl super::DeviceImpl for Device {
 		todo!()
 	}
 
-	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc<Self>) -> Result<Self::GraphicsPipeline, super::Error> {
+	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
 		/*let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
 			.topology(map_topology(desc.topology));
 
@@ -533,7 +523,7 @@ impl super::DeviceImpl for Device {
 		todo!()
 	}
 
-	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc<Self>) -> Result<Self::ComputePipeline, super::Error> {
+	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
 		todo!()
 	}
 

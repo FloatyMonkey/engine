@@ -97,15 +97,13 @@ fn main() {
 			gpu::TextureLayout::RenderTarget
 		)]);
 
-		let render_pass = gpu::RenderPassDesc {
+		cmd.render_pass_begin(&gpu::RenderPassDesc {
 			render_targets: &[swap_chain.backbuffer_texture()],
 			rt_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
 			depth_stencil: None,
 			depth_load: gpu::LoadOp::Discard,
 			stencil_load: gpu::LoadOp::Discard,
-		};
-
-		cmd.render_pass_begin(&render_pass);
+		});
 
 		egui_renderer.paint(&cmd, &clipped_primitives, &ScreenDesc {
 			size_in_pixels: window.size().into(),

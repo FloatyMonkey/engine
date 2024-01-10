@@ -216,13 +216,9 @@ impl PostProcessor {
 			static_samplers: None,
 		};
 
-		let cs = device.create_shader(&gpu::ShaderDesc {
-			ty: gpu::ShaderType::Compute,
-			src: &shader
-		}).unwrap();
-
 		let pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs, descriptor_layout: &descriptor_layout,
+			cs: &shader,
+			descriptor_layout: &descriptor_layout,
 		}).unwrap();
 
 		let texture = device.create_texture(&gpu::TextureDesc {

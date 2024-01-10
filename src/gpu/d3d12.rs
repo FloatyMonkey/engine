@@ -130,10 +130,6 @@ pub struct CmdList {
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
 
-pub struct Shader {
-	binary: Vec<u8>,
-}
-
 #[derive(Clone)]
 pub struct Buffer {
 	resource: ID3D12Resource,
@@ -749,20 +745,9 @@ impl Device {
 	}
 }
 
-impl Shader {
-	fn buffer_pointer(&self) -> *const std::ffi::c_void {
-		self.binary.as_ptr() as _
-	}
-
-	fn buffer_size(&self) -> usize {
-		self.binary.len()
-	}
-}
-
 impl super::DeviceImpl for Device {
 	type SwapChain = SwapChain;
 	type CmdList = CmdList;
-	type Shader = Shader;
 	type Buffer = Buffer;
 	type Texture = Texture;
 	type Sampler = Sampler;
@@ -921,12 +906,6 @@ impl super::DeviceImpl for Device {
 				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
 		}
-	}
-
-	fn create_shader(&self, desc: &super::ShaderDesc) -> std::result::Result<Shader, super::Error> {
-		Ok(Shader {
-			binary: desc.src.to_vec(),
-		})
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> result::Result<Buffer, super::Error> {
@@ -1174,7 +1153,7 @@ impl super::DeviceImpl for Device {
 		})
 	}
 
-	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc<Device>) -> result::Result<GraphicsPipeline, super::Error> {
+	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> result::Result<GraphicsPipeline, super::Error> {
 		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
 
 		let raster = &desc.rasterizer;
@@ -1187,12 +1166,12 @@ impl super::DeviceImpl for Device {
 			},
 			pRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
 			VS: desc.vs.map_or(D3D12_SHADER_BYTECODE::default(), |vs| D3D12_SHADER_BYTECODE {
-				pShaderBytecode: vs.buffer_pointer(),
-				BytecodeLength: vs.buffer_size(),
+				pShaderBytecode: vs.as_ptr() as _,
+				BytecodeLength: vs.len(),
 			}),
 			PS: desc.ps.map_or(D3D12_SHADER_BYTECODE::default(), |ps| D3D12_SHADER_BYTECODE {
-				pShaderBytecode: ps.buffer_pointer(),
-				BytecodeLength: ps.buffer_size(),
+				pShaderBytecode: ps.as_ptr() as _,
+				BytecodeLength: ps.len(),
 			}),
 			RasterizerState: D3D12_RASTERIZER_DESC {
 				FillMode: map_polygon_mode(&raster.polygon_mode),
@@ -1259,14 +1238,14 @@ impl super::DeviceImpl for Device {
 		})
 	}
 
-	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc<Self>) -> result::Result<ComputePipeline, super::Error> {
+	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> result::Result<ComputePipeline, super::Error> {
 		let cs = &desc.cs;
 		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
 
 		let dx_desc = D3D12_COMPUTE_PIPELINE_STATE_DESC {
 			CS: D3D12_SHADER_BYTECODE {
-				pShaderBytecode: cs.buffer_pointer(),
-				BytecodeLength: cs.buffer_size(),
+				pShaderBytecode: cs.as_ptr() as _,
+				BytecodeLength: cs.len(),
 			},
 			pRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
 			..Default::default()
@@ -2230,8 +2209,6 @@ impl super::TextureImpl<Device> for Texture {
 }
 
 impl super::SamplerImpl<Device> for Sampler {}
-
-impl super::ShaderImpl<Device> for Shader {}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> u32 {

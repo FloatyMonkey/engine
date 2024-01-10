@@ -15,7 +15,6 @@ pub type CmdList = <d3d12::Device as DeviceImpl>::CmdList;
 pub type Buffer = <d3d12::Device as DeviceImpl>::Buffer;
 pub type Texture = <d3d12::Device as DeviceImpl>::Texture;
 pub type Sampler = <d3d12::Device as DeviceImpl>::Sampler;
-pub type Shader = <d3d12::Device as DeviceImpl>::Shader;
 pub type GraphicsPipeline = <d3d12::Device as DeviceImpl>::GraphicsPipeline;
 pub type ComputePipeline = <d3d12::Device as DeviceImpl>::ComputePipeline;
 pub type RaytracingPipeline = <d3d12::Device as DeviceImpl>::RaytracingPipeline;
@@ -328,11 +327,6 @@ pub enum ShaderType {
 	Callable,
 }
 
-pub struct ShaderDesc<'a> {
-	pub ty: ShaderType,
-	pub src: &'a [u8],
-}
-
 bitflags! {
 	pub struct ColorWriteMask : u8 {
 		const RED   = 1 << 0;
@@ -626,9 +620,9 @@ pub struct ColorAttachment {
 // RENDER PIPELINE DESC
 // ----------------------------------------------------------------
 
-pub struct GraphicsPipelineDesc<'a, D: DeviceImpl> {
-	pub vs: Option<&'a D::Shader>,
-	pub ps: Option<&'a D::Shader>,
+pub struct GraphicsPipelineDesc<'a> {
+	pub vs: Option<&'a [u8]>,
+	pub ps: Option<&'a [u8]>,
 	
 	pub descriptor_layout: DescriptorLayout,
 	pub rasterizer: RasterizerDesc,
@@ -638,8 +632,8 @@ pub struct GraphicsPipelineDesc<'a, D: DeviceImpl> {
 	pub topology: Topology,
 }
 
-pub struct ComputePipelineDesc<'a, D: DeviceImpl> {
-	pub cs: D::Shader,
+pub struct ComputePipelineDesc<'a> {
+	pub cs: &'a [u8],
 	pub descriptor_layout: &'a DescriptorLayout,
 }
 
@@ -709,7 +703,6 @@ pub trait TextureImpl<D: DeviceImpl> {
 }
 
 pub trait SamplerImpl<D: DeviceImpl> {}
-pub trait ShaderImpl<D: DeviceImpl> {}
 pub trait GraphicsPipelineImpl<D: DeviceImpl> {}
 pub trait ComputePipelineImpl<D: DeviceImpl> {}
 
@@ -728,7 +721,6 @@ pub trait AccelerationStructureImpl<D: DeviceImpl> {
 pub trait DeviceImpl: 'static + Send + Sync + Sized {
 	type SwapChain: SwapChainImpl<Self>;
 	type CmdList: CmdListImpl<Self>;
-	type Shader: ShaderImpl<Self>;
 	type Buffer: BufferImpl<Self>;
 	type Texture: TextureImpl<Self>;
 	type Sampler: SamplerImpl<Self>;
@@ -741,14 +733,13 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	fn create_swap_chain(&mut self, desc: &SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, Error>;
 	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList;
-	fn create_shader(&self, desc: &ShaderDesc) -> Result<Self::Shader, Error>;
 	fn create_buffer(&mut self, desc: &BufferDesc) -> Result<Self::Buffer, Error>;
 	fn create_texture(&mut self, desc: &TextureDesc) -> Result<Self::Texture, Error>;
 	fn create_sampler(&mut self, desc: &SamplerDesc) -> Result<Self::Sampler, Error>;
 	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, Error>;
 
-	fn create_graphics_pipeline(&self, desc: &GraphicsPipelineDesc<Self>) -> Result<Self::GraphicsPipeline, Error>;
-	fn create_compute_pipeline(&self, desc: &ComputePipelineDesc<Self>) -> Result<Self::ComputePipeline, Error>;
+	fn create_graphics_pipeline(&self, desc: &GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, Error>;
+	fn create_compute_pipeline(&self, desc: &ComputePipelineDesc) -> Result<Self::ComputePipeline, Error>;
 	fn create_raytracing_pipeline(&self, desc: &RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, Error>;
 
 	// TODO: Only supports 2D texture UAVs
@@ -1090,6 +1081,7 @@ bitflags! {
 }
 
 // TODO: Support multiple entry points per library
+// Pass shader by reference or id instead of Vec<u8>
 pub struct ShaderLibrary {
 	pub ty: ShaderType,
 	pub entry: String,

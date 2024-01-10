@@ -45,22 +45,12 @@ impl EguiRenderer {
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
-		let slang_vs = shader_compiler.compile("shaders/egui.slang", "main_vs");
-		let slang_ps = shader_compiler.compile("shaders/egui.slang", "main_ps");
-
-		let vs = device.create_shader(&gpu::ShaderDesc {
-			ty: gpu::ShaderType::Vertex,
-			src: &slang_vs,
-		}).unwrap();
-
-		let fs = device.create_shader(&gpu::ShaderDesc {
-			ty: gpu::ShaderType::Pixel,
-			src: &slang_ps,
-		}).unwrap();
+		let vertex_shader = shader_compiler.compile("shaders/egui.slang", "main_vs");
+		let pixel_shader = shader_compiler.compile("shaders/egui.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
-			vs: Some(&vs),
-			ps: Some(&fs),
+			vs: Some(&vertex_shader),
+			ps: Some(&pixel_shader),
 			descriptor_layout: gpu::DescriptorLayout {
 				push_constants: Some(gpu::PushConstantBinding {
 					size: 5 * 4,

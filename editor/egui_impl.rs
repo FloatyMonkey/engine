@@ -45,8 +45,8 @@ impl EguiRenderer {
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
-		let vertex_shader = shader_compiler.compile("shaders/egui.slang", "main_vs");
-		let pixel_shader = shader_compiler.compile("shaders/egui.slang", "main_ps");
+		let vertex_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_vs");
+		let pixel_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
 			vs: Some(&vertex_shader),
@@ -84,7 +84,6 @@ impl EguiRenderer {
 				}),
 				write_mask: gpu::ColorWriteMask::ALL,
 			}],
-			ds_format: gpu::Format::Unknown,
 			topology: gpu::Topology::TriangleList,
 		};
 

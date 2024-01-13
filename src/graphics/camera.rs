@@ -63,7 +63,7 @@ impl GpuCamera {
 			0.0
 		};
 
-		Self { u, scale_u, v, scale_v, w, scale_w, position, aperture_radius }
+		Self { u: *u, scale_u, v: *v, scale_v, w: *w, scale_w, position, aperture_radius }
 	}
 }
 

@@ -189,25 +189,26 @@ impl PathTracer {
 }
 
 #[repr(C)]
-struct PostProcessPushConstants {
+struct CompositorPushConstants {
 	input_id: u32,
 	output_id: u32,
 	output_res: [u32; 2],
+	overlay_id: u32,
 }
 
-pub struct PostProcessor {
+pub struct Compositor {
 	res: [u32; 2],
 	texture: gpu::Texture,
 	pipeline: gpu::ComputePipeline,
 }
 
-impl PostProcessor {
+impl Compositor {
 	pub fn new(res: [u32; 2], device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
-		let shader = shader_compiler.compile("shaders/postprocess.slang", "main");
+		let shader = shader_compiler.compile("shaders/compositor.slang", "main");
 
 		let descriptor_layout = gpu::DescriptorLayout {
 			push_constants: Some(gpu::PushConstantBinding {
-				size: std::mem::size_of::<PostProcessPushConstants>() as u32,
+				size: std::mem::size_of::<CompositorPushConstants>() as u32,
 			}),
 			bindings: Some(vec![
 				gpu::DescriptorBinding::bindless_srv(1),
@@ -240,13 +241,14 @@ impl PostProcessor {
 		}
 	}
 
-	pub fn process(&mut self, cmd: &mut gpu::CmdList, input: &gpu::Texture) {
+	pub fn process(&mut self, cmd: &mut gpu::CmdList, input: &gpu::Texture, overlay: &gpu::Texture) {
 		cmd.set_compute_pipeline(&self.pipeline);
 
-		let push_constants = PostProcessPushConstants {
+		let push_constants = CompositorPushConstants {
 			input_id: input.srv_index().unwrap(),
 			output_id: self.texture.uav_index().unwrap(),
 			output_res: self.res,
+			overlay_id: overlay.srv_index().unwrap(),
 		};
 
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));

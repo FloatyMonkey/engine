@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::math::{UnitQuaternion, Unit, matrix::Vec3, transform::Transform3, PI};
+use crate::math::{UnitQuaternion, matrix::Vec3, transform::Transform3, PI};
 use crate::ecs::{Entity, World};
 use crate::time::Time;
 
@@ -17,7 +17,6 @@ pub struct MyContext {
 pub struct Editor {
 	pub egui_ctx: egui::Context,
 	pub context: MyContext,
-	style: tabs::Style,
 	tree: tabs::Tree<MyContext>,
 }
 
@@ -50,14 +49,13 @@ impl Editor {
 
 		Self {
 			egui_ctx,
-			style: tabs::Style::default(),
 			context: MyContext {
 				world,
 				selection: HashSet::new(),
 				viewport_texture_srv: 0,
 				camera_transform: Transform3 {
 					translation: Vec3::new(0.0, -5.0, 0.9),
-					rotation: UnitQuaternion::from_axis_angle(Unit::new_unchecked(Vec3::X), PI / 2.0),
+					rotation: UnitQuaternion::from_axis_angle(Vec3::X, PI / 2.0),
 					scale: Vec3::ONE,
 				},
 			},
@@ -72,7 +70,7 @@ impl Editor {
 
 		self.egui_ctx.clone().run(raw_input, |ctx| {
 			egui::CentralPanel::default().show(&ctx, |ui| {
-				self.style = tabs::Style::from_egui(ui.style().as_ref());
+				let style = tabs::Style::from_egui(ui.style().as_ref());
 
 				let id = egui::Id::new("Tabs");
 				let layer_id = egui::LayerId::background();
@@ -80,7 +78,7 @@ impl Editor {
 				let clip_rect = self.egui_ctx.available_rect();
 
 				let mut ui = egui::Ui::new(self.egui_ctx.clone(), layer_id, id, max_rect, clip_rect);
-				tabs::show(&mut ui, id, &self.style, &mut self.tree, &mut self.context);
+				tabs::show(&mut ui, id, &style, &mut self.tree, &mut self.context);
 			});
 		})
 	}

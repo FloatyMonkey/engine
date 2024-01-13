@@ -1,4 +1,4 @@
-use crate::math::{UnitQuaternion, Unit, matrix::Vec3, transform::Transform3};
+use crate::math::{UnitQuaternion, matrix::Vec3, transform::Transform3};
 
 pub struct EditorCamera;
 
@@ -20,8 +20,8 @@ impl EditorCamera {
 		}
 
 		if response.dragged_by(egui::PointerButton::Secondary) {
-			let yaw = UnitQuaternion::from_axis_angle(Unit::new_unchecked(Vec3::Z), -delta.x * LOOK_SPEED);
-			let pitch = UnitQuaternion::from_axis_angle(Unit::new_unchecked(Vec3::X), -delta.y * LOOK_SPEED);
+			let yaw = UnitQuaternion::from_axis_angle(Vec3::Z, -delta.x * LOOK_SPEED);
+			let pitch = UnitQuaternion::from_axis_angle(Vec3::X, -delta.y * LOOK_SPEED);
 
 			transform.rotation = yaw * transform.rotation * pitch;
 		}
@@ -34,10 +34,10 @@ impl EditorCamera {
 
 			let mut movement = Vec3::ZERO;
 
-			if ui.input(|i| i.key_down(egui::Key::Z)) { movement -= Vec3::Z; }
-			if ui.input(|i| i.key_down(egui::Key::S)) { movement += Vec3::Z; }
-			if ui.input(|i| i.key_down(egui::Key::Q)) { movement -= Vec3::X; }
-			if ui.input(|i| i.key_down(egui::Key::D)) { movement += Vec3::X; }
+			if ui.input(|i| i.key_down(egui::Key::Z)) { movement -= *Vec3::Z; } // TODO: Prevent dereferencing these
+			if ui.input(|i| i.key_down(egui::Key::S)) { movement += *Vec3::Z; }
+			if ui.input(|i| i.key_down(egui::Key::Q)) { movement -= *Vec3::X; }
+			if ui.input(|i| i.key_down(egui::Key::D)) { movement += *Vec3::X; }
 
 			if movement != Vec3::ZERO {
 				transform.translation += transform.rotation * *movement.normalize() * dt * MOVE_SPEED;

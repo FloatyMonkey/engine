@@ -1229,7 +1229,7 @@ impl super::DeviceImpl for Device {
 			dx_desc.RTVFormats[i] = map_format(desc.color_attachments[i].format);
 		}
 		
-		dx_desc.DSVFormat = map_format(desc.ds_format);
+		dx_desc.DSVFormat = map_format(desc.depth_stencil.format);
 
 		Ok(GraphicsPipeline {
 			pipeline_state: unsafe { self.device.CreateGraphicsPipelineState(&dx_desc)? },

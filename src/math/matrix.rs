@@ -28,8 +28,8 @@ pub type Matrix3<T> = Matrix<T, 3, 3>;
 pub type Matrix4<T> = Matrix<T, 4, 4>;
 
 impl<T: Number> Vector2<T> {
-	pub const X: Self = Self { data: [[T::ONE], [T::ZERO]] };
-	pub const Y: Self = Self { data: [[T::ZERO], [T::ONE]] };
+	pub const X: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ONE], [T::ZERO]] });
+	pub const Y: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ONE]] });
 
 	pub const fn new(x: T, y: T) -> Self {
 		Self { data: [[x], [y]] }
@@ -37,15 +37,19 @@ impl<T: Number> Vector2<T> {
 }
 
 impl<T: Float + FloatOps<T>> Vector2<T> {
-	fn cross(&self, rhs: Vector2<T>) -> T {
+	pub fn cross(&self, rhs: Self) -> T {
 		self.x * rhs.y - self.y * rhs.x
+	}
+
+	pub fn extend(&self, z: T) -> Vector3<T> {
+		Vector3::new(self.x, self.y, z)
 	}
 }
 
 impl<T: Number> Vector3<T> {
-	pub const X: Self = Self { data: [[T::ONE], [T::ZERO], [T::ZERO]] };
-	pub const Y: Self = Self { data: [[T::ZERO], [T::ONE], [T::ZERO]] };
-	pub const Z: Self = Self { data: [[T::ZERO], [T::ZERO], [T::ONE]] };
+	pub const X: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ONE], [T::ZERO], [T::ZERO]] });
+	pub const Y: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ONE], [T::ZERO]] });
+	pub const Z: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ZERO], [T::ONE]] });
 
 	pub const fn new(x: T, y: T, z: T) -> Self {
 		Self { data: [[x], [y], [z]] }
@@ -53,7 +57,7 @@ impl<T: Number> Vector3<T> {
 }
 
 impl<T: Float + FloatOps<T>> Vector3<T> {
-	pub fn cross(&self, rhs: Vector3<T>) -> Self {
+	pub fn cross(&self, rhs: Self) -> Self {
 		Self::new(
 			self.y * rhs.z - self.z * rhs.y,
 			self.z * rhs.x - self.x * rhs.z,
@@ -61,7 +65,7 @@ impl<T: Float + FloatOps<T>> Vector3<T> {
 		)
 	}
 
-	pub fn dot(&self, rhs: Vector3<T>) -> T {
+	pub fn dot(&self, rhs: Self) -> T {
 		self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
 	}
 
@@ -77,17 +81,21 @@ impl<T: Float + FloatOps<T>> Vector3<T> {
 		self.length_sq().sqrt()
 	}
 
-	pub fn distance_sq(&self, rhs: Vector3<T>) -> T {
+	pub fn distance_sq(&self, rhs: Self) -> T {
 		(*self - rhs).length_sq()
 	}
 
-	pub fn distance(&self, rhs: Vector3<T>) -> T {
+	pub fn distance(&self, rhs: Self) -> T {
 		(*self - rhs).length()
 	}
 
 	/// Projects this vector onto another vector.
-	pub fn project_onto(&self, onto: Unit<Vector3<T>>) -> Vector3<T> {
+	pub fn project_onto(&self, onto: Unit<Self>) -> Self {
 		*onto * self.dot(*onto)
+	}
+
+	pub fn truncate(&self) -> Vector2<T> {
+		Vector2::new(self.x, self.y)
 	}
 }
 
@@ -257,7 +265,7 @@ impl<T> std::ops::DerefMut for Vector4<T> {
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Index<usize> for Matrix<T, R, C> {
+impl<T, const R: usize, const C: usize> Index<usize> for Matrix<T, R, C> {
 	type Output = T;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -265,13 +273,13 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Index<usize> for Ma
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> IndexMut<usize> for Matrix<T, R, C> {
+impl<T, const R: usize, const C: usize> IndexMut<usize> for Matrix<T, R, C> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.as_mut_slice()[index]
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Index<(usize, usize)> for Matrix<T, R, C> {
+impl<T, const R: usize, const C: usize> Index<(usize, usize)> for Matrix<T, R, C> {
 	type Output = T;
 
 	fn index(&self, index: (usize, usize)) -> &Self::Output {
@@ -279,7 +287,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Index<(usize, usize
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> IndexMut<(usize, usize)> for Matrix<T, R, C> {
+impl<T, const R: usize, const C: usize> IndexMut<(usize, usize)> for Matrix<T, R, C> {
 	fn index_mut(&mut self, index: (usize, usize)) -> &mut Self::Output {
 		&mut self.data[index.0][index.1]
 	}
@@ -330,7 +338,7 @@ impl Mat3 {
 	}
 
 	/// Returns the inverse of this matrix.
-	pub fn inv(&self) -> Mat3 {
+	pub fn inv(&self) -> Self {
 		let m = |r: usize, c: usize| self.data[r][c];
 
 		let inv_det = 1.0 / self.det();
@@ -347,7 +355,7 @@ impl Mat3 {
 		let m32 = m(0, 1) * m(2, 0) - m(0, 0) * m(2, 1);
 		let m33 = m(0, 0) * m(1, 1) - m(0, 1) * m(1, 0);
 
-		Mat3 { data: [
+		Self { data: [
 			[m11 * inv_det, m12 * inv_det, m13 * inv_det],
 			[m21 * inv_det, m22 * inv_det, m23 * inv_det],
 			[m31 * inv_det, m32 * inv_det, m33 * inv_det],
@@ -384,7 +392,7 @@ impl Mat4 {
 	}
 
 	/// Returns the inverse of this matrix.
-	pub fn inv(&self) -> Mat4 {
+	pub fn inv(&self) -> Self {
 		let m = |r: usize, c: usize| self.data[r][c];
 
 		let inv_det = 1.0 / self.det();
@@ -409,7 +417,7 @@ impl Mat4 {
 		let m43 = m(0, 0) * m(1, 2) * m(3, 1) + m(0, 1) * m(1, 0) * m(3, 2) + m(0, 2) * m(1, 1) * m(3, 0) - m(0, 0) * m(1, 1) * m(3, 2) - m(0, 1) * m(1, 2) * m(3, 0) - m(0, 2) * m(1, 0) * m(3, 1);
 		let m44 = m(0, 0) * m(1, 1) * m(2, 2) + m(0, 1) * m(1, 2) * m(2, 0) + m(0, 2) * m(1, 0) * m(2, 1) - m(0, 0) * m(1, 2) * m(2, 1) - m(0, 1) * m(1, 0) * m(2, 2) - m(0, 2) * m(1, 1) * m(2, 0);
 
-		Mat4 { data: [
+		Self { data: [
 			[m11 * inv_det, m12 * inv_det, m13 * inv_det, m14 * inv_det],
 			[m21 * inv_det, m22 * inv_det, m23 * inv_det, m24 * inv_det],
 			[m31 * inv_det, m32 * inv_det, m33 * inv_det, m34 * inv_det],

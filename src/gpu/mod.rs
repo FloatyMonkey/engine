@@ -491,6 +491,8 @@ pub struct DepthStencilFaceDesc {
 }
 
 pub struct DepthStencilDesc {
+	pub format: Format,
+
 	pub depth_test_enable: bool,
 	pub depth_write_enable: bool,
 	pub depth_op: CompareOp,
@@ -628,7 +630,6 @@ pub struct GraphicsPipelineDesc<'a> {
 	pub rasterizer: RasterizerDesc,
 	pub depth_stencil: DepthStencilDesc,
 	pub color_attachments: &'a [ColorAttachment],
-	pub ds_format: Format,
 	pub topology: Topology,
 }
 
@@ -924,6 +925,7 @@ impl Default for DepthStencilFaceDesc {
 impl Default for DepthStencilDesc {
 	fn default() -> Self {
 		Self {
+			format: Format::Unknown,
 			depth_test_enable: false,
 			depth_write_enable: false,
 			depth_op: CompareOp::Never,

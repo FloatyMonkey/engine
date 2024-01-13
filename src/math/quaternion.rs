@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Sub, Mul, Div, Neg};
 
 use super::{Dual, Unit};
 use super::num::{Float, FloatOps, Number};
@@ -191,10 +191,31 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 
 		(swing, twist)
 	}
+
+	/// Returns the shortest rotation for transforming `from` to `to`.
+	pub fn between(from: Unit<Vector3<T>>, to: Unit<Vector3<T>>) -> Self {
+		let cross = from.cross(*to);
+		let dot = from.dot(*to);
+
+		Quaternion::from_parts(T::ONE + dot, cross).normalize()
+	}
 }
 
 /// A dual quaternion. May be used to represent a 3D isometry.
 pub type DualQuaternion<T> = Dual<Quaternion<T>>;
+
+impl<T: Neg<Output=T>> Neg for Quaternion<T> {
+	type Output = Quaternion<T>;
+
+	fn neg(self) -> Self::Output {
+		Self {
+			i: -self.i,
+			j: -self.j,
+			k: -self.k,
+			w: -self.w,
+		}
+	}
+}
 
 impl<T: Add<Output=T>> Add for Quaternion<T> {
 	type Output = Quaternion<T>;
@@ -222,7 +243,7 @@ impl<T: Sub<Output=T>> Sub for Quaternion<T> {
 	}
 }
 
-impl<T: Copy + Mul<Output=T>> Mul<T> for Quaternion<T> {
+impl<T: Mul<Output=T> + Copy> Mul<T> for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn mul(self, rhs: T) -> Self::Output {
@@ -235,7 +256,7 @@ impl<T: Copy + Mul<Output=T>> Mul<T> for Quaternion<T> {
 	}
 }
 
-impl<T: Copy + Div<Output=T>> Div<T> for Quaternion<T> {
+impl<T: Div<Output=T> + Copy> Div<T> for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn div(self, rhs: T) -> Self::Output {
@@ -251,7 +272,7 @@ impl<T: Copy + Div<Output=T>> Div<T> for Quaternion<T> {
 impl<T: Float> Mul<Quaternion<T>> for Quaternion<T> {
 	type Output = Quaternion<T>;
 
-	fn mul(self, rhs: Quaternion<T>) -> Self::Output {
+	fn mul(self, rhs: Self) -> Self::Output {
 		Self {
 			i: self.w * rhs.i + self.i * rhs.w + self.j * rhs.k - self.k * rhs.j,
 			j: self.w * rhs.j + self.j * rhs.w + self.k * rhs.i - self.i * rhs.k,
@@ -264,8 +285,8 @@ impl<T: Float> Mul<Quaternion<T>> for Quaternion<T> {
 impl<T: Float> Mul<UnitQuaternion<T>> for UnitQuaternion<T> {
 	type Output = UnitQuaternion<T>;
 
-	fn mul(self, rhs: UnitQuaternion<T>) -> Self::Output {
-		UnitQuaternion::new_unchecked(*self * *rhs)
+	fn mul(self, rhs: Self) -> Self::Output {
+		UnitQuaternion::new_unchecked(self * *rhs)
 	}
 }
 
@@ -275,5 +296,13 @@ impl<T: Float + FloatOps<T>> Mul<Vector3<T>> for UnitQuaternion<T> {
 	fn mul(self, rhs: Vector3<T>) -> Self::Output {
 		let t = self.imag().cross(rhs) * T::TWO;
 		rhs + t * self.real() + self.imag().cross(t)
+	}
+}
+
+impl<T: Float + FloatOps<T>> Mul<Unit<Vector3<T>>> for UnitQuaternion<T> {
+	type Output = Unit<Vector3<T>>;
+
+	fn mul(self, rhs: Unit<Vector3<T>>) -> Self::Output {
+		Unit::new_unchecked(self * *rhs)
 	}
 }

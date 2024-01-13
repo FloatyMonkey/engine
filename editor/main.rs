@@ -1,6 +1,7 @@
 mod camera;
 mod editor;
 mod egui_impl;
+mod gizmo;
 mod icons;
 mod tabs;
 mod windows;
@@ -10,7 +11,8 @@ use engine::*;
 use crate::asset::AssetServer;
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
 use crate::gpu::{self, CmdListImpl, DeviceImpl, SwapChainImpl, TextureImpl};
-use crate::graphics::{scene::Scene, pathtracer::{PathTracer, PostProcessor}};
+use crate::graphics::{scene::Scene, pathtracer::{Compositor, PathTracer}};
+use crate::math::matrix::Vec3;
 use crate::os::{self, App, Window};
 use crate::scene::setup_scene;
 
@@ -52,7 +54,8 @@ fn main() {
 
 	let mut scene = Scene::new(&mut device, &shader_compiler);
 	let mut path_tracer = PathTracer::new(&mut device, &shader_compiler);
-	let mut post_processor = PostProcessor::new([1920, 1080], &mut device, &shader_compiler);
+	let mut compositor = Compositor::new([1920, 1080], &mut device, &shader_compiler);
+	let mut gizmo_renderer = gizmo::GizmoRenderer::new([1920, 1080], &mut device, &shader_compiler);
 
 	let mut editor = editor::Editor::new();
 
@@ -74,6 +77,19 @@ fn main() {
 			egui_renderer.create_texture(&mut device, *id, &image_delta);
 		}
 
+		// Gizmo
+		let mut gizmo = gizmo::Gizmo::new();
+
+		gizmo.line(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 3.0), 0xFF0000FF);
+		gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
+		gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
+
+		let aspect_ratio = 16.0 / 9.0; // TODO: hardcoded
+		let projection_matrix = math::matrix::perspective(24.0_f32.to_radians(), aspect_ratio, 0.1, 1000.0);
+		let view_matrix = math::matrix::Mat4::from(editor.context.camera_transform.inv());
+		let view_projection = projection_matrix * view_matrix;
+		gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
+
 		// Path Tracer
 		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
 
@@ -83,8 +99,8 @@ fn main() {
 		for _ in 0..20 {
 			path_tracer.render(&mut cmd, &scene);
 		}
-		post_processor.process(&mut cmd, &path_tracer.output_texture);
-		editor.context.viewport_texture_srv = post_processor.texture().srv_index().unwrap();
+		compositor.process(&mut cmd, &path_tracer.output_texture, &gizmo_renderer.texture);
+		editor.context.viewport_texture_srv = compositor.texture().srv_index().unwrap();
 
 		cmd.debug_event_pop();
 

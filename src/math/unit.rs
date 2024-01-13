@@ -1,4 +1,4 @@
-use std::ops::{Deref, Mul, Neg};
+use std::ops::{Deref, Div, DivAssign, Mul, MulAssign, Neg};
 
 /// A wrapper that ensures the underlying value has a unit norm.
 #[derive(Clone, Copy, PartialEq)]
@@ -40,5 +40,25 @@ impl<T: Mul<U>, U> Mul<U> for Unit<T> {
 
 	fn mul(self, rhs: U) -> Self::Output {
 		self.unit * rhs
+	}
+}
+
+impl<T: MulAssign<U>, U> MulAssign<U> for Unit<T> {
+	fn mul_assign(&mut self, rhs: U) {
+		self.unit *= rhs;
+	}
+}
+
+impl<T: Div<U>, U> Div<U> for Unit<T> {
+	type Output = T::Output;
+
+	fn div(self, rhs: U) -> Self::Output {
+		self.unit / rhs
+	}
+}
+
+impl<T: DivAssign<U>, U> DivAssign<U> for Unit<T> {
+	fn div_assign(&mut self, rhs: U) {
+		self.unit /= rhs;
 	}
 }

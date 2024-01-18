@@ -105,7 +105,7 @@ impl PathTracer {
 		let shader_table = device.create_buffer(&gpu::BufferDesc {
 			size: shader_table_data.len(),
 			usage: gpu::BufferUsage::empty(),
-			memory: gpu::Memory::CpuToGpu,
+			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 		device.upload_buffer(&shader_table, &shader_table_data);
 

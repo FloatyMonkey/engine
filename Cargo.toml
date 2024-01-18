@@ -13,7 +13,6 @@ egui = "0.25.0"
 egui_extras = "0.25.0"
 egui-gizmo = "0.14.1"
 exr = "1.71.0"
-gpu-allocator = "0.25.0"
 rand = "0.8.5"
 slang = { path = "../slang-rs" }
 

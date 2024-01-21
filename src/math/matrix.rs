@@ -1,4 +1,4 @@
-use super::num::{Float, FloatOps, Number};
+use super::num::{Float, FloatOps, Number, SignedNumber};
 use std::ops::{Mul, MulAssign, Index, IndexMut, Add, AddAssign, Div, DivAssign, Sub, SubAssign, Neg};
 use super::unit::Unit;
 
@@ -9,8 +9,8 @@ pub struct Matrix<T, const R: usize, const C: usize> {
 }
 
 impl<T: Number, const R: usize, const C: usize> Matrix<T, R, C> {
-	pub const ZERO: Self = Self { data: [[T::ZERO; C]; R] };
-	pub const ONE: Self = Self { data: [[T::ONE; C]; R] };
+	pub const ZERO: Self = Self::splat(T::ZERO);
+	pub const ONE: Self = Self::splat(T::ONE);
 
 	pub const fn splat(value: T) -> Self {
 		Self { data: [[value; C]; R] }
@@ -28,35 +28,39 @@ pub type Matrix3<T> = Matrix<T, 3, 3>;
 pub type Matrix4<T> = Matrix<T, 4, 4>;
 
 impl<T: Number> Vector2<T> {
-	pub const X: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ONE], [T::ZERO]] });
-	pub const Y: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ONE]] });
+	pub const X: Unit<Self> = Unit::new_unchecked(Self::new(T::ONE, T::ZERO));
+	pub const Y: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ONE));
 
 	pub const fn new(x: T, y: T) -> Self {
 		Self { data: [[x], [y]] }
-	}
-}
-
-impl<T: Float + FloatOps<T>> Vector2<T> {
-	pub fn cross(&self, rhs: Self) -> T {
-		self.x * rhs.y - self.y * rhs.x
 	}
 
 	pub fn extend(&self, z: T) -> Vector3<T> {
 		Vector3::new(self.x, self.y, z)
 	}
+
+	pub fn cross(&self, rhs: Self) -> T {
+		self.x * rhs.y - self.y * rhs.x
+	}
 }
 
 impl<T: Number> Vector3<T> {
-	pub const X: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ONE], [T::ZERO], [T::ZERO]] });
-	pub const Y: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ONE], [T::ZERO]] });
-	pub const Z: Unit<Self> = Unit::new_unchecked(Self { data: [[T::ZERO], [T::ZERO], [T::ONE]] });
+	pub const X: Unit<Self> = Unit::new_unchecked(Self::new(T::ONE, T::ZERO, T::ZERO));
+	pub const Y: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ONE, T::ZERO));
+	pub const Z: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ZERO, T::ONE));
 
 	pub const fn new(x: T, y: T, z: T) -> Self {
 		Self { data: [[x], [y], [z]] }
 	}
-}
 
-impl<T: Float + FloatOps<T>> Vector3<T> {
+	pub fn truncate(&self) -> Vector2<T> {
+		Vector2::new(self.x, self.y)
+	}
+
+	pub fn extend(&self, w: T) -> Vector4<T> {
+		Vector4::new(self.x, self.y, self.z, w)
+	}
+
 	pub fn cross(&self, rhs: Self) -> Self {
 		Self::new(
 			self.y * rhs.z - self.z * rhs.y,
@@ -64,9 +68,31 @@ impl<T: Float + FloatOps<T>> Vector3<T> {
 			self.x * rhs.y - self.y * rhs.x,
 		)
 	}
+}
 
+impl<T: Number> Vector4<T> {
+	pub const X: Unit<Self> = Unit::new_unchecked(Self::new(T::ONE, T::ZERO, T::ZERO, T::ZERO));
+	pub const Y: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ONE, T::ZERO, T::ZERO));
+	pub const Z: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ZERO, T::ONE, T::ZERO));
+	pub const W: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ZERO, T::ZERO, T::ONE));
+
+	pub const fn new(x: T, y: T, z: T, w: T) -> Self {
+		Self { data: [[x], [y], [z], [w]] }
+	}
+
+	pub fn truncate(&self) -> Vector3<T> {
+		Vector3::new(self.x, self.y, self.z)
+	}
+}
+
+impl<T: Float + FloatOps<T>, const N: usize> Vector<T, N> {
+	#[inline(always)]
 	pub fn dot(&self, rhs: Self) -> T {
-		self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
+		let mut result = T::ZERO;
+		for i in 0..N {
+			result += self[i] * rhs[i];
+		}
+		result
 	}
 
 	pub fn normalize(&self) -> Unit<Self> {
@@ -93,13 +119,9 @@ impl<T: Float + FloatOps<T>> Vector3<T> {
 	pub fn project_onto(&self, onto: Unit<Self>) -> Self {
 		*onto * self.dot(*onto)
 	}
-
-	pub fn truncate(&self) -> Vector2<T> {
-		Vector2::new(self.x, self.y)
-	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize, const CR: usize> Mul<Matrix<T, CR, C>> for Matrix<T, R, CR> {
+impl<T: Number, const R: usize, const C: usize, const CR: usize> Mul<Matrix<T, CR, C>> for Matrix<T, R, CR> {
 	type Output = Matrix<T, R, C>;
 
 	fn mul(self, rhs: Matrix<T, CR, C>) -> Self::Output {
@@ -115,7 +137,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize, const CR: usize> Mu
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> MulAssign<T> for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> MulAssign<T> for Matrix<T, R, C> {
 	fn mul_assign(&mut self, rhs: T) {
 		for i in 0..(R * C) {
 			self[i] *= rhs;
@@ -123,7 +145,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> MulAssign<T> for Ma
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Mul<T> for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Mul<T> for Matrix<T, R, C> {
 	type Output = Self;
 
 	fn mul(self, rhs: T) -> Self::Output {
@@ -133,7 +155,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Mul<T> for Matrix<T
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> DivAssign<T> for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> DivAssign<T> for Matrix<T, R, C> {
 	fn div_assign(&mut self, rhs: T) {
 		for i in 0..(R * C) {
 			self[i] /= rhs;
@@ -141,7 +163,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> DivAssign<T> for Ma
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Div<T> for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Div<T> for Matrix<T, R, C> {
 	type Output = Self;
 
 	fn div(self, rhs: T) -> Self::Output {
@@ -151,7 +173,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Div<T> for Matrix<T
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> AddAssign for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> AddAssign for Matrix<T, R, C> {
 	fn add_assign(&mut self, rhs: Self) {
 		for i in 0..(R * C) {
 			self[i] += rhs[i];
@@ -159,7 +181,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> AddAssign for Matri
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Add for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Add for Matrix<T, R, C> {
 	type Output = Self;
 
 	fn add(self, rhs: Self) -> Self::Output {
@@ -169,7 +191,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Add for Matrix<T, R
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> SubAssign for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> SubAssign for Matrix<T, R, C> {
 	fn sub_assign(&mut self, rhs: Self) {
 		for i in 0..(R * C) {
 			self[i] -= rhs[i];
@@ -177,7 +199,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> SubAssign for Matri
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Sub for Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Sub for Matrix<T, R, C> {
 	type Output = Self;
 
 	fn sub(self, rhs: Self) -> Self::Output {
@@ -187,7 +209,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Sub for Matrix<T, R
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Neg for Matrix<T, R, C> {
+impl<T: SignedNumber, const R: usize, const C: usize> Neg for Matrix<T, R, C> {
 	type Output = Self;
 
 	fn neg(self) -> Self::Output {
@@ -293,19 +315,12 @@ impl<T, const R: usize, const C: usize> IndexMut<(usize, usize)> for Matrix<T, R
 	}
 }
 
-pub type Vec2 = Vector2<f32>;
-pub type Vec3 = Vector3<f32>;
-
-pub type Mat3 = Matrix3<f32>;
-pub type Mat4 = Matrix4<f32>;
-pub type Mat3x4 = Matrix<f32, 3, 4>;
-
-pub fn perspective(fov: f32, aspect_ratio: f32, near_clip: f32, far_clip: f32) -> Mat4 {
+pub fn perspective(fov: f32, aspect_ratio: f32, near_clip: f32, far_clip: f32) -> Matrix4<f32> {
 	let inv_y = 1.0 / (fov / 2.0).tan();
 	let inv_x = inv_y / aspect_ratio;
 	let inv_z = far_clip / (near_clip - far_clip);
 
-	Mat4::from_array([
+	Matrix4::from_array([
 		inv_x, 0.0, 0.0, 0.0,
 		0.0, inv_y, 0.0, 0.0,
 		0.0, 0.0, inv_z, near_clip * inv_z,
@@ -327,7 +342,7 @@ impl<T, const R: usize, const C: usize> Matrix<T, R, C> {
 	}
 }
 
-impl Mat3 {
+impl Matrix3<f32> {
 	/// Returns the determinant of this matrix.
 	pub fn det(&self) -> f32 {
 		let m = |r: usize, c: usize| self.data[r][c];
@@ -363,15 +378,15 @@ impl Mat3 {
 	}
 }
 
-impl Mat4 {
-	pub const fn identity() -> Self {
-		Self { data: [
+impl Matrix4<f32> {
+	pub const IDENTITY: Self = Self {
+		data: [
 			[1.0, 0.0, 0.0, 0.0],
 			[0.0, 1.0, 0.0, 0.0],
 			[0.0, 0.0, 1.0, 0.0],
 			[0.0, 0.0, 0.0, 1.0],
-		]}
-	}
+		]
+	};
 
 	/// Returns the determinant of this matrix.
 	pub fn det(&self) -> f32 {
@@ -426,7 +441,7 @@ impl Mat4 {
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Matrix<T, R, C> {
 	/// Component-wise multiplication.
 	pub fn cmul(self, rhs: Self) -> Self {
 		let mut result = Matrix::ZERO;
@@ -437,7 +452,7 @@ impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Matrix<T, R, C> {
 	}
 }
 
-impl<T: Float + FloatOps<T>, const R: usize, const C: usize> Matrix<T, R, C> {
+impl<T: Number, const R: usize, const C: usize> Matrix<T, R, C> {
 	pub fn transpose(&self) -> Matrix<T, C, R> {
 		let mut result = Matrix::ZERO;
 		for row in 0..R {
@@ -499,18 +514,18 @@ impl<T: Float> Matrix4<T> {
 	}
 }
 
-impl Mat3x4 {
-	pub const fn identity() -> Self {
-		Self { data: [
+impl Matrix<f32, 3, 4> {
+	pub const IDENTITY: Self = Self {
+		data: [
 			[1.0, 0.0, 0.0, 0.0],
 			[0.0, 1.0, 0.0, 0.0],
 			[0.0, 0.0, 1.0, 0.0],
-		]}
-	}
+		]
+	};
 }
 
-impl From<Mat4> for Mat3 {
-	fn from(m: Mat4) -> Self {
+impl<T: Copy> From<Matrix4<T>> for Matrix3<T> {
+	fn from(m: Matrix4<T>) -> Self {
 		Self { data: [
 			[m[0], m[1], m[ 2]],
 			[m[4], m[5], m[ 6]],
@@ -519,8 +534,8 @@ impl From<Mat4> for Mat3 {
 	}
 }
 
-impl From<Mat4> for Mat3x4 {
-	fn from(m: Mat4) -> Self {
+impl<T: Copy> From<Matrix4<T>> for Matrix<T, 3, 4> {
+	fn from(m: Matrix4<T>) -> Self {
 		Self { data: [
 			[m[0], m[1], m[ 2], m[ 3]],
 			[m[4], m[5], m[ 6], m[ 7]],

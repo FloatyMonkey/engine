@@ -1,7 +1,7 @@
 use crate::gpu::{self, DeviceImpl, CmdListImpl, BufferImpl};
 use crate::graphics::scene::Vertex;
 use crate::geometry::mesh::{AttributeGroup, Mesh};
-use crate::math::matrix::Mat3x4;
+use crate::math::Mat3x4;
 
 fn to_gpu_data(vertex_groups: &AttributeGroup<f32>) -> (Vec<u32>, Vec<u32>) {
 	let lookup = vertex_groups.lookup.iter().map(|&i| {

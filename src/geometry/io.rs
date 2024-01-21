@@ -1,5 +1,5 @@
 use super::mesh::{Mesh, Vertex, VertexGroups};
-use crate::math::matrix::Vec3;
+use crate::math::Vec3;
 
 use std::fs::File;
 use std::io::{Cursor, Read};

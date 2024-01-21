@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::math::{UnitQuaternion, matrix::Vec3, transform::Transform3, PI};
+use crate::math::{UnitQuaternion, Vec3, transform::Transform3, PI};
 use crate::ecs::{Entity, World};
 use crate::time::Time;
 

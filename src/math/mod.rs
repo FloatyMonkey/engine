@@ -10,12 +10,23 @@ mod dual;
 mod quaternion;
 mod unit;
 
+use num::{cast, Number, NumberOps};
+
 pub use complex::{Complex, UnitComplex};
 pub use dual::Dual;
+pub use matrix::{
+	Matrix, Matrix2, Matrix3, Matrix4,
+	Vector, Vector2, Vector3, Vector4,
+};
 pub use quaternion::{Quaternion, UnitQuaternion};
 pub use unit::Unit;
 
-use num::{cast, Number, NumberOps};
+pub type Vec2 = Vector2<f32>;
+pub type Vec3 = Vector3<f32>;
+
+pub type Mat3 = Matrix3<f32>;
+pub type Mat4 = Matrix4<f32>;
+pub type Mat3x4 = Matrix<f32, 3, 4>;
 
 pub const E: f32 = 2.71828182845904523536;
 pub const PI: f32 = 3.14159265358979323846;

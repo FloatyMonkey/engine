@@ -1,4 +1,4 @@
-use crate::math::{UnitQuaternion, matrix::Vec3, transform::Transform3};
+use crate::math::{UnitQuaternion, Vec3, transform::Transform3};
 
 pub struct EditorCamera;
 

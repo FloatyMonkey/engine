@@ -12,7 +12,7 @@ use crate::asset::AssetServer;
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
 use crate::gpu::{self, CmdListImpl, DeviceImpl, SwapChainImpl, TextureImpl};
 use crate::graphics::{scene::Scene, pathtracer::{Compositor, PathTracer}};
-use crate::math::matrix::Vec3;
+use crate::math::{Mat4, Vec3};
 use crate::os::{self, App, Window};
 use crate::scene::setup_scene;
 
@@ -86,7 +86,7 @@ fn main() {
 
 		let aspect_ratio = 16.0 / 9.0; // TODO: hardcoded
 		let projection_matrix = math::matrix::perspective(24.0_f32.to_radians(), aspect_ratio, 0.1, 1000.0);
-		let view_matrix = math::matrix::Mat4::from(editor.context.camera_transform.inv());
+		let view_matrix = Mat4::from(editor.context.camera_transform.inv());
 		let view_projection = projection_matrix * view_matrix;
 		gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
 

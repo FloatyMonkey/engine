@@ -1,13 +1,9 @@
-use crate::math::matrix;
-use crate::math::matrix::Mat4;
-use crate::math::transform::Transform3;
+use crate::math::{matrix, Mat4, Vec3, transform::Transform3, UnitQuaternion};
 use crate::time::Time;
 
 use crate::icons;
 use crate::tabs;
 use crate::editor::MyContext;
-use crate::math::matrix::Vec3;
-use crate::math::UnitQuaternion;
 use crate::camera::EditorCamera;
 
 pub struct ViewportTab {

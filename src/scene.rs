@@ -1,4 +1,4 @@
-use crate::{ecs::World, math::{transform::Transform3, matrix::Vec3}, asset::{AssetId, AssetServer}, geometry::mesh::Mesh, graphics::scene::Image, geometry};
+use crate::{ecs::World, math::{transform::Transform3, Vec3}, asset::{AssetId, AssetServer}, geometry::mesh::Mesh, graphics::scene::Image, geometry};
 
 pub struct Name {
 	pub name: String,
@@ -41,13 +41,13 @@ pub fn setup_scene(world: &mut World, assets: &mut AssetServer) {
 
 	world.spawn((
 		Name::new("Grid"),
-		Transform3::<f32>::identity(),
+		Transform3::<f32>::IDENTITY,
 		Renderable { mesh: grid_mesh },
 	));
 
 	world.spawn((
 		Name::new("YBot 1"),
-		Transform3::<f32>::identity(),
+		Transform3::<f32>::IDENTITY,
 		Renderable { mesh: ybot_mesh },
 	));
 

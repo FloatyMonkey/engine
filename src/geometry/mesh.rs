@@ -1,4 +1,4 @@
-use crate::math::matrix::Vec3;
+use crate::math::Vec3;
 
 pub struct Mesh {
 	pub vertices: Vec<Vertex>,

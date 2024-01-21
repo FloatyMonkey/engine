@@ -7,6 +7,12 @@ pub struct Dual<T> {
 	pub d: T,
 }
 
+impl<T> Dual<T> {
+	pub const fn new(r: T, d: T) -> Self {
+		Self { r, d }
+	}
+}
+
 impl<T: Number> Add for Dual<T> {
 	type Output = Dual<T>;
 

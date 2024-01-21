@@ -1,5 +1,4 @@
-use engine::math::{UnitQuaternion, Unit};
-use engine::math::matrix::{Vec2, Vec3};
+use engine::math::{Vec2, Vec3, UnitQuaternion, Unit};
 use engine::gpu::{self, CmdListImpl, DeviceImpl, BufferImpl};
 
 #[repr(C)]

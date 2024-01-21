@@ -1,4 +1,4 @@
-use crate::math::{matrix::Vec3, transform::Transform3};
+use crate::math::{Vec3, transform::Transform3};
 
 pub struct Camera {
 	/// Focal length in millimeters.

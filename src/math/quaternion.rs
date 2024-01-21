@@ -17,13 +17,17 @@ pub struct Quaternion<T> {
 }
 
 impl<T: Number> Quaternion<T> {
+	pub const ZERO: Self = Self {
+		i: T::ZERO, j: T::ZERO, k: T::ZERO, w: T::ZERO
+	};
+
 	/// A quaternions multiplicative identity.
-	pub const fn identity() -> Self {
-		Self { i: T::ZERO, j: T::ZERO, k: T::ZERO, w: T::ONE }
-	}
+	pub const IDENTITY: Self = Self {
+		i: T::ZERO, j: T::ZERO, k: T::ZERO, w: T::ONE
+	};
 
 	/// Constructs a real quaternion.
-	pub fn from_real(real: T) -> Self {
+	pub const fn from_real(real: T) -> Self {
 		Self { i: T::ZERO, j: T::ZERO, k: T::ZERO, w: real }
 	}
 
@@ -51,9 +55,15 @@ impl<T: Number> Quaternion<T> {
 }
 
 impl<T: Float + FloatOps<T>> Quaternion<T> {
+	/// Returns the dot product of `self` and `rhs`.
+	/// This is equal to the cosine of the angle between the two quaternions, multiplied by their lengths.
+	pub fn dot(&self, rhs: Self) -> T {
+		self.i * rhs.i + self.j * rhs.j + self.k * rhs.k + self.w * rhs.w
+	}
+
 	/// Returns the squared length (L2 norm) of this quaternion.
 	pub fn length_sq(&self) -> T {
-		self.i * self.i + self.j * self.j + self.k * self.k + self.w * self.w
+		self.dot(*self)
 	}
 
 	/// Returns the length (L2 norm) of this quaternion.
@@ -76,15 +86,39 @@ impl<T: Float + FloatOps<T>> Quaternion<T> {
 	pub fn normalize(&self) -> Unit<Self> {
 		Unit::new_unchecked(*self / self.length())
 	}
+
+	pub fn log(&self) -> Self {
+		let length = self.imag().length();
+
+		if length < T::SMALL_EPSILON {
+			Self::from_imag(self.imag())
+		} else {
+			let half_angle = length.atan2(self.real());
+			let axis = self.imag() / length;
+
+			Self::from_imag(axis * half_angle)
+		}
+	}
+
+	pub fn exp(&self) -> Self {
+		let half_angle = self.imag().length();
+
+		if half_angle < T::SMALL_EPSILON {
+			Self::from_imag(self.imag())
+		} else {
+			let (sin, cos) = half_angle.sin_cos();
+			let axis = self.imag() / half_angle;
+
+			Self::from_parts(cos, axis * sin)
+		}
+	}
 }
 
 /// A unit quaternion. May be used to represent a 3D rotation.
 pub type UnitQuaternion<T> = Unit<Quaternion<T>>;
 
 impl<T: Number> UnitQuaternion<T> {
-	pub const fn identity() -> Self {
-		Self::new_unchecked(Quaternion::identity())
-	}
+	pub const IDENTITY: Self = Self::new_unchecked(Quaternion::IDENTITY);
 }
 
 impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
@@ -94,6 +128,29 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 
 	pub fn inv(&self) -> Self {
 		self.conj()
+	}
+
+	/// Returns the shortest equivalent of the rotation.
+	/// Ensures the quaternion is on the hemisphere closest to the identity quaternion.
+	pub fn abs(&self) -> Self {
+		if self.w < T::ZERO {
+			-*self
+		} else {
+			*self
+		}
+	}
+
+	/// Creates a new unit quaternion from a vector.
+	/// The vectors direction represents the rotation axis and its length the rotation angle.
+	pub fn from_scaled_axis(scaled_axis: Vector3<T>) -> Self {
+		let q = Quaternion::from_imag(scaled_axis / T::TWO);
+		Self::new_unchecked(q.exp())
+	}
+
+	/// Returns a vector where the direction represents the rotation axis and its length the rotation angle.
+	pub fn scaled_axis(&self) -> Vector3<T> {
+		let log = self.as_ref().log();
+		log.imag() * T::TWO
 	}
 
 	/// Creates a new unit quaternion from a unit vector (rotation axis) and an angle (rotation angle).
@@ -182,7 +239,7 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 		let twist = Quaternion::from_parts(self.real(), projection);
 		
 		let twist = if twist.length_sq() < T::SMALL_EPSILON {
-			Self::identity()
+			Self::IDENTITY
 		} else {
 			twist.normalize()
 		};
@@ -199,10 +256,21 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 
 		Quaternion::from_parts(T::ONE + dot, cross).normalize()
 	}
+
+	/// Performs a linear interpolation between `self` and `rhs` along the shortest path.
+	pub fn nlerp(&self, rhs: Self, t: T) -> Self {
+		let dot = self.dot(*rhs);
+		let sign = if dot < T::ZERO { -T::ONE } else { T::ONE };
+		(**self + (rhs * sign - **self) * t).normalize()
+	}
 }
 
 /// A dual quaternion. May be used to represent a 3D isometry.
 pub type DualQuaternion<T> = Dual<Quaternion<T>>;
+
+impl<T: Number> DualQuaternion<T> {
+	pub const IDENTITY: Self = Self::new(Quaternion::IDENTITY, Quaternion::ZERO);
+}
 
 impl<T: Neg<Output=T>> Neg for Quaternion<T> {
 	type Output = Quaternion<T>;

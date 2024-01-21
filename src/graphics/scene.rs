@@ -2,7 +2,7 @@ use crate::asset::{Asset, UntypedAssetId, AssetId, AssetServer};
 use crate::ecs::World;
 use crate::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl, AccelerationStructureImpl};
 use crate::math::transform::Transform3;
-use crate::math::matrix::{Vec3, Mat3x4, Mat4};
+use crate::math::{Vec3, Mat3x4, Mat4};
 use crate::scene::{DomeLight, RectLight, SphereLight, Renderable};
 use super::acceleration_structure::{Blas, Tlas};
 use super::camera::Camera;
@@ -153,7 +153,7 @@ impl Scene {
 		Self {
 			tlas,
 			camera: Camera::default(),
-			camera_transform: Transform3::identity(),
+			camera_transform: Transform3::IDENTITY,
 			instance_data_buffer,
 			light_data_buffer,
 			light_count: 0,

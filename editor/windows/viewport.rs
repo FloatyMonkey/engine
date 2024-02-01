@@ -1,4 +1,4 @@
-use crate::math::{matrix, Mat4, Vec3, transform::Transform3, UnitQuaternion};
+use crate::math::{Mat4, Vec3, transform::Transform3, UnitQuaternion};
 use crate::time::Time;
 
 use crate::icons;
@@ -76,9 +76,8 @@ impl tabs::Tab<MyContext> for ViewportTab {
 
 		navigation_gizmo(ui, cursor.right_top() + egui::vec2(-10.0 - 80.0, 10.0), ctx.camera_transform.rotation.inv());
 
-		let aspect_ratio = 16.0 / 9.0; // TODO: hardcoded
-		let projection_matrix = matrix::perspective(24.0_f32.to_radians(), aspect_ratio, 0.1, 1000.0);
 		let view_matrix = Mat4::from(ctx.camera_transform.inv());
+		let projection_matrix = ctx.camera.projection_matrix();
 
 		if let Some(selection) = ctx.selection.iter().next() {
 			if let Some(transform) = ctx.world.entity_mut(*selection).get_mut::<Transform3>() {

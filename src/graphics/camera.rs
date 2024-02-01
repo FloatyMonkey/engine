@@ -1,5 +1,6 @@
-use crate::math::{Vec3, transform::Transform3};
+use crate::math::{transform::Transform3, Mat4, Vec3};
 
+#[derive(Clone, Copy)]
 pub struct Camera {
 	/// Focal length in millimeters.
 	pub focal_length: f32,
@@ -30,6 +31,24 @@ impl Default for Camera {
 			shutter_speed: 1.0 / 125.0,
 			iso: 100.0,
 		}
+	}
+}
+
+impl Camera {
+	pub fn projection_matrix(&self) -> Mat4 {
+		let near_clip = 0.01;
+		let far_clip = 1000.0;
+
+		let inv_x = 2.0 * self.focal_length / self.sensor_width;
+		let inv_y = 2.0 * self.focal_length / self.sensor_height;
+		let inv_z = far_clip / (near_clip - far_clip);
+
+		Mat4::from_array([
+			inv_x, 0.0, 0.0, 0.0,
+			0.0, inv_y, 0.0, 0.0,
+			0.0, 0.0, inv_z, near_clip * inv_z,
+			0.0, 0.0, -1.0, 0.0,
+		])
 	}
 }
 

@@ -84,15 +84,15 @@ fn main() {
 		gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
 		gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
 
-		let aspect_ratio = 16.0 / 9.0; // TODO: hardcoded
-		let projection_matrix = math::matrix::perspective(24.0_f32.to_radians(), aspect_ratio, 0.1, 1000.0);
 		let view_matrix = Mat4::from(editor.context.camera_transform.inv());
+		let projection_matrix = editor.context.camera.projection_matrix();
 		let view_projection = projection_matrix * view_matrix;
 		gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
 
 		// Path Tracer
 		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
 
+		scene.camera = editor.context.camera;
 		scene.camera_transform = editor.context.camera_transform;
 		scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
 		path_tracer.reset();

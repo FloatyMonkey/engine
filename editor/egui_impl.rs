@@ -105,14 +105,7 @@ impl EguiRenderer {
 		let size_in_points = screen_desc.size_in_points();
 		let vb_id = self.vb.srv_index().unwrap();
 
-		cmd.set_viewport(&gpu::Viewport {
-			x: 0.0,
-			y: 0.0,
-			width: size_in_pixels[0] as f32,
-			height: size_in_pixels[1] as f32,
-			min_depth: 0.0,
-			max_depth: 1.0,
-		});
+		cmd.set_viewport(&gpu::Rect::from_size(size_in_pixels).into(), 0.0..1.0);
 
 		cmd.set_index_buffer(&self.ib, 0, gpu::Format::R32UInt);
 		cmd.set_graphics_pipeline(&self.pipeline);
@@ -121,7 +114,7 @@ impl EguiRenderer {
 
 		self.paint_primitives(cmd, clipped_primitives, screen_desc);
 	}
-	
+
 	fn paint_primitives(&self, cmd: &gpu::CmdList, clipped_primitives: &[egui::ClippedPrimitive], screen_desc: &ScreenDesc) {
 		for (i, egui::ClippedPrimitive { clip_rect, primitive }) in clipped_primitives.iter().enumerate() {
 			match primitive {
@@ -188,7 +181,7 @@ impl EguiRenderer {
 		let clip_max_x = clip_max_x.clamp(clip_min_x, size_in_pixels[0] as u32);
 		let clip_max_y = clip_max_y.clamp(clip_min_y, size_in_pixels[1] as u32);
 
-		cmd.set_scissor(&gpu::Scissor {
+		cmd.set_scissor(&gpu::Rect {
 			left: clip_min_x,
 			top: clip_min_y,
 			right: clip_max_x,

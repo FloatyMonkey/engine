@@ -164,28 +164,17 @@ impl GizmoRenderer {
 		cmd.graphics_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
-			render_targets: &[&self.texture],
-			rt_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }),
 			depth_stencil: None,
+			color_attachments: &[&self.texture],
+			color_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }),
 			depth_load: gpu::LoadOp::Discard,
 			stencil_load: gpu::LoadOp::Discard,
 		});
 
-		cmd.set_viewport(&gpu::Viewport {
-			x: 0.0,
-			y: 0.0,
-			width: self.resolution[0] as f32,
-			height: self.resolution[1] as f32,
-			min_depth: 0.0,
-			max_depth: 1.0,
-		});
+		let rect = gpu::Rect::from_size(self.resolution);
 
-		cmd.set_scissor(&gpu::Scissor {
-			left: 0,
-			top: 0,
-			right: self.resolution[0] as _,
-			bottom: self.resolution[1] as _,
-		});
+		cmd.set_viewport(&rect.into(), 0.0..1.0);
+		cmd.set_scissor(&rect);
 
 		cmd.draw(0..4, 0..gizmo.vertices.len() as u32 / 2);
 

@@ -6,14 +6,18 @@ use crate::tabs;
 use crate::editor::MyContext;
 use crate::camera::EditorCamera;
 
+const FRAME_TIME_SMOOTHING: f32 = 30.0;
+
 pub struct ViewportTab {
 	name: String,
+	frame_time: f32,
 }
 
 impl ViewportTab {
 	pub fn new() -> Self {
 		ViewportTab {
 			name: format!("{} Viewport", icons::VIEW3D),
+			frame_time: 0.0,
 		}
 	}
 }
@@ -72,7 +76,8 @@ impl tabs::Tab<MyContext> for ViewportTab {
 		);
 
 		let time = ctx.world.get_singleton::<Time>().unwrap();
-		ui.painter().text(cursor.left_top() + egui::vec2(10.0, 10.0), egui::Align2::LEFT_TOP, format!("dt: {:.2} ms", time.delta_seconds() * 1000.0), egui::FontId::monospace(12.0), egui::Color32::WHITE);
+		self.frame_time += (time.delta_seconds() - self.frame_time) / FRAME_TIME_SMOOTHING;
+		ui.painter().text(cursor.left_top() + egui::vec2(10.0, 10.0), egui::Align2::LEFT_TOP, format!("dt: {:.2} ms", self.frame_time * 1000.0), egui::FontId::monospace(12.0), egui::Color32::WHITE);
 
 		navigation_gizmo(ui, cursor.right_top() + egui::vec2(-10.0 - 80.0, 10.0), ctx.camera_transform.rotation.inv());
 

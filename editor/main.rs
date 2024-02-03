@@ -107,16 +107,16 @@ fn main() {
 		// Editor
 		cmd.debug_event_push("Editor", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
 
-		cmd.barriers(&[gpu::Barrier::texture(
-			swap_chain.backbuffer_texture(),
-			gpu::TextureLayout::Present,
-			gpu::TextureLayout::RenderTarget
-		)]);
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: swap_chain.backbuffer_texture(),
+			old_layout: gpu::TextureLayout::Present,
+			new_layout: gpu::TextureLayout::RenderTarget,
+		}]));
 
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
-			render_targets: &[swap_chain.backbuffer_texture()],
-			rt_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
 			depth_stencil: None,
+			color_attachments: &[swap_chain.backbuffer_texture()],
+			color_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
 			depth_load: gpu::LoadOp::Discard,
 			stencil_load: gpu::LoadOp::Discard,
 		});
@@ -128,11 +128,11 @@ fn main() {
 
 		cmd.render_pass_end();
 
-		cmd.barriers(&[gpu::Barrier::texture(
-			swap_chain.backbuffer_texture(),
-			gpu::TextureLayout::RenderTarget,
-			gpu::TextureLayout::Present,
-		)]);
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: swap_chain.backbuffer_texture(),
+			old_layout: gpu::TextureLayout::RenderTarget,
+			new_layout: gpu::TextureLayout::Present,
+		}]));
 
 		cmd.debug_event_pop();
 

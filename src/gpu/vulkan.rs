@@ -127,6 +127,52 @@ fn map_border_color(border_color: super::BorderColor) -> vk::BorderColor {
 	}
 }
 
+fn map_image_type(desc: &super::TextureDesc) -> vk::ImageType {
+	if desc.depth > 1 { return vk::ImageType::TYPE_3D; }
+	if desc.height > 1 { return vk::ImageType::TYPE_2D; }
+	return vk::ImageType::TYPE_1D;
+}
+
+fn map_image_layout(layout: super::TextureLayout) -> vk::ImageLayout {
+	match layout {
+		super::TextureLayout::Common            => vk::ImageLayout::GENERAL,
+		super::TextureLayout::Present           => vk::ImageLayout::PRESENT_SRC_KHR,
+		super::TextureLayout::CopySrc           => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+		super::TextureLayout::CopyDst           => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+		super::TextureLayout::ShaderResource    => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+		super::TextureLayout::UnorderedAccess   => vk::ImageLayout::GENERAL,
+		super::TextureLayout::RenderTarget      => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+		super::TextureLayout::DepthStencilWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		super::TextureLayout::DepthStencilRead  => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+	}
+}
+
+fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
+	let mut vk_flags = vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
+
+	if usage.contains(super::BufferUsage::INDEX)                  { vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER; }
+	if usage.contains(super::BufferUsage::SHADER_RESOURCE)        { vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER; }
+	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER; }
+	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
+		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
+		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
+		vk_flags |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
+	}
+
+	vk_flags
+}
+
+fn map_image_usage_flags(usage: super::TextureUsage) -> vk::ImageUsageFlags {
+	let mut vk_flags = vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
+
+	if usage.contains(super::TextureUsage::RENDER_TARGET)    { vk_flags |= vk::ImageUsageFlags::COLOR_ATTACHMENT; }
+	if usage.contains(super::TextureUsage::DEPTH_STENCIL)    { vk_flags |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT; }
+	if usage.contains(super::TextureUsage::SHADER_RESOURCE)  { vk_flags |= vk::ImageUsageFlags::SAMPLED; }
+	if usage.contains(super::TextureUsage::UNORDERED_ACCESS) { vk_flags |= vk::ImageUsageFlags::STORAGE; }
+
+	vk_flags
+}
+
 fn map_compare_op(compare_op: super::CompareOp) -> vk::CompareOp {
 	match compare_op {
 		super::CompareOp::Never        => vk::CompareOp::NEVER,
@@ -313,17 +359,43 @@ struct Sampler {
 impl super::SamplerImpl<Device> for Sampler {}
 
 struct AccelerationStructure {}
+
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
-	fn srv_index(&self) -> u32 {
+	fn srv_index(&self) -> Option<u32> {
 		todo!()
 	}
 
 	fn instance_descriptor_size() -> usize {
-		todo!()
+		std::mem::size_of::<vk::AccelerationStructureInstanceKHR>()
 	}
 
 	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
-		todo!()
+		let t = &instance.transform;
+
+		let vk_instance = vk::AccelerationStructureInstanceKHR {
+			transform: vk::TransformMatrixKHR {
+				matrix: [
+					t[0][0], t[0][1], t[0][2], t[0][3],
+					t[1][0], t[1][1], t[1][2], t[1][3],
+					t[2][0], t[2][1], t[2][2], t[2][3],
+				],
+			},
+			instance_custom_index_and_mask: vk::Packed24_8::new(
+				instance.user_id,
+				instance.mask,
+			),
+			instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
+				instance.contribution_to_hit_group_index,
+				map_acceleration_structure_instance_flags(instance.flags).as_raw() as _,
+			),
+			acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
+				device_handle: instance.bottom_level.0,
+			},
+		};
+
+		unsafe {
+			std::ptr::copy_nonoverlapping(&vk_instance as *const _ as _, slice.as_mut_ptr(), std::mem::size_of::<vk::AccelerationStructureInstanceKHR>());
+		}
 	}
 }
 
@@ -389,7 +461,27 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
-		todo!()
+		let create_info = vk::ImageCreateInfo::builder()
+			.image_type(map_image_type(&desc))
+			.format(map_format(desc.format))
+			.extent(vk::Extent3D {
+				width: desc.width as _,
+				height: desc.height as _,
+				depth: desc.depth,
+			})
+			.mip_levels(desc.mip_levels)
+			.array_layers(desc.array_size)
+			.samples(vk::SampleCountFlags::TYPE_1)
+			.tiling(vk::ImageTiling::OPTIMAL)
+			.usage(map_image_usage_flags(desc.usage))
+			.sharing_mode(vk::SharingMode::EXCLUSIVE)
+			.initial_layout(map_image_layout(desc.layout));
+
+		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
+
+		// TODO: Attach memory
+
+		Ok(Texture { image })
 	}
 
 	fn create_sampler(&mut self, desc: &super::SamplerDesc) -> Result<Self::Sampler, super::Error> {
@@ -427,7 +519,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
-		/*let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
+		let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
 			.topology(map_topology(desc.topology));
 
 		let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
@@ -445,23 +537,36 @@ impl super::DeviceImpl for Device {
 			.rasterization_samples(vk::SampleCountFlags::TYPE_1)
 			.sample_mask(&[1]);
 
-		let mut depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder();
+		let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()
+			.depth_test_enable(desc.depth_stencil.depth_test_enable)
+			.depth_write_enable(desc.depth_stencil.depth_write_enable)
+			.depth_compare_op(map_compare_op(desc.depth_stencil.depth_op))
+			.stencil_test_enable(desc.depth_stencil.stencil_enable)
+			.front(vk::StencilOpState {
+				fail_op: map_stencil_op(&desc.depth_stencil.front_face.fail),
+				pass_op: map_stencil_op(&desc.depth_stencil.front_face.pass),
+				depth_fail_op: map_stencil_op(&desc.depth_stencil.front_face.depth_fail),
+				compare_op: map_compare_op(desc.depth_stencil.front_face.func),
+				compare_mask: desc.depth_stencil.stencil_read_mask as _,
+				write_mask: desc.depth_stencil.stencil_write_mask as _,
+				reference: 0,
+			})
+			.back(vk::StencilOpState {
+				fail_op: map_stencil_op(&desc.depth_stencil.back_face.fail),
+				pass_op: map_stencil_op(&desc.depth_stencil.back_face.pass),
+				depth_fail_op: map_stencil_op(&desc.depth_stencil.back_face.depth_fail),
+				compare_op: map_compare_op(desc.depth_stencil.back_face.func),
+				compare_mask: desc.depth_stencil.stencil_read_mask as _,
+				write_mask: desc.depth_stencil.stencil_write_mask as _,
+				reference: 0,
+			});
 
-		if let Some(ref depth_stencil) = desc.depth_stencil {
-			depth_stencil_state = depth_stencil_state
-				// depth_test_enable
-				// depth_write_enable
-				// stencil_test_enable
-				.front(map_depth_stencil_face_desc(&depth_stencil.front, depth_stencil.read_mask, depth_stencil.write_mask))
-				.back(map_depth_stencil_face_desc(&depth_stencil.back, depth_stencil.read_mask, depth_stencil.write_mask));
-
-			if depth_stencil.bias.constant != 0.0 || depth_stencil.bias.slope != 0.0 {
-				rasterization_state = rasterization_state
-					.depth_bias_enable(true)
-					.depth_bias_constant_factor(depth_stencil.bias.constant as f32)
-					.depth_bias_clamp(depth_stencil.bias.clamp)
-					.depth_bias_slope_factor(depth_stencil.bias.slope);
-			}
+		if desc.rasterizer.depth_bias.constant != 0.0 || desc.rasterizer.depth_bias.slope != 0.0 {
+			rasterization_state = rasterization_state
+				.depth_bias_enable(true)
+				.depth_bias_constant_factor(desc.rasterizer.depth_bias.constant as f32)
+				.depth_bias_clamp(desc.rasterizer.depth_bias.clamp)
+				.depth_bias_slope_factor(desc.rasterizer.depth_bias.slope);
 		}
 
 		let color_attachments = desc.color_attachments.iter().map(|attachment| {
@@ -498,8 +603,7 @@ impl super::DeviceImpl for Device {
 			.map(|attachment| map_format(attachment.format))
 			.collect::<Vec<_>>();
 
-		let depth_stencil_format = desc.depth_stencil
-			.map_or(vk::Format::UNDEFINED, |ds| map_format(ds.format));
+		let depth_stencil_format = map_format(desc.depth_stencil.format);
 
 		let mut rendering = vk::PipelineRenderingCreateInfo::builder()
 			.color_attachment_formats(&color_target_formats)
@@ -519,8 +623,9 @@ impl super::DeviceImpl for Device {
 			.push_next(&mut rendering)
 			.build();
 
-		unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[graphics_pipeline_create_info], None) }.unwrap()[0]*/
-		todo!()
+		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[graphics_pipeline_create_info], None) }.unwrap()[0];
+
+		Ok(GraphicsPipeline { pipeline })
 	}
 
 	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
@@ -560,7 +665,10 @@ struct CmdList {
 	command_buffer: vk::CommandBuffer,
 	device: ash::Device,
 
-	debug_utils: Option<ash::extensions::ext::DebugUtils>, // TODO: initialize variable
+	// TODO: Initialize variables, move to Device
+	acceleration_structure_ext: ash::extensions::khr::AccelerationStructure,
+	ray_tracing_pipeline_ext: ash::extensions::khr::RayTracingPipeline,
+	debug_utils_ext: Option<ash::extensions::ext::DebugUtils>,
 }
 
 impl CmdList {
@@ -571,10 +679,6 @@ impl CmdList {
 
 impl super::CmdListImpl<Device> for CmdList {
 	fn reset(&mut self, device: &Device, swap_chain: &SwapChain) {
-		todo!()
-	}
-	
-	fn backbuffer_index(&self) -> u32 {
 		todo!()
 	}
 
@@ -700,18 +804,46 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn barriers(&self, barriers: &[super::Barrier<Device>]) {
-		todo!()
+	fn barriers(&self, barriers: &super::Barriers<Device>) {
+		let memory_barriers = barriers.global.iter().map(|barrier| {
+			vk::MemoryBarrier2::builder()
+				.build()
+		}).collect::<Vec<_>>();
+
+		let buffer_memory_barriers = barriers.buffer.iter().map(|barrier| {
+			vk::BufferMemoryBarrier2::builder()
+				.buffer(barrier.buffer.buffer)
+				.build()
+		}).collect::<Vec<_>>();
+
+		let image_memory_barriers = barriers.texture.iter().map(|barrier| {
+			vk::ImageMemoryBarrier2::builder()
+				.old_layout(map_image_layout(barrier.old_layout))
+				.new_layout(map_image_layout(barrier.new_layout))
+				.image(barrier.texture.image)
+				.build()
+		}).collect::<Vec<_>>();
+
+		let dependency_info = vk::DependencyInfo::builder()
+			.memory_barriers(&memory_barriers)
+			.buffer_memory_barriers(&buffer_memory_barriers)
+			.image_memory_barriers(&image_memory_barriers);
+
+		unsafe {
+			self.device.cmd_pipeline_barrier2(self.command_buffer, &dependency_info);
+		}
+
+		panic!("Not fully implemented");
 	}
 
-	fn set_viewport(&self, viewport: &super::Viewport) {
+	fn set_viewport(&self, rect: &super::Rect<f32>, depth: Range<f32>) {
 		let vk_viewport = vk::Viewport {
-			x: viewport.x,
-			y: viewport.y + viewport.height,
-			width: viewport.width,
-			height: -viewport.height,
-			min_depth: viewport.min_depth,
-			max_depth: viewport.max_depth,
+			x: rect.left,
+			y: rect.bottom,
+			width: rect.right - rect.left,
+			height: rect.top - rect.bottom,
+			min_depth: depth.start,
+			max_depth: depth.end,
 		};
 
 		unsafe {
@@ -719,15 +851,15 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn set_scissor(&self, scissor: &super::Scissor) {
+	fn set_scissor(&self, rect: &super::Rect<u32>) {
 		let vk_rect = vk::Rect2D {
 			offset: vk::Offset2D {
-				x: scissor.left as _,
-				y: scissor.top as _,
+				x: rect.left as _,
+				y: rect.top as _,
 			},
 			extent: vk::Extent2D {
-				width: (scissor.right - scissor.left),
-				height: (scissor.top - scissor.bottom),
+				width: (rect.right - rect.left),
+				height: (rect.top - rect.bottom),
 			},
 		};
 
@@ -818,8 +950,35 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc<Device>) {
-		todo!()
+	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc) {
+		unsafe {
+			self.ray_tracing_pipeline_ext.cmd_trace_rays(
+				self.command_buffer,
+				&desc.raygen.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
+					device_address: t.ptr.0,
+					stride: t.stride as _,
+					size: t.size as _,
+				}),
+				&desc.miss.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
+					device_address: t.ptr.0,
+					stride: t.stride as _,
+					size: t.size as _,
+				}),
+				&desc.hit_group.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
+					device_address: t.ptr.0,
+					stride: t.stride as _,
+					size: t.size as _,
+				}),
+				&desc.callable.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
+					device_address: t.ptr.0,
+					stride: t.stride as _,
+					size: t.size as _,
+				}),
+				desc.width,
+				desc.height,
+				desc.depth,
+			);
+		}
 	}
 
 	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
@@ -827,7 +986,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
-		if let Some(debug_utils) = &self.debug_utils {
+		if let Some(debug_utils) = &self.debug_utils_ext {
 			let label = CString::new(name).unwrap();
 			let label = vk::DebugUtilsLabelEXT::builder()
 				.label_name(&label)
@@ -840,7 +999,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
-		if let Some(debug_utils) = &self.debug_utils {
+		if let Some(debug_utils) = &self.debug_utils_ext {
 			let label = CString::new(name).unwrap();
 			let label = vk::DebugUtilsLabelEXT::builder()
 				.label_name(&label)
@@ -853,7 +1012,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn debug_event_pop(&self) {
-		if let Some(debug_utils) = &self.debug_utils {
+		if let Some(debug_utils) = &self.debug_utils_ext {
 			unsafe {
 				debug_utils.cmd_end_debug_utils_label(self.command_buffer);
 			}
@@ -862,30 +1021,6 @@ impl super::CmdListImpl<Device> for CmdList {
 }
 
 /*
-fn create_acceleration_structure() {
-
-	let accel: vk::AccelerationStructureBuildGeometryInfoKHR;
-	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
-
-	let instance: super::AccelerationStructureInstance = todo!();
-	let vk_instance = vk::AccelerationStructureInstanceKHR {
-		transform: vk::TransformMatrixKHR {
-			matrix: instance.transform,
-		},
-		instance_custom_index_and_mask: vk::Packed24_8::new(
-			instance.user_id,
-			instance.mask,
-		),
-		instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
-			instance.contribution_to_hit_group_index,
-			map_acceleration_structure_instance_flags(instance.flags).as_raw() as _,
-		),
-		acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-			device_handle: instance.bottom_level.0,
-		},
-	};
-}
-
 fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildInputs) {
 
 	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();

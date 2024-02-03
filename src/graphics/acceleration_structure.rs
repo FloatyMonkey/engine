@@ -9,7 +9,6 @@ pub struct Blas {
 
 impl Blas {
 	pub fn create(device: &mut gpu::Device, vertex_buffer: &gpu::Buffer, index_buffer: &gpu::Buffer, vertex_count: usize, index_count: usize, vertex_stride: usize) -> Self {
-
 		let geo = gpu::AccelerationStructureTrianglesDesc {
 			vertex_buffer: vertex_buffer.gpu_ptr(),
 			vertex_format: gpu::Format::RGB32Float,
@@ -18,13 +17,13 @@ impl Blas {
 			index_buffer: index_buffer.gpu_ptr(),
 			index_format: gpu::Format::R32UInt,
 			index_count,
-			transform: gpu::GpuPtr::null(),
+			transform: gpu::GpuPtr::NULL,
 		};
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
 			kind: gpu::AccelerationStructureKind::BottomLevel,
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-			instances: gpu::AccelerationStructureInstancesDesc { data: gpu::GpuPtr::null(), count: 0 },
+			instances: gpu::AccelerationStructureInstancesDesc { data: gpu::GpuPtr::NULL, count: 0 },
 			geometry: vec![gpu::GeometryDesc {
 				flags: gpu::AccelerationStructureBottomLevelFlags::OPAQUE,
 				part: gpu::GeometryPart::Triangles(geo),
@@ -34,14 +33,14 @@ impl Blas {
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
 
 		let buffer = device.create_buffer(&gpu::BufferDesc {
-			size: gpu::align_pow2(sizes.acceleration_structure_size as u64, 256) as usize, // TODO: hardcoded alignment
+			size: sizes.acceleration_structure_size,
 			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: gpu::align_pow2(sizes.build_scratch_buffer_size as u64, 256) as usize, // TODO: hardcoded alignment
-			usage: gpu::BufferUsage::empty(),
+			size: sizes.build_scratch_buffer_size,
+			usage: gpu::BufferUsage::UNORDERED_ACCESS,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
@@ -104,14 +103,14 @@ impl Tlas {
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
 
 		let buffer = device.create_buffer(&gpu::BufferDesc {
-			size: gpu::align_pow2(sizes.acceleration_structure_size as u64, 256) as usize, // TODO: hardcoded alignment
+			size: sizes.acceleration_structure_size,
 			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: gpu::align_pow2(sizes.build_scratch_buffer_size as u64, 256) as usize, // TODO: hardcoded alignment
-			usage: gpu::BufferUsage::empty(),
+			size: sizes.build_scratch_buffer_size,
+			usage: gpu::BufferUsage::UNORDERED_ACCESS,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 

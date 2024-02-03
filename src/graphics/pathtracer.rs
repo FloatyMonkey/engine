@@ -40,9 +40,9 @@ impl PathTracer {
 			gpu::ShaderLibrary { ty: gpu::ShaderType::ClosestHit, entry: "closesthit".to_string(), shader: shader_closesthit },
 		];
 
-		let hit_groups = vec![
-			gpu::ShaderHitGroup {
-				ty: gpu::ShaderHitGroupType::Triangles,
+		let groups = vec![
+			gpu::ShaderGroup {
+				ty: gpu::ShaderGroupType::Triangles,
 				name: "hit_group".to_string(),
 				general: None,
 				closest_hit: Some(2),
@@ -82,7 +82,7 @@ impl PathTracer {
 			max_attribute_size: 8,
 			max_payload_size: 128, // TODO: Arbitrary
 			libraries,
-			hit_groups,
+			groups,
 			descriptor_layout,
 		};
 
@@ -132,14 +132,13 @@ impl PathTracer {
 			output_texture,
 			sample_index: 0,
 			rng: StdRng::seed_from_u64(0),
-			
 		}
 	}
 
 	pub fn render(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
 		let push_constants = PushConstants {
 			camera: GpuCamera::from_camera(&scene.camera, &scene.camera_transform),
-			tlas_index: scene.tlas.accel.srv_index(),
+			tlas_index: scene.tlas.accel.srv_index().unwrap(),
 			combined_index: self.output_texture.uav_index().unwrap(),
 			instance_data_index: scene.instance_data_buffer.srv_index().unwrap(),
 			light_data_index: scene.light_data_buffer.srv_index().unwrap(),
@@ -154,20 +153,17 @@ impl PathTracer {
 
 		cmd.dispatch_rays(&gpu::DispatchRaysDesc {
 			raygen: Some(gpu::ShaderTable {
-				buffer: &self.shader_table,
-				offset: 64 * 0,
+				ptr: self.shader_table.gpu_ptr().offset(64 * 0),
 				size: 32,
 				stride: 32,
 			}),
 			miss: Some(gpu::ShaderTable {
-				buffer: &self.shader_table,
-				offset: 64 * 1,
+				ptr: self.shader_table.gpu_ptr().offset(64 *  1),
 				size: 32,
 				stride: 32,
 			}),
 			hit_group: Some(gpu::ShaderTable {
-				buffer: &self.shader_table,
-				offset: 64 * 2,
+				ptr: self.shader_table.gpu_ptr().offset(64 * 2),
 				size: 32,
 				stride: 32,
 			}),
@@ -177,7 +173,7 @@ impl PathTracer {
 			depth: 1,
 		});
 
-		cmd.barriers(&[gpu::Barrier::global()]);
+		cmd.barriers(&gpu::Barriers::global());
 
 		self.sample_index += 1;
 	}
@@ -254,7 +250,7 @@ impl Compositor {
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 		cmd.dispatch(self.res[0].div_ceil(16), self.res[1].div_ceil(16), 1);
 
-		cmd.barriers(&[gpu::Barrier::global()]);
+		cmd.barriers(&gpu::Barriers::global());
 	}
 
 	pub fn texture(&self) -> &gpu::Texture {

@@ -72,7 +72,7 @@ impl MipGen {
 			cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 			cmd.dispatch(output_res.div_ceil(16), output_res.div_ceil(16), 1);
 
-			cmd.barriers(&[gpu::Barrier::global()]);
+			cmd.barriers(&gpu::Barriers::global());
 		}
 	}
 }

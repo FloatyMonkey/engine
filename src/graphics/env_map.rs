@@ -119,7 +119,7 @@ impl ImportanceMap {
 
 		cmd.dispatch(dimension.div_ceil(16), dimension.div_ceil(16), 1);
 		
-		cmd.barriers(&[gpu::Barrier::global()]);
+		cmd.barriers(&gpu::Barriers::global());
 
 		// Generate mips.
 		self.mipgen.generate_mips(cmd, &self.importance_map, dimension, &self.uavs);

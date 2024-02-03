@@ -1,9 +1,8 @@
-use super::*;
-
 use crate::os::NativeHandle;
 
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
+use std::ops::Range;
 use std::result;
 use std::str;
 
@@ -25,7 +24,7 @@ struct WinPixEventRuntime {
 }
 
 impl WinPixEventRuntime {
-	pub fn create() -> Option<WinPixEventRuntime> {
+	pub fn load() -> Option<Self> {
 		unsafe {
 			let module = LoadLibraryA(s!("WinPixEventRuntime.dll")).ok()?;
 
@@ -33,38 +32,26 @@ impl WinPixEventRuntime {
 			let end_event = GetProcAddress(module, s!("PIXEndEventOnCommandList"))?;
 			let set_marker = GetProcAddress(module, s!("PIXSetMarkerOnCommandList"))?;
 
-			Some(WinPixEventRuntime {
-				begin_event: std::mem::transmute::<*const usize, BeginEventOnCommandList>(begin_event as *const usize),
-				end_event: std::mem::transmute::<*const usize, EndEventOnCommandList>(end_event as *const usize),
-				set_marker: std::mem::transmute::<*const usize, SetMarkerOnCommandList>(set_marker as *const usize),
+			Some(Self {
+				begin_event: std::mem::transmute::<*const usize, BeginEventOnCommandList>(begin_event as _),
+				end_event: std::mem::transmute::<*const usize, EndEventOnCommandList>(end_event as _),
+				set_marker: std::mem::transmute::<*const usize, SetMarkerOnCommandList>(set_marker as _),
 			})
 		}
 	}
 
-	pub fn set_marker_on_command_list(&self, command_list: &ID3D12GraphicsCommandList6, color: u64, name: &str) {
-		unsafe {
-			let null_name = CString::new(name).unwrap();
-			let cmd_list = std::mem::transmute::<ID3D12GraphicsCommandList6, *const core::ffi::c_void>(command_list.clone());
-			(self.set_marker)(cmd_list, color, PSTR(null_name.as_ptr() as _));
-			let _ = std::mem::transmute::<*const core::ffi::c_void, ID3D12GraphicsCommandList6>(cmd_list);
-		}
+	pub fn set_marker_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
+		let null_name = CString::new(name).unwrap();
+		(self.set_marker)(command_list.as_raw(), color, PSTR(null_name.as_ptr() as _));
 	}
 
-	pub fn begin_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList6, color: u64, name: &str) {
-		unsafe {
-			let null_name = CString::new(name).unwrap();
-			let cmd_list = std::mem::transmute::<ID3D12GraphicsCommandList6, *const core::ffi::c_void>(command_list.clone());
-			(self.begin_event)(cmd_list, color, PSTR(null_name.as_ptr() as _));
-			let _ = std::mem::transmute::<*const core::ffi::c_void, ID3D12GraphicsCommandList6>(cmd_list);
-		}
+	pub fn begin_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
+		let null_name = CString::new(name).unwrap();
+		(self.begin_event)(command_list.as_raw(), color, PSTR(null_name.as_ptr() as _));
 	}
 
-	pub fn end_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList6) {
-		unsafe {
-			let cmd_list = std::mem::transmute::<ID3D12GraphicsCommandList6, *const core::ffi::c_void>(command_list.clone());
-			(self.end_event)(cmd_list);
-			let _ = std::mem::transmute::<*const core::ffi::c_void, ID3D12GraphicsCommandList6>(cmd_list);
-		}
+	pub fn end_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7) {
+		(self.end_event)(command_list.as_raw());
 	}
 }
 
@@ -73,7 +60,7 @@ pub struct Device {
 	dxgi_factory: IDXGIFactory6,
 	device: ID3D12Device10,
 	command_allocator: ID3D12CommandAllocator,
-	command_list: ID3D12GraphicsCommandList,
+	command_list: ID3D12GraphicsCommandList7,
 	command_queue: ID3D12CommandQueue,
 	pix: Option<WinPixEventRuntime>,
 	resource_heap: Heap,
@@ -99,7 +86,7 @@ pub struct SwapChain {
 
 pub struct AccelerationStructure {
 	resource: ID3D12Resource,
-	srv_index: usize,
+	srv_index: Option<usize>,
 }
 
 pub struct GraphicsPipeline {
@@ -122,7 +109,7 @@ pub struct RaytracingPipeline {
 pub struct CmdList {
 	bb_index: usize,
 	command_allocator: Vec<ID3D12CommandAllocator>,
-	command_list: Vec<ID3D12GraphicsCommandList6>,
+	command_list: Vec<ID3D12GraphicsCommandList7>,
 	pix: Option<WinPixEventRuntime>,
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
@@ -138,7 +125,7 @@ pub struct Buffer {
 
 #[derive(Clone)]
 pub struct Texture {
-	desc: TextureDesc,
+	desc: super::TextureDesc,
 	resource: ID3D12Resource,
 	srv_index: Option<usize>,
 	uav_index: Option<usize>,
@@ -314,18 +301,17 @@ fn map_srv_dimension(desc: &super::TextureDesc) -> D3D12_SRV_DIMENSION {
 	return D3D12_SRV_DIMENSION_TEXTURE1D;
 }
 
-// TODO: When implementing enhanced barriers, use D3D12_BARRIER_LAYOUT instead of D3D12_RESOURCE_STATES.
-fn map_texture_layout(resource_state: super::TextureLayout) -> D3D12_RESOURCE_STATES {
-	match resource_state {
-		super::TextureLayout::Common            => D3D12_RESOURCE_STATE_COMMON,
-		super::TextureLayout::Present           => D3D12_RESOURCE_STATE_PRESENT,
-		super::TextureLayout::CopySrc           => D3D12_RESOURCE_STATE_COPY_SOURCE,
-		super::TextureLayout::CopyDst           => D3D12_RESOURCE_STATE_COPY_DEST,
-		super::TextureLayout::ShaderResource    => D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-		super::TextureLayout::UnorderedAccess   => D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-		super::TextureLayout::RenderTarget      => D3D12_RESOURCE_STATE_RENDER_TARGET,
-		super::TextureLayout::DepthStencilWrite => D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		super::TextureLayout::DepthStencilRead  => D3D12_RESOURCE_STATE_DEPTH_READ,
+fn map_texture_layout(layout: super::TextureLayout) -> D3D12_BARRIER_LAYOUT {
+	match layout {
+		super::TextureLayout::Common            => D3D12_BARRIER_LAYOUT_COMMON,
+		super::TextureLayout::Present           => D3D12_BARRIER_LAYOUT_PRESENT,
+		super::TextureLayout::CopySrc           => D3D12_BARRIER_LAYOUT_COPY_SOURCE,
+		super::TextureLayout::CopyDst           => D3D12_BARRIER_LAYOUT_COPY_DEST,
+		super::TextureLayout::ShaderResource    => D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+		super::TextureLayout::UnorderedAccess   => D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+		super::TextureLayout::RenderTarget      => D3D12_BARRIER_LAYOUT_RENDER_TARGET,
+		super::TextureLayout::DepthStencilWrite => D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,
+		super::TextureLayout::DepthStencilRead  => D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ,
 	}
 }
 
@@ -333,8 +319,7 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> D3D12_RESOURCE_FLAGS {
 	let mut dx_flags = D3D12_RESOURCE_FLAG_NONE;
 
 	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { dx_flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS; }
-	// TODO: When implmenting enhanced barriers, use D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE instead of ALLOW_UNORDERED_ACCESS.
-	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) { dx_flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS; }
+	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) { dx_flags |= D3D12_RESOURCE_FLAG_RAYTRACING_ACCELERATION_STRUCTURE; }
 
 	dx_flags
 }
@@ -489,18 +474,60 @@ fn map_load_op<T: Default>(load_op: super::LoadOp<T>) -> (D3D12_RENDER_PASS_BEGI
 	}
 }
 
-fn transition_barrier(resource: &ID3D12Resource, state_before: D3D12_RESOURCE_STATES, state_after: D3D12_RESOURCE_STATES) -> D3D12_RESOURCE_BARRIER {
-	D3D12_RESOURCE_BARRIER {
-		Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-		Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-		Anonymous: D3D12_RESOURCE_BARRIER_0 {
-			Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-				pResource: unsafe { std::mem::transmute_copy(resource) },
-				StateBefore: state_before,
-				StateAfter: state_after,
-				Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-			})
+fn buffer_barrier(cmd: &ID3D12GraphicsCommandList7, buffer: &ID3D12Resource) {
+	let dx_barrier = D3D12_BUFFER_BARRIER {
+		SyncBefore: D3D12_BARRIER_SYNC_ALL,
+		SyncAfter: D3D12_BARRIER_SYNC_ALL,
+		AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
+		AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
+		pResource: unsafe { std::mem::transmute_copy(buffer) },
+		Offset: 0,
+		Size: u64::MAX,
+	};
+
+	let dx_barrier_group = D3D12_BARRIER_GROUP {
+		Type: D3D12_BARRIER_TYPE_BUFFER,
+		NumBarriers: 1,
+		Anonymous: D3D12_BARRIER_GROUP_0 {
+			pBufferBarriers: &dx_barrier,
 		},
+	};
+
+	unsafe {
+		cmd.Barrier(&[dx_barrier_group]);
+	}
+}
+
+fn texture_barrier(cmd: &ID3D12GraphicsCommandList7, texture: &ID3D12Resource, old_layout: D3D12_BARRIER_LAYOUT, new_layout: D3D12_BARRIER_LAYOUT) {
+	let dx_barrier = D3D12_TEXTURE_BARRIER {
+		SyncBefore: D3D12_BARRIER_SYNC_ALL,
+		SyncAfter: D3D12_BARRIER_SYNC_ALL,
+		AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
+		AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
+		LayoutBefore: old_layout,
+		LayoutAfter: new_layout,
+		pResource: unsafe { std::mem::transmute_copy(texture) },
+		Subresources: D3D12_BARRIER_SUBRESOURCE_RANGE {
+			IndexOrFirstMipLevel: 0xffffffff, // All subresources
+			NumMipLevels: 0,
+			FirstArraySlice: 0,
+			NumArraySlices: 0,
+			FirstPlane: 0,
+			NumPlanes: 0,
+		},
+		Flags: D3D12_TEXTURE_BARRIER_FLAG_NONE,
+	};
+
+	let dx_barrier_group = D3D12_BARRIER_GROUP {
+		Type: D3D12_BARRIER_TYPE_TEXTURE,
+		NumBarriers: 1,
+		Anonymous: D3D12_BARRIER_GROUP_0 {
+			pTextureBarriers: &dx_barrier,
+		},
+	};
+
+	unsafe {
+		cmd.Barrier(&[dx_barrier_group]);
 	}
 }
 
@@ -560,7 +587,7 @@ fn create_swap_chain_rtv(
 			device.device.CreateRenderTargetView(&render_target, None, h);
 			textures.push(Texture {
 				desc: std::mem::zeroed(), // TODO: Fill this in.
-				resource: render_target.clone(),
+				resource: render_target,
 				rtv: Some(h),
 				dsv: None,
 				srv_index: None,
@@ -754,9 +781,17 @@ impl super::DeviceImpl for Device {
 	type GraphicsPipeline = GraphicsPipeline;
 	type ComputePipeline = ComputePipeline;
 	type RaytracingPipeline = RaytracingPipeline;
-	
+
 	fn new(desc: &super::DeviceDesc) -> Device {
 		unsafe {
+			// TODO: This requires users system to be in Developer Mode,
+			// should use dllexport constants instead, but that's a bit difficult in Rust.
+			let mut sdk_config: Option<ID3D12SDKConfiguration> = None;
+
+			if let Some(config) = D3D12GetInterface(&CLSID_D3D12SDKConfiguration, &mut sdk_config).ok().and(sdk_config) {
+				config.SetSDKVersion(611, s!(".\\D3D12\\")).unwrap();
+			}
+
 			if !desc.validation.is_empty() {
 				let mut debug: Option<ID3D12Debug1> = None;
 				if let Some(debug) = D3D12GetDebugInterface(&mut debug).ok().and(debug) {
@@ -809,7 +844,7 @@ impl super::DeviceImpl for Device {
 			let dsv_heap = Heap::new(&device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 100); // TODO: Hardcoded
 
 			let pix = desc.validation.contains(super::Validation::DEBUGGER)
-				.then(|| WinPixEventRuntime::create()).flatten();
+				.then(|| WinPixEventRuntime::load()).flatten();
 
 			Device {
 				adapter_info,
@@ -880,7 +915,7 @@ impl super::DeviceImpl for Device {
 	fn create_cmd_list(&self, num_buffers: u32) -> CmdList {
 		unsafe {
 			let mut command_allocators: Vec<ID3D12CommandAllocator> = Vec::new();
-			let mut command_lists: Vec<ID3D12GraphicsCommandList6> = Vec::new();
+			let mut command_lists: Vec<ID3D12GraphicsCommandList7> = Vec::new();
 
 			for _ in 0..num_buffers as usize {
 				let command_allocator = self.device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT).unwrap();
@@ -903,7 +938,7 @@ impl super::DeviceImpl for Device {
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> result::Result<Buffer, super::Error> {
 		let mut resource: Option<ID3D12Resource> = None;
 		unsafe {
-			self.device.CreateCommittedResource(
+			self.device.CreateCommittedResource3(
 				&D3D12_HEAP_PROPERTIES {
 					Type: if matches!(desc.memory, super::Memory::CpuToGpu) {
 						D3D12_HEAP_TYPE_UPLOAD
@@ -913,7 +948,7 @@ impl super::DeviceImpl for Device {
 					..Default::default()
 				},
 				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
+				&D3D12_RESOURCE_DESC1 {
 					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
 					Alignment: 0,
 					Width: desc.size as u64,
@@ -927,16 +962,11 @@ impl super::DeviceImpl for Device {
 					},
 					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 					Flags: map_buffer_usage_flags(desc.usage),
+					SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
 				},
-				if matches!(desc.memory, super::Memory::CpuToGpu) {
-					D3D12_RESOURCE_STATE_GENERIC_READ
-				}
-				else if desc.usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
-					D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE
-				}
-				else {
-					D3D12_RESOURCE_STATE_COMMON
-				},
+				D3D12_BARRIER_LAYOUT_UNDEFINED,
+				None,
+				None,
 				None,
 				&mut resource,
 			)?;
@@ -1010,15 +1040,15 @@ impl super::DeviceImpl for Device {
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> result::Result<Texture, super::Error> {
 		let mut resource: Option<ID3D12Resource> = None;
 		let dxgi_format = map_format(desc.format);
-		let initial_state = map_texture_layout(desc.layout);
+		let initial_layout = map_texture_layout(desc.layout);
 		unsafe {
-			self.device.CreateCommittedResource(
+			self.device.CreateCommittedResource3(
 				&D3D12_HEAP_PROPERTIES {
 					Type: D3D12_HEAP_TYPE_DEFAULT,
 					..Default::default()
 				},
 				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
+				&D3D12_RESOURCE_DESC1 {
 					Dimension: map_resource_dimension(desc),
 					Alignment: 0,
 					Width: desc.width,
@@ -1032,8 +1062,11 @@ impl super::DeviceImpl for Device {
 					},
 					Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
 					Flags: map_texture_usage_flags(desc.usage),
+					SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
 				},
-				initial_state,
+				initial_layout,
+				None,
+				None,
 				None,
 				&mut resource,
 			)?;
@@ -1078,7 +1111,7 @@ impl super::DeviceImpl for Device {
 			});
 
 			Ok(Texture {
-				desc: desc.clone(),
+				desc: *desc,
 				resource: resource.unwrap(),
 				srv_index,
 				uav_index,
@@ -1088,7 +1121,7 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn create_sampler(&mut self, desc: &SamplerDesc) -> result::Result<Self::Sampler, super::Error> {
+	fn create_sampler(&mut self, desc: &super::SamplerDesc) -> result::Result<Self::Sampler, super::Error> {
 		let dx_desc = D3D12_SAMPLER_DESC {
 			Filter: map_sampler_filter(desc),
 			AddressU: map_address_mode(desc.address_u),
@@ -1108,29 +1141,33 @@ impl super::DeviceImpl for Device {
 		Ok(Sampler { _sampler: h })
 	}
 
-	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> result::Result<AccelerationStructure, super::Error> {
-		let h = self.resource_heap.allocate();
+	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> result::Result<AccelerationStructure, super::Error> {
+		let srv_index = matches!(desc.kind, super::AccelerationStructureKind::TopLevel).then(|| {
+			let h = self.resource_heap.allocate();
 
-		unsafe {
-			self.device.CreateShaderResourceView(
-				None,
-				Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
-					Format: DXGI_FORMAT_UNKNOWN,
-					ViewDimension: D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE,
-					Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-						RaytracingAccelerationStructure: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_SRV {
-							Location: desc.buffer.resource.GetGPUVirtualAddress() + (desc.offset as u64),
+			unsafe {
+				self.device.CreateShaderResourceView(
+					None,
+					Some(&D3D12_SHADER_RESOURCE_VIEW_DESC {
+						Format: DXGI_FORMAT_UNKNOWN,
+						ViewDimension: D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE,
+						Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+							RaytracingAccelerationStructure: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_SRV {
+								Location: desc.buffer.resource.GetGPUVirtualAddress() + (desc.offset as u64),
+							},
 						},
-					},
-					Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-				}),
-				h,
-			);
-		}
+						Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+					}),
+					h,
+				);
+			}
+		
+			self.resource_heap.handle_to_index(&h)
+		});
 
 		Ok(AccelerationStructure {
 			resource: desc.buffer.resource.clone(),
-			srv_index: self.resource_heap.handle_to_index(&h),
+			srv_index,
 		})
 	}
 
@@ -1240,8 +1277,8 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn create_raytracing_pipeline(&self, desc: &RaytracingPipelineDesc) -> result::Result<Self::RaytracingPipeline, super::Error> {
-		let subobject_count = desc.libraries.len() + desc.hit_groups.len() + 3; // TODO: Only count hit groups that are not general
+	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> result::Result<Self::RaytracingPipeline, super::Error> {
+		let subobject_count = desc.libraries.len() + desc.groups.len() + 3; // TODO: Only count groups that are not general
 		let mut subobjects: Vec<D3D12_STATE_SUBOBJECT> = Vec::with_capacity(subobject_count);
 
 		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
@@ -1296,31 +1333,31 @@ impl super::DeviceImpl for Device {
 			});
 		}
 
-		let mut hit_groups: Vec<D3D12_HIT_GROUP_DESC> = Vec::with_capacity(desc.hit_groups.len());
+		let mut groups: Vec<D3D12_HIT_GROUP_DESC> = Vec::with_capacity(desc.groups.len());
 
-		for hit_group in &desc.hit_groups {
-			if hit_group.ty == ShaderHitGroupType::General {
+		for group in &desc.groups {
+			if group.ty == super::ShaderGroupType::General {
 				continue;
 			}
 
-			let dx_hit_group_type = match hit_group.ty {
-				ShaderHitGroupType::General | ShaderHitGroupType::Triangles => D3D12_HIT_GROUP_TYPE_TRIANGLES,
-				ShaderHitGroupType::Procedural => D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE,
+			let dx_group_type = match group.ty {
+				super::ShaderGroupType::General | super::ShaderGroupType::Triangles => D3D12_HIT_GROUP_TYPE_TRIANGLES,
+				super::ShaderGroupType::Procedural => D3D12_HIT_GROUP_TYPE_PROCEDURAL_PRIMITIVE,
 			};
 
-			entries.push(HSTRING::from(&hit_group.name));
+			entries.push(HSTRING::from(&group.name));
 
-			hit_groups.push(D3D12_HIT_GROUP_DESC {
-				Type: dx_hit_group_type,
+			groups.push(D3D12_HIT_GROUP_DESC {
+				Type: dx_group_type,
 				HitGroupExport: PCWSTR(entries.last().unwrap().as_ptr()),
-				AnyHitShaderImport: hit_group.any_hit.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
-				ClosestHitShaderImport: hit_group.closest_hit.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
-				IntersectionShaderImport: hit_group.intersection.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
+				AnyHitShaderImport: group.any_hit.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
+				ClosestHitShaderImport: group.closest_hit.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
+				IntersectionShaderImport: group.intersection.map_or(PCWSTR::null(), |i| exports[i as usize].Name),
 			});
 
 			subobjects.push(D3D12_STATE_SUBOBJECT {
 				Type: D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP,
-				pDesc: hit_groups.last().unwrap() as *const _ as _,
+				pDesc: groups.last().unwrap() as *const _ as _,
 			});
 		}
 
@@ -1338,7 +1375,7 @@ impl super::DeviceImpl for Device {
 		})
 	}
 
-	fn create_texture_view(&mut self, desc: &TextureViewDesc, texture: &Texture) -> super::TextureView {
+	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Texture) -> super::TextureView {
 		let h = self.resource_heap.allocate();
 
 		unsafe {
@@ -1353,7 +1390,7 @@ impl super::DeviceImpl for Device {
 				},
 			};
 
-			self.device.CreateUnorderedAccessView(&texture.resource.clone(), None, Some(&desc), h);
+			self.device.CreateUnorderedAccessView(&texture.resource, None, Some(&desc), h);
 		}
 
 		let index = self.resource_heap.handle_to_index(&h);
@@ -1367,13 +1404,13 @@ impl super::DeviceImpl for Device {
 		unsafe {
 			let size = data.len();
 			let mut upload: Option<ID3D12Resource> = None;
-			self.device.CreateCommittedResource(
+			self.device.CreateCommittedResource3(
 				&D3D12_HEAP_PROPERTIES {
 					Type: D3D12_HEAP_TYPE_UPLOAD,
 					..Default::default()
 				},
 				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
+				&D3D12_RESOURCE_DESC1 {
 					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
 					Alignment: 0,
 					Width: size as u64,
@@ -1387,8 +1424,11 @@ impl super::DeviceImpl for Device {
 					},
 					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 					Flags: D3D12_RESOURCE_FLAG_NONE,
+					SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
 				},
-				D3D12_RESOURCE_STATE_GENERIC_READ,
+				D3D12_BARRIER_LAYOUT_UNDEFINED,
+				None,
+				None,
 				None,
 				&mut upload,
 			).unwrap();
@@ -1408,15 +1448,13 @@ impl super::DeviceImpl for Device {
 
 			let fence: ID3D12Fence = self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE).unwrap();
 
-			self.command_list.CopyResource(&buffer.resource.clone(), &upload.clone().unwrap());
+			self.command_list.CopyResource(&buffer.resource, &upload.clone().unwrap());
 
-			let barrier = transition_barrier(
-				&buffer.resource.clone(),
-				D3D12_RESOURCE_STATE_COPY_DEST,
-				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			buffer_barrier(
+				&self.command_list,
+				&buffer.resource,
 			);
 
-			self.command_list.ResourceBarrier(&[barrier.clone()]);
 			self.command_list.Close().unwrap();
 
 			let cmd = Some(self.command_list.can_clone_into());
@@ -1428,7 +1466,6 @@ impl super::DeviceImpl for Device {
 			WaitForSingleObject(event, INFINITE);
 
 			self.command_list.Reset(&self.command_allocator, None).unwrap();
-			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
 		}
 	}
 
@@ -1446,16 +1483,16 @@ impl super::DeviceImpl for Device {
 			let row_pitch = desc.format.row_pitch(desc.width);
 			let upload_pitch = super::align_pow2(row_pitch, D3D12_TEXTURE_DATA_PITCH_ALIGNMENT as u64);
 			let upload_size = desc.height * upload_pitch;
-			let initial_state = map_texture_layout(desc.layout);
+			let initial_layout = map_texture_layout(desc.layout);
 
 			let mut upload: Option<ID3D12Resource> = None;
-			self.device.CreateCommittedResource(
+			self.device.CreateCommittedResource3(
 				&D3D12_HEAP_PROPERTIES {
 					Type: D3D12_HEAP_TYPE_UPLOAD,
 					..Default::default()
 				},
 				D3D12_HEAP_FLAG_NONE,
-				&D3D12_RESOURCE_DESC {
+				&D3D12_RESOURCE_DESC1 {
 					Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
 					Alignment: 0,
 					Width: upload_size,
@@ -1469,8 +1506,11 @@ impl super::DeviceImpl for Device {
 					},
 					Layout: D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
 					Flags: D3D12_RESOURCE_FLAG_NONE,
+					SamplerFeedbackMipRegion: D3D12_MIP_REGION::default(),
 				},
-				D3D12_RESOURCE_STATE_GENERIC_READ,
+				D3D12_BARRIER_LAYOUT_UNDEFINED,
+				None,
+				None,
 				None,
 				&mut upload,
 			).unwrap();
@@ -1511,32 +1551,28 @@ impl super::DeviceImpl for Device {
 			};
 
 			let dst = D3D12_TEXTURE_COPY_LOCATION {
-				pResource: std::mem::transmute_copy(&texture.resource.clone()),
+				pResource: std::mem::transmute_copy(&texture.resource),
 				Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 				Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
 					SubresourceIndex: 0,
 				},
 			};
 
-			let barrier = transition_barrier(
-				&texture.resource.clone(),
-				initial_state,
-				D3D12_RESOURCE_STATE_COPY_DEST,
+			texture_barrier(
+				&self.command_list,
+				&texture.resource,
+				initial_layout,
+				D3D12_BARRIER_LAYOUT_COPY_DEST,
 			);
-
-			self.command_list.ResourceBarrier(&[barrier.clone()]);
-			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
 
 			self.command_list.CopyTextureRegion(&dst, 0, 0, 0, &src, None);
 
-			let barrier = transition_barrier(
-				&texture.resource.clone(),
-				D3D12_RESOURCE_STATE_COPY_DEST,
-				initial_state,
+			texture_barrier(
+				&self.command_list,
+				&texture.resource,
+				D3D12_BARRIER_LAYOUT_COPY_DEST,
+				initial_layout,
 			);
-
-			self.command_list.ResourceBarrier(&[barrier.clone()]);
-			let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(barrier.Anonymous.Transition);
 
 			self.command_list.Close().unwrap();
 
@@ -1559,17 +1595,17 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn adapter_info(&self) -> &AdapterInfo {
+	fn adapter_info(&self) -> &super::AdapterInfo {
 		&self.adapter_info
 	}
 
-	fn acceleration_structure_sizes(&self, desc: &AccelerationStructureBuildInputs) -> AccelerationStructureSizes {
+	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
 		let info = AccelerationStructureInfo::build(desc);
 
 		let mut prebuild_info = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO::default();
 		unsafe { self.device.GetRaytracingAccelerationStructurePrebuildInfo(&info.desc, &mut prebuild_info); }
 
-		AccelerationStructureSizes {
+		super::AccelerationStructureSizes {
 			acceleration_structure_size: prebuild_info.ResultDataMaxSizeInBytes as _,
 			build_scratch_buffer_size: prebuild_info.ScratchDataSizeInBytes as _,
 			update_scratch_buffer_size: prebuild_info.UpdateScratchDataSizeInBytes as _,
@@ -1651,7 +1687,7 @@ impl super::SwapChainImpl<Device> for SwapChain {
 }
 
 impl CmdList {
-	fn cmd(&self) -> &ID3D12GraphicsCommandList6 {
+	fn cmd(&self) -> &ID3D12GraphicsCommandList7 {
 		&self.command_list[self.bb_index]
 	}
 }
@@ -1673,10 +1709,6 @@ impl super::CmdListImpl<Device> for CmdList {
 				Some(device.sampler_heap.heap.clone()),
 			]);
 		}
-	}
-
-	fn backbuffer_index(&self) -> u32 {
-		self.bb_index as u32
 	}
 
 	fn copy_buffer(
@@ -1826,9 +1858,9 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn render_pass_begin(&self, desc: &RenderPassDesc<Device>) {
-		let (rt_begin_type, rt_clear) = map_load_op(desc.rt_load);
-		let rt = desc.render_targets.iter().map(|target| {
+	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
+		let (rt_begin_type, rt_clear) = map_load_op(desc.color_load);
+		let rt = desc.color_attachments.iter().map(|target| {
 			let desc = unsafe { target.resource.GetDesc() };
 
 			let begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
@@ -1933,55 +1965,74 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn barriers(&self, barriers: &[Barrier<Device>]) {
-		// TODO: Support more than 1
-		assert_eq!(barriers.len(), 1);
+	fn barriers(&self, barriers: &super::Barriers<Device>) {
+		let global_barriers = barriers.global.iter().map(|_| D3D12_GLOBAL_BARRIER {
+			SyncBefore: D3D12_BARRIER_SYNC_ALL,
+			SyncAfter: D3D12_BARRIER_SYNC_ALL,
+			AccessBefore: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+			AccessAfter: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+		}).collect::<Vec<_>>();
 
-		if matches!(barriers[0].buffer, None) && matches!(barriers[0].texture, None) {
-			let dx_barrier = D3D12_RESOURCE_BARRIER {
-				Type: D3D12_RESOURCE_BARRIER_TYPE_UAV,
-				Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-				Anonymous: D3D12_RESOURCE_BARRIER_0 {
-					UAV: Default::default(),
+		let buffer_barriers = barriers.buffer.iter().map(|_| {
+			todo!()
+		}).collect::<Vec<_>>();
+
+		let texture_barriers = barriers.texture.iter().map(|barrier| D3D12_TEXTURE_BARRIER {
+			SyncBefore: D3D12_BARRIER_SYNC_ALL,
+			SyncAfter: D3D12_BARRIER_SYNC_ALL,
+			AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
+			AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
+			LayoutBefore: map_texture_layout(barrier.old_layout),
+			LayoutAfter: map_texture_layout(barrier.new_layout),
+			pResource: unsafe { std::mem::transmute_copy(&barrier.texture.resource) },
+			Subresources: D3D12_BARRIER_SUBRESOURCE_RANGE {
+				IndexOrFirstMipLevel: 0xffffffff, // All subresources
+				NumMipLevels: 0,
+				FirstArraySlice: 0,
+				NumArraySlices: 0,
+				FirstPlane: 0,
+				NumPlanes: 0,
+			},
+			Flags: D3D12_TEXTURE_BARRIER_FLAG_NONE,
+		}).collect::<Vec<_>>();
+
+		let barrier_groups = [
+			D3D12_BARRIER_GROUP {
+				Type: D3D12_BARRIER_TYPE_GLOBAL,
+				NumBarriers: global_barriers.len() as u32,
+				Anonymous: D3D12_BARRIER_GROUP_0 {
+					pGlobalBarriers: global_barriers.as_ptr(),
 				},
-			};
-
-			unsafe {
-				self.cmd().ResourceBarrier(&[dx_barrier]);
-			}
-
-			return;
-		}
-
-		if let Some(tex) = &barriers[0].texture {
-			let dx_barrier = D3D12_RESOURCE_BARRIER {
-				Type: D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-				Flags: D3D12_RESOURCE_BARRIER_FLAG_NONE,
-				Anonymous: D3D12_RESOURCE_BARRIER_0 {
-					Transition: ManuallyDrop::new(D3D12_RESOURCE_TRANSITION_BARRIER {
-						pResource: unsafe { std::mem::transmute_copy(&tex.resource) },
-						StateBefore: map_texture_layout(barriers[0].old_layout),
-						StateAfter: map_texture_layout(barriers[0].new_layout),
-						Subresource: D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-					})
+			},
+			D3D12_BARRIER_GROUP {
+				Type: D3D12_BARRIER_TYPE_BUFFER,
+				NumBarriers: buffer_barriers.len() as u32,
+				Anonymous: D3D12_BARRIER_GROUP_0 {
+					pBufferBarriers: buffer_barriers.as_ptr(),
 				},
-			};
+			},
+			D3D12_BARRIER_GROUP {
+				Type: D3D12_BARRIER_TYPE_TEXTURE,
+				NumBarriers: texture_barriers.len() as u32,
+				Anonymous: D3D12_BARRIER_GROUP_0 {
+					pTextureBarriers: texture_barriers.as_ptr(),
+				},
+			},
+		];
 
-			unsafe {
-				self.cmd().ResourceBarrier(&[dx_barrier.clone()]);
-				let _: D3D12_RESOURCE_TRANSITION_BARRIER = ManuallyDrop::into_inner(dx_barrier.Anonymous.Transition);
-			}
+		unsafe {
+			self.cmd().Barrier(&barrier_groups);
 		}
 	}
 
-	fn set_viewport(&self, viewport: &super::Viewport) {
+	fn set_viewport(&self, rect: &super::Rect<f32>, depth: Range<f32>) {
 		let dx_viewport = D3D12_VIEWPORT {
-			TopLeftX: viewport.x,
-			TopLeftY: viewport.y,
-			Width: viewport.width,
-			Height: viewport.height,
-			MinDepth: viewport.min_depth,
-			MaxDepth: viewport.max_depth,
+			TopLeftX: rect.left,
+			TopLeftY: rect.top,
+			Width: rect.right - rect.left,
+			Height: rect.bottom - rect.top,
+			MinDepth: depth.start,
+			MaxDepth: depth.end,
 		};
 
 		unsafe {
@@ -1989,12 +2040,12 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn set_scissor(&self, scissor: &super::Scissor) {
+	fn set_scissor(&self, rect: &super::Rect<u32>) {
 		let dx_rect = RECT {
-			left: scissor.left as i32,
-			top: scissor.top as i32,
-			right: scissor.right as i32,
-			bottom: scissor.bottom as i32,
+			left: rect.left as i32,
+			top: rect.top as i32,
+			right: rect.right as i32,
+			bottom: rect.bottom as i32,
 		};
 		
 		unsafe {
@@ -2002,7 +2053,7 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn set_blend_constant(&self, color: Color<f32>) {
+	fn set_blend_constant(&self, color: super::Color<f32>) {
 		unsafe {
 			self.cmd().OMSetBlendFactor(Some(&color.into()));
 		}
@@ -2090,26 +2141,26 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn dispatch_rays(&self, desc: &DispatchRaysDesc<Device>) {
+	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc) {
 		let dx_desc = D3D12_DISPATCH_RAYS_DESC {
 			RayGenerationShaderRecord: desc.raygen.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE {
-				StartAddress: unsafe { t.buffer.resource.GetGPUVirtualAddress() } + t.offset as u64,
-				SizeInBytes: t.size as u64,
+				StartAddress: t.ptr.0,
+				SizeInBytes: t.size as _,
 			}),
 			MissShaderTable: desc.miss.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: unsafe { t.buffer.resource.GetGPUVirtualAddress() } + t.offset as u64,
-				SizeInBytes: t.size as u64,
-				StrideInBytes: t.stride as u64,
+				StartAddress: t.ptr.0,
+				SizeInBytes: t.size as _,
+				StrideInBytes: t.stride as _,
 			}),
 			HitGroupTable: desc.hit_group.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: unsafe { t.buffer.resource.GetGPUVirtualAddress() } + t.offset as u64,
-				SizeInBytes: t.size as u64,
-				StrideInBytes: t.stride as u64,
+				StartAddress: t.ptr.0,
+				SizeInBytes: t.size as _,
+				StrideInBytes: t.stride as _,
 			}),
 			CallableShaderTable: desc.callable.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: unsafe { t.buffer.resource.GetGPUVirtualAddress() } + t.offset as u64,
-				SizeInBytes: t.size as u64,
-				StrideInBytes: t.stride as u64,
+				StartAddress: t.ptr.0,
+				SizeInBytes: t.size as _,
+				StrideInBytes: t.stride as _,
 			}),
 			Width: desc.width,
 			Height: desc.height,
@@ -2121,7 +2172,7 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn build_acceleration_structure(&self, desc: &AccelerationStructureBuildDesc<Device>) {
+	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
 		let info = AccelerationStructureInfo::build(&desc.inputs);
 
 		// TODO: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE if desc.src.is_some()
@@ -2138,14 +2189,14 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn debug_marker(&self, name: &str, color: Color<u8>) {
+	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
 		if let Some(pix) = &self.pix {
 			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
 			pix.set_marker_on_command_list(self.cmd(), color as u64, name);
 		}
 	}
 
-	fn debug_event_push(&self, name: &str, color: Color<u8>) {
+	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
 		if let Some(pix) = &self.pix {
 			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
 			pix.begin_event_on_command_list(self.cmd(), color as u64, name);
@@ -2172,8 +2223,8 @@ impl super::BufferImpl<Device> for Buffer {
 		self.mapped_ptr
 	}
 
-	fn gpu_ptr(&self) -> GpuPtr {
-		GpuPtr(unsafe {
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		super::GpuPtr(unsafe {
 			self.resource.GetGPUVirtualAddress()
 		})
 	}
@@ -2192,15 +2243,15 @@ impl super::TextureImpl<Device> for Texture {
 impl super::SamplerImpl<Device> for Sampler {}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
-	fn srv_index(&self) -> u32 {
-		self.srv_index as u32
+	fn srv_index(&self) -> Option<u32> {
+		self.srv_index.map(|i| i as u32)
 	}
 
 	fn instance_descriptor_size() -> usize {
 		std::mem::size_of::<D3D12_RAYTRACING_INSTANCE_DESC>()
 	}
 
-	fn write_instance_descriptor(instance: &AccelerationStructureInstance, slice: &mut [u8]) {
+	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
 		let t = &instance.transform;
 
 		let dx_instance = D3D12_RAYTRACING_INSTANCE_DESC {
@@ -2215,7 +2266,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 		};
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(&dx_instance as *const _ as *const u8, slice.as_mut_ptr(), std::mem::size_of::<D3D12_RAYTRACING_INSTANCE_DESC>());
+			std::ptr::copy_nonoverlapping(&dx_instance as *const _ as _, slice.as_mut_ptr(), std::mem::size_of::<D3D12_RAYTRACING_INSTANCE_DESC>());
 		}
 	}
 }
@@ -2248,7 +2299,7 @@ struct AccelerationStructureInfo {
 impl AccelerationStructureInfo {
 	fn build(inputs: &super::AccelerationStructureBuildInputs) -> Self {
 		let geometries: Vec<D3D12_RAYTRACING_GEOMETRY_DESC> = inputs.geometry.iter().map(|g| match &g.part {
-			GeometryPart::AABBs(aabbs) => D3D12_RAYTRACING_GEOMETRY_DESC {
+			super::GeometryPart::AABBs(aabbs) => D3D12_RAYTRACING_GEOMETRY_DESC {
 				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS,
 				Flags: map_acceleration_structure_bottom_level_flags(g.flags),
 				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
@@ -2261,7 +2312,7 @@ impl AccelerationStructureInfo {
 					}
 				},
 			},
-			GeometryPart::Triangles(triangles) => D3D12_RAYTRACING_GEOMETRY_DESC {
+			super::GeometryPart::Triangles(triangles) => D3D12_RAYTRACING_GEOMETRY_DESC {
 				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
 				Flags: map_acceleration_structure_bottom_level_flags(g.flags),
 				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
@@ -2287,14 +2338,14 @@ impl AccelerationStructureInfo {
 		dx_input.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 
 		match inputs.kind {
-			AccelerationStructureKind::BottomLevel => {
+			super::AccelerationStructureKind::BottomLevel => {
 				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 				dx_input.NumDescs = inputs.geometry.len() as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
 					pGeometryDescs: geometries.as_ptr(),
 				};
 			},
-			AccelerationStructureKind::TopLevel => {
+			super::AccelerationStructureKind::TopLevel => {
 				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 				dx_input.NumDescs = inputs.instances.count as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {

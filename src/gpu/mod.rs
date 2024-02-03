@@ -93,21 +93,33 @@ impl<T> From<Color<T>> for [T; 4] {
 }
 
 #[derive(Clone, Copy)]
-pub struct Viewport {
-	pub x: f32,
-	pub y: f32,
-	pub width: f32,
-	pub height: f32,
-	pub min_depth: f32,
-	pub max_depth: f32,
+pub struct Rect<T> {
+	pub left: T,
+	pub top: T,
+	pub right: T,
+	pub bottom: T,
 }
 
-#[derive(Clone, Copy)]
-pub struct Scissor {
-	pub left: u32,
-	pub top: u32,
-	pub right: u32,
-	pub bottom: u32,
+impl<T: Copy + Default> Rect<T> {
+	pub fn from_size(size: [T; 2]) -> Self {
+		Self {
+			left: Default::default(),
+			top: Default::default(),
+			right: size[0],
+			bottom: size[1],
+		}
+	}
+}
+
+impl From<Rect<u32>> for Rect<f32> {
+	fn from(r: Rect<u32>) -> Self {
+		Self {
+			left: r.left as f32,
+			top: r.top as f32,
+			right: r.right as f32,
+			bottom: r.bottom as f32,
+		}
+	}
 }
 
 /// Defines resource formats.
@@ -646,46 +658,56 @@ pub enum LoadOp<T> {
 }
 
 pub struct RenderPassDesc<'a, D: DeviceImpl> {
-	pub render_targets: &'a [&'a D::Texture],
 	pub depth_stencil: Option<&'a D::Texture>,
+	pub color_attachments: &'a [&'a D::Texture],
 
-	pub rt_load: LoadOp<Color<f32>>,
+	pub color_load: LoadOp<Color<f32>>,
 	pub depth_load: LoadOp<f32>,
 	pub stencil_load: LoadOp<u8>,
 }
 
-pub struct Barrier<'a, D: DeviceImpl> {
-	pub buffer: Option<&'a D::Buffer>,
-	pub texture: Option<&'a D::Texture>,
+bitflags! {
+	pub struct StageFlags : u32 {
+		
+	}
+
+	pub struct AccessFlags : u32 {
+	
+	}
+}
+
+pub struct GlobalBarrier {}
+
+pub struct BufferBarrier<'a, D: DeviceImpl> {
+	pub buffer: &'a D::Buffer,
+}
+
+pub struct TextureBarrier<'a, D: DeviceImpl> {
+	pub texture: &'a D::Texture,
 	pub old_layout: TextureLayout,
 	pub new_layout: TextureLayout,
 }
 
-impl<'a, D: DeviceImpl> Barrier<'a, D> {
-	pub fn global() -> Self {
-		Self {
-			buffer: None,
-			texture: None,
-			old_layout: TextureLayout::Common,
-			new_layout: TextureLayout::Common,
+pub struct Barriers<'a, D: DeviceImpl> {
+	pub global: &'a [GlobalBarrier],
+	pub buffer: &'a [BufferBarrier<'a, D>],
+	pub texture: &'a [TextureBarrier<'a, D>],
+}
+
+impl<'a, D: DeviceImpl> Barriers<'a, D> {
+	pub fn global() -> Barriers<'static, D> {
+		Barriers {
+			global: &[GlobalBarrier {}],
+			buffer: &[],
+			texture: &[],
 		}
 	}
 
-	pub fn buffer(buffer: &'a D::Buffer, old_layout: TextureLayout, new_layout: TextureLayout) -> Self {
+	pub fn texture(texture: &'a [TextureBarrier<'a, D>]) -> Self {
 		Self {
-			buffer: Some(buffer),
-			texture: None,
-			old_layout,
-			new_layout,
-		}
-	}
-
-	pub fn texture(texture: &'a D::Texture, old_layout: TextureLayout, new_layout: TextureLayout) -> Self {
-		Self {
-			buffer: None,
-			texture: Some(texture),
-			old_layout,
-			new_layout,
+			global: &[],
+			buffer: &[],
+			texture,
 		}
 	}
 }
@@ -713,7 +735,8 @@ pub trait RaytracingPipelineImpl<D: DeviceImpl> {
 }
 
 pub trait AccelerationStructureImpl<D: DeviceImpl> {
-	fn srv_index(&self) -> u32;
+	/// Only valid for top-level acceleration structures.
+	fn srv_index(&self) -> Option<u32>;
 
 	fn instance_descriptor_size() -> usize;
 	fn write_instance_descriptor(instance: &AccelerationStructureInstance, slice: &mut [u8]);
@@ -766,7 +789,6 @@ pub trait SwapChainImpl<D: DeviceImpl>: 'static + Sized {
 
 pub trait CmdListImpl<D: DeviceImpl> {
 	fn reset(&mut self, device: &D, swap_chain: &D::SwapChain);
-	fn backbuffer_index(&self) -> u32;
 
 	fn copy_buffer(
 		&self,
@@ -816,9 +838,9 @@ pub trait CmdListImpl<D: DeviceImpl> {
 
 	fn render_pass_begin(&self, desc: &RenderPassDesc<D>);
 	fn render_pass_end(&self);
-	fn barriers(&self, barriers: &[Barrier<D>]);
-	fn set_viewport(&self, viewport: &Viewport);
-	fn set_scissor(&self, scissor: &Scissor);
+	fn barriers(&self, barriers: &Barriers<D>);
+	fn set_viewport(&self, rect: &Rect<f32>, depth: Range<f32>);
+	fn set_scissor(&self, rect: &Rect<u32>);
 	fn set_blend_constant(&self, color: Color<f32>);
 	fn set_stencil_reference(&self, reference: u32);
 	fn set_index_buffer(&self, buffer: &D::Buffer, offset: u64, format: Format);
@@ -834,7 +856,7 @@ pub trait CmdListImpl<D: DeviceImpl> {
 	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 
 	fn dispatch(&self, x: u32, y: u32, z: u32);
-	fn dispatch_rays(&self, desc: &DispatchRaysDesc<D>);
+	fn dispatch_rays(&self, desc: &DispatchRaysDesc);
 
 	fn build_acceleration_structure(&self, desc: &AccelerationStructureBuildDesc<D>);
 
@@ -1091,14 +1113,14 @@ pub struct ShaderLibrary {
 }
 
 #[derive(PartialEq)]
-pub enum ShaderHitGroupType {
+pub enum ShaderGroupType {
 	General,
 	Triangles,
 	Procedural,
 }
 
-pub struct ShaderHitGroup {
-	pub ty: ShaderHitGroupType,
+pub struct ShaderGroup {
+	pub ty: ShaderGroupType,
 	pub name: String,
 	pub general: Option<u32>,
 	pub closest_hit: Option<u32>,
@@ -1112,23 +1134,22 @@ pub struct RaytracingPipelineDesc {
 	pub max_payload_size: u32,
 
 	pub libraries: Vec<ShaderLibrary>,
-	pub hit_groups: Vec<ShaderHitGroup>,
+	pub groups: Vec<ShaderGroup>,
 
 	pub descriptor_layout: DescriptorLayout,
 }
 
-pub struct ShaderTable<'a, D: DeviceImpl> {
-	pub buffer: &'a D::Buffer,
-	pub offset: usize,
+pub struct ShaderTable {
+	pub ptr: GpuPtr,
 	pub size: usize,
 	pub stride: usize,
 }
 
-pub struct DispatchRaysDesc<'a, D: DeviceImpl> {
-	pub raygen: Option<ShaderTable<'a, D>>,
-	pub miss: Option<ShaderTable<'a, D>>,
-	pub hit_group: Option<ShaderTable<'a, D>>,
-	pub callable: Option<ShaderTable<'a, D>>,
+pub struct DispatchRaysDesc {
+	pub raygen: Option<ShaderTable>,
+	pub miss: Option<ShaderTable>,
+	pub hit_group: Option<ShaderTable>,
+	pub callable: Option<ShaderTable>,
 
 	pub width: u32,
 	pub height: u32,
@@ -1162,8 +1183,14 @@ pub struct AccelerationStructureInstance {
 pub struct GpuPtr(u64);
 
 impl GpuPtr {
-	pub fn null() -> Self {
-		Self(0)
+	pub const NULL: Self = Self(0);
+
+	pub fn new(ptr: u64) -> Self {
+		Self(ptr)
+	}
+
+	pub fn offset(&self, offset: usize) -> Self {
+		Self(self.0 + offset as u64)
 	}
 }
 

@@ -115,7 +115,7 @@ impl BoneDeform {
 
 		cmd.dispatch(push_constants.num_vertices.div_ceil(32), 1, 1);
 		
-		cmd.barriers(&[gpu::Barrier::global()]);
+		cmd.barriers(&gpu::Barriers::global());
 	}
 
 	pub fn get_transformed_vertex_buffer(&self) -> &gpu::Buffer {

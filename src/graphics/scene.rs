@@ -235,9 +235,7 @@ impl Scene {
 		let mut instance_index = 0;
 
 		for (transform, renderable) in &world.query::<(&Transform3, &Renderable)>() {
-			self.ensure_mesh_from_cache(&renderable.mesh, device, cmd, assets);
-
-			let mesh_data = &self.mesh_cache[&renderable.mesh.id()];
+			let mesh_data = self.get_mesh_from_cache(&renderable.mesh, device, cmd, assets);
 
 			instance_data[instance_index] = Instance {
 				vertex_buffer_id: mesh_data.vertex_buffer.srv_index().unwrap(),
@@ -263,9 +261,9 @@ impl Scene {
 
 		// ACCELERATION STRUCTURES
 
-		cmd.barriers(&[gpu::Barrier::global()]); // UAV barrier to ensure the BLASes are visible to TLAS
+		cmd.barriers(&gpu::Barriers::global()); // Global barrier to ensure the BLASes are visible to TLAS
 		self.tlas.build(&cmd);
-		cmd.barriers(&[gpu::Barrier::global()]); // UAV barrier to ensure the TLAS is visible to the raytracing pipeline
+		cmd.barriers(&gpu::Barriers::global()); // Global barrier to ensure the TLAS is visible to the raytracing pipeline
 	}
 
 	fn get_texture_from_cache(&mut self, asset: &AssetId<Image>, device: &mut gpu::Device, assets: &AssetServer) -> &gpu::Texture {
@@ -292,13 +290,15 @@ impl Scene {
 		self.texture_cache.get(&asset.id()).unwrap()
 	}
 
-	fn ensure_mesh_from_cache(&mut self, asset: &AssetId<mesh::Mesh>, device: &mut gpu::Device, cmd: &gpu::CmdList, assets: &AssetServer) {
+	fn get_mesh_from_cache(&mut self, asset: &AssetId<mesh::Mesh>, device: &mut gpu::Device, cmd: &gpu::CmdList, assets: &AssetServer) -> &GpuMeshData {
 		if !self.mesh_cache.contains_key(&asset.id()) {
 			let mesh = assets.get(asset).unwrap();
 			let mut gpu_mesh_data = GpuMeshData::from_mesh(device, mesh);
 			gpu_mesh_data.blas.build(&cmd);
 			self.mesh_cache.insert(asset.id(), gpu_mesh_data);
 		}
+
+		self.mesh_cache.get(&asset.id()).unwrap()
 	}
 }
 

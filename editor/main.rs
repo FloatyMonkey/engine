@@ -78,11 +78,11 @@ fn main() {
 		}
 
 		// Gizmo
-		let mut gizmo = gizmo::Gizmo::new();
+		let gizmo = gizmo::Gizmo::new();
 
-		gizmo.line(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 3.0), 0xFF0000FF);
-		gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
-		gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
+		//gizmo.line(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 3.0), 0xFF0000FF);
+		//gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
+		//gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
 
 		let view_matrix = Mat4::from(editor.context.camera_transform.inv());
 		let projection_matrix = editor.context.camera.projection_matrix();

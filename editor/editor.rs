@@ -26,6 +26,8 @@ impl Editor {
 	pub fn new() -> Self {
 		let egui_ctx = egui::Context::default();
 
+		egui_extras::install_image_loaders(&egui_ctx);
+
 		let default_font = egui::FontData::from_static(include_bytes!("../resources/Inter-Regular.ttf"));
 		let icon_font = egui::FontData::from_static(include_bytes!("../resources/icon.ttf"));
 

@@ -1283,26 +1283,32 @@ impl super::DeviceImpl for Device {
 
 		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
 
+		let pipeline_config = D3D12_RAYTRACING_PIPELINE_CONFIG {
+			MaxTraceRecursionDepth: desc.max_trace_recursion_depth,
+		};
+
 		subobjects.push(D3D12_STATE_SUBOBJECT {
 			Type: D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG,
-			pDesc: &D3D12_RAYTRACING_PIPELINE_CONFIG {
-				MaxTraceRecursionDepth: desc.max_trace_recursion_depth,
-			} as *const _ as _,
+			pDesc: &pipeline_config as *const _ as _,
 		});
+
+		let shader_config = D3D12_RAYTRACING_SHADER_CONFIG {
+			MaxPayloadSizeInBytes: desc.max_payload_size,
+			MaxAttributeSizeInBytes: desc.max_attribute_size,
+		};
 
 		subobjects.push(D3D12_STATE_SUBOBJECT {
 			Type: D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG,
-			pDesc: &D3D12_RAYTRACING_SHADER_CONFIG {
-				MaxPayloadSizeInBytes: desc.max_payload_size,
-				MaxAttributeSizeInBytes: desc.max_attribute_size,
-			} as *const _ as _,
+			pDesc: &shader_config as *const _ as _,
 		});
+
+		let global_root_signature = D3D12_GLOBAL_ROOT_SIGNATURE {
+			pGlobalRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
+		};
 
 		subobjects.push(D3D12_STATE_SUBOBJECT {
 			Type: D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE,
-			pDesc: &D3D12_GLOBAL_ROOT_SIGNATURE {
-				pGlobalRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
-			} as *const _ as _
+			pDesc: &global_root_signature as *const _ as _,
 		});
 
 		let mut entries: Vec<HSTRING> = Vec::with_capacity(desc.libraries.len());
@@ -1366,7 +1372,7 @@ impl super::DeviceImpl for Device {
 			NumSubobjects: subobjects.len() as u32,
 			pSubobjects: subobjects.as_ptr(),
 		};
-		
+
 		let state_object: ID3D12StateObject = unsafe { self.device.CreateStateObject(&state_object_desc) }.unwrap();
 
 		Ok(RaytracingPipeline {

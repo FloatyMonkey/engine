@@ -57,6 +57,7 @@ impl WinPixEventRuntime {
 
 pub struct Device {
 	adapter_info: super::AdapterInfo,
+	capabilities: super::Capabilities,
 	dxgi_factory: IDXGIFactory6,
 	device: ID3D12Device10,
 	command_allocator: ID3D12CommandAllocator,
@@ -828,6 +829,17 @@ impl super::DeviceImpl for Device {
 			}
 			let device = device.unwrap();
 
+			let mut feature_options5 = D3D12_FEATURE_DATA_D3D12_OPTIONS5::default();
+			let res = device.CheckFeatureSupport(
+				D3D12_FEATURE_D3D12_OPTIONS5,
+				&mut feature_options5 as *mut _ as *mut _,
+				std::mem::size_of::<D3D12_FEATURE_DATA_D3D12_OPTIONS5>() as _,
+			);
+
+			let capabilities = super::Capabilities {
+				raytracing: res.is_ok() && feature_options5.RaytracingTier == D3D12_RAYTRACING_TIER_1_1,
+			};
+
 			let command_allocator = device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT).unwrap();
 			let command_list = device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, &command_allocator, None).unwrap();
 
@@ -848,6 +860,7 @@ impl super::DeviceImpl for Device {
 
 			Device {
 				adapter_info,
+				capabilities,
 				dxgi_factory,
 				device,
 				command_allocator,
@@ -1603,6 +1616,10 @@ impl super::DeviceImpl for Device {
 
 	fn adapter_info(&self) -> &super::AdapterInfo {
 		&self.adapter_info
+	}
+
+	fn capabilities(&self) -> &super::Capabilities {
+		&self.capabilities
 	}
 
 	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {

@@ -16,7 +16,9 @@ impl OutlinerTab {
 fn icon_for_entity(world: &World, entity: Entity) -> char {
 	let e = world.entity(entity);
 
-	if e.contains::<crate::scene::DomeLight>() {
+	if e.contains::<crate::graphics::camera::Camera> () {
+		icons::OUTLINER_DATA_CAMERA
+	} else if e.contains::<crate::scene::DomeLight>() {
 		icons::LIGHT_HEMI
 	} else if e.contains::<crate::scene::RectLight>() {
 		icons::LIGHT_AREA

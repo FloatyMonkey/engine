@@ -239,6 +239,10 @@ pub struct DeviceDesc {
 	pub power_preference: PowerPreference,
 }
 
+pub struct Capabilities {
+	pub raytracing: bool,
+}
+
 pub struct AdapterInfo {
 	pub name: String,
 	pub dedicated_video_memory: usize,
@@ -774,6 +778,7 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	fn submit(&self, cmd: &Self::CmdList);
 	fn adapter_info(&self) -> &AdapterInfo;
+	fn capabilities(&self) -> &Capabilities;
 
 	fn acceleration_structure_sizes(&self, desc: &AccelerationStructureBuildInputs) -> AccelerationStructureSizes;
 }

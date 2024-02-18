@@ -11,8 +11,8 @@ use engine::*;
 use crate::asset::AssetServer;
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
 use crate::gpu::{self, CmdListImpl, DeviceImpl, SwapChainImpl, TextureImpl};
-use crate::graphics::{scene::Scene, pathtracer::{Compositor, PathTracer}};
-use crate::math::{Mat4, Vec3};
+use crate::graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
+use crate::math::{Mat4, transform::Transform3};
 use crate::os::{self, App, Window};
 use crate::scene::setup_scene;
 
@@ -52,8 +52,13 @@ fn main() {
 
 	let mut egui_renderer = EguiRenderer::new(&mut device, &shader_compiler);
 
-	let mut scene = Scene::new(&mut device, &shader_compiler);
-	let mut path_tracer = PathTracer::new(&mut device, &shader_compiler);
+	let mut renderer = device.capabilities().raytracing.then(|| {
+		let scene = Scene::new(&mut device, &shader_compiler);
+		let path_tracer = PathTracer::new(&mut device, &shader_compiler);
+
+		(scene, path_tracer)
+	});
+
 	let mut compositor = Compositor::new([1920, 1080], &mut device, &shader_compiler);
 	let mut gizmo_renderer = gizmo::GizmoRenderer::new([1920, 1080], &mut device, &shader_compiler);
 
@@ -84,22 +89,22 @@ fn main() {
 		//gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
 		//gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
 
-		let view_matrix = Mat4::from(editor.context.camera_transform.inv());
-		let projection_matrix = editor.context.camera.projection_matrix();
-		let view_projection = projection_matrix * view_matrix;
-		gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
+		if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
+			let view_matrix = Mat4::from(camera_transform.inv());
+			let projection_matrix = camera.projection_matrix();
+			let view_projection = projection_matrix * view_matrix;
+			gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
+		}
 
 		// Path Tracer
 		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
 
-		scene.camera = editor.context.camera;
-		scene.camera_transform = editor.context.camera_transform;
-		scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
-		path_tracer.reset();
-		for _ in 0..20 {
-			path_tracer.render(&mut cmd, &scene);
+		if let Some((scene, path_tracer)) = &mut renderer {
+			scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
+			path_tracer.run(&mut cmd, &scene, 20);
+			compositor.process(&mut cmd, &path_tracer.output_texture, &gizmo_renderer.texture);
 		}
-		compositor.process(&mut cmd, &path_tracer.output_texture, &gizmo_renderer.texture);
+
 		editor.context.viewport_texture_srv = compositor.texture().srv_index().unwrap();
 
 		cmd.debug_event_pop();
@@ -123,7 +128,7 @@ fn main() {
 
 		egui_renderer.paint(&cmd, &clipped_primitives, &ScreenDesc {
 			size_in_pixels: window.size().into(),
-			pixels_per_point: window.scale_factor(),
+			pixels_per_point: full_output.pixels_per_point,
 		});
 
 		cmd.render_pass_end();

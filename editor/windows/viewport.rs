@@ -1,3 +1,5 @@
+use engine::graphics::camera::Camera;
+
 use crate::math::{Mat4, Vec3, transform::Transform3, Unit, UnitQuaternion, Quaternion};
 use crate::time::Time;
 
@@ -121,10 +123,12 @@ impl tabs::Tab<MyContext> for ViewportTab {
 		self.frame_time += (time.delta_seconds() - self.frame_time) / FRAME_TIME_SMOOTHING;
 		ui.painter().text(cursor.left_top() + egui::vec2(55.0, 10.0), egui::Align2::LEFT_TOP, format!("dt: {:.2} ms", self.frame_time * 1000.0), egui::FontId::monospace(12.0), egui::Color32::WHITE);
 
-		navigation_gizmo(ui, cursor.right_top() + egui::vec2(-10.0 - 80.0, 10.0), ctx.camera_transform.rotation.inv());
+		let (camera_transform, camera) = ctx.world.query::<(&Transform3, &Camera)>().iter().next().unwrap();
 
-		let view_matrix = Mat4::from(ctx.camera_transform.inv());
-		let projection_matrix = ctx.camera.projection_matrix();
+		navigation_gizmo(ui, cursor.right_top() + egui::vec2(-10.0 - 80.0, 10.0), camera_transform.rotation.inv());
+
+		let view_matrix = Mat4::from(camera_transform.inv());
+		let projection_matrix = camera.projection_matrix();
 
 		if let Some(selection) = ctx.selection.iter().next() {
 			if let (Some(mode), Some(transform)) = (self.gizmo_mode, ctx.world.entity_mut(*selection).get_mut::<Transform3>()) {
@@ -165,7 +169,9 @@ impl tabs::Tab<MyContext> for ViewportTab {
 				}
 			}
 		}
-		
-		EditorCamera::update(&mut ctx.camera_transform, ui, &response);
+
+		// TODO: Ideally, we shouldn't query the camera twice in this function
+		let (camera_transform, _) = ctx.world.query::<(&mut Transform3, &Camera)>().iter().next().unwrap();
+		EditorCamera::update(camera_transform, ui, &response);
 	}
 }

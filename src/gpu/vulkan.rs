@@ -656,6 +656,10 @@ impl super::DeviceImpl for Device {
 		todo!()
 	}
 
+	fn capabilities(&self) -> &super::Capabilities {
+		todo!()
+	}
+
 	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
 		todo!()
 	}

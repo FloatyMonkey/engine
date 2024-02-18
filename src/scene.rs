@@ -1,4 +1,10 @@
-use crate::{ecs::World, math::{transform::Transform3, Vec3}, asset::{AssetId, AssetServer}, geometry::mesh::Mesh, graphics::scene::Image, geometry};
+use crate::{
+	asset::{AssetId, AssetServer},
+	ecs::World,
+	geometry::{self, mesh::Mesh},
+	graphics::{camera::Camera, scene::Image},
+	math::{transform::Transform3, Vec3, UnitQuaternion, PI},
+};
 
 pub struct Name {
 	pub name: String,
@@ -38,6 +44,16 @@ pub fn setup_scene(world: &mut World, assets: &mut AssetServer) {
 
 	let grid_mesh = assets.insert(proc_mesh);
 	let ybot_mesh = assets.load("../assets/YBot-mesh.fme");
+
+	world.spawn((
+		Name::new("Camera"),
+		Camera::default(),
+		Transform3 {
+			translation: Vec3::new(0.0, -5.0, 0.9),
+			rotation: UnitQuaternion::from_axis_angle(Vec3::X, PI / 2.0),
+			scale: Vec3::ONE,
+		},
+	));
 
 	world.spawn((
 		Name::new("Grid"),

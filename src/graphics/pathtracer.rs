@@ -135,7 +135,7 @@ impl PathTracer {
 		}
 	}
 
-	pub fn render(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
+	fn render(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
 		let push_constants = PushConstants {
 			camera: GpuCamera::from_camera(&scene.camera, &scene.camera_transform),
 			tlas_index: scene.tlas.accel.srv_index().unwrap(),
@@ -178,9 +178,16 @@ impl PathTracer {
 		self.sample_index += 1;
 	}
 
-	pub fn reset(&mut self) {
+	fn reset(&mut self) {
 		self.rng = StdRng::seed_from_u64(0);
 		self.sample_index = 0;
+	}
+
+	pub fn run(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene, samples: usize) {
+		self.reset();
+		for _ in 0..samples {
+			self.render(cmd, scene);
+		}
 	}
 }
 

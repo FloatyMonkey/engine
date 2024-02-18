@@ -165,6 +165,13 @@ impl Scene {
 	}
 
 	pub fn update(&mut self, world: &mut World, assets: &AssetServer, device: &mut gpu::Device, cmd: &mut gpu::CmdList) {
+		// CAMERA
+		// TODO: Handle properly when there's no camera in the scene.
+		if let Some((transform, camera)) = world.query::<(&Transform3, &Camera)>().iter().next() {
+			self.camera = *camera;
+			self.camera_transform = *transform;
+		}
+
 		// LIGHTS
 
 		// Gpu assumes infinite lights are at the start of the array

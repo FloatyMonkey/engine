@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use crate::graphics::camera::Camera;
-use crate::math::{UnitQuaternion, Vec3, transform::Transform3, PI};
 use crate::ecs::{Entity, World};
 use crate::time::Time;
 
@@ -12,8 +10,6 @@ pub struct MyContext {
 	pub world: World,
 	pub selection: HashSet::<Entity>,
 	pub viewport_texture_srv: u32,
-	pub camera: Camera,
-	pub camera_transform: Transform3,
 }
 
 pub struct Editor {
@@ -57,12 +53,6 @@ impl Editor {
 				world,
 				selection: HashSet::new(),
 				viewport_texture_srv: 0,
-				camera: Camera::default(),
-				camera_transform: Transform3 {
-					translation: Vec3::new(0.0, -5.0, 0.9),
-					rotation: UnitQuaternion::from_axis_angle(Vec3::X, PI / 2.0),
-					scale: Vec3::ONE,
-				},
 			},
 			tree: Self::setup_tree(),
 		}

@@ -276,8 +276,18 @@ pub fn get_raw_input(app: &os::platform::App, window: &os::platform::Window) -> 
 		}
 	}
 
+	let viewport = egui::ViewportInfo {
+		native_pixels_per_point: Some(scale_factor),
+		..Default::default()
+	};
+
 	egui::RawInput {
-		screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(window.size().x as f32, window.size().y as f32))),
+		// TODO: Better to solve this using ScreenDesc?
+		screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(
+			window.size().x as f32 / scale_factor,
+			window.size().y as f32 / scale_factor,
+		))),
+		viewports: std::iter::once((egui::ViewportId::ROOT, viewport)).collect(),
 		focused: window.is_focused(),
 		events,
 		..Default::default()

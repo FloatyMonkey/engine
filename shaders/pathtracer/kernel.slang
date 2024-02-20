@@ -148,6 +148,7 @@ func raygen() {
 
 struct ShadingCtx {
 	float3 position;
+	float3 shading_point;
 	float3 normal;
 	float3 geometric_normal;
 
@@ -172,12 +173,15 @@ struct ShadingCtx {
 		let local_normal = normalize(barycentrics.x * v0.normal + barycentrics.y * v1.normal + barycentrics.z * v2.normal);
 		let local_geometric_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
 
+		var shading_point = offset_shading_point(local_position, { v0.position, v1.position, v2.position }, { v0.normal, v1.normal, v2.normal }, barycentrics);
+		shading_point = mul(ObjectToWorld3x4(), float4(shading_point, 1.0));
+
 		// Transform to world space
 		let position = mul(ObjectToWorld3x4(), float4(local_position, 1.0));
 		let normal = normalize(mul((float3x3)ObjectToWorld3x4(), local_normal));
 		let geometric_normal = normalize(mul((float3x3)ObjectToWorld3x4(), local_geometric_normal));
 
-		return { position, normal, geometric_normal };
+		return { position, shading_point, normal, geometric_normal };
 	}
 }
 
@@ -248,7 +252,7 @@ func closesthit(inout RayPayload payload, attributes: BuiltInTriangleIntersectio
 		if (ls.pdf > 0.0) {
 			let f = bsdf.f(wo, ls.wi) * abs(dot(ls.wi, ctx.normal));
 
-			let light_ray: RayDesc = { ctx.position, 1e-4, ls.wi, ls.distance - 1e-4 };
+			let light_ray: RayDesc = { ctx.shading_point, 1e-4, ls.wi, ls.distance - 1e-4 };
 
 			if (!occluded(tlas, light_ray)) {
 				let p_l = sampled_light_pmf * ls.pdf;
@@ -323,16 +327,31 @@ func russian_roulette(inout throughput: SampledSpectrum, u: float) -> bool {
 	return false;
 }
 
-/// Offsets ray origin `p` along geometric normal `n` to avoid self-intersections.
+/// Offsets ray origin `p` along geometric normal `ng` to avoid self-intersections caused by numerical precision issues.
 /// [Wächter & Binder 2019, *A Fast and Robust Method for Avoiding Self-Intersection*]
-func offset_ray_origin(p: float3, n: float3) -> float3 {
+func offset_ray_origin(p: float3, ng: float3) -> float3 {
 	const float ORIGIN = 1.0 / 32.0;
 	const float FLOAT_SCALE = 3.0 / 65536.0;
 	const float INT_SCALE = 256.0;
 
-	int3 i_offset = int3(n * INT_SCALE);
+	int3 i_offset = int3(ng * INT_SCALE);
 	float3 i_p = asfloat(asint(p) + select(p < 0.0, -i_offset, i_offset));
 
-	float3 f_offset = n * FLOAT_SCALE;
+	float3 f_offset = ng * FLOAT_SCALE;
 	return select(abs(p) < ORIGIN, p + f_offset, i_p);
+}
+
+/// Offsets shading point `p` to avoid hard self-shadowing caused by low tessellation.
+/// [Hanika 2021, *Hacking the Shadow Terminator*]
+func offset_shading_point(p: float3, positions: float3[3], normals: float3[3], barycentrics: float3) -> float3 {
+	var tmpu = p - positions[0];
+	var tmpv = p - positions[1];
+	var tmpw = p - positions[2];
+
+	// TODO: Transmitted rays may need to apply the offset the other way around, i.e. flip all the vertex normals before evaluation.
+	tmpu -= min(0.0, dot(tmpu, normals[0])) * normals[0];
+	tmpv -= min(0.0, dot(tmpv, normals[1])) * normals[1];
+	tmpw -= min(0.0, dot(tmpw, normals[2])) * normals[2];
+
+	return p + barycentrics.x * tmpu + barycentrics.y * tmpv + barycentrics.z * tmpw;
 }

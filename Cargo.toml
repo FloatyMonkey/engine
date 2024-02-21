@@ -9,9 +9,9 @@ license = "MIT OR Apache-2.0"
 ash = "0.37.3"
 bitflags = "2.4.1"
 byteorder = "1"
-egui = "0.25.0"
-egui_extras = { version = "0.25.0", features = ["svg"] }
-egui-gizmo = "0.15"
+egui = "0.26.2"
+egui_extras = { version = "0.26.2", features = ["svg"] }
+egui-gizmo = "0.16"
 exr = "1.71.0"
 rand = "0.8.5"
 slang = { path = "../slang-rs" }

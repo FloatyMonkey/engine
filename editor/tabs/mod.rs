@@ -209,13 +209,16 @@ pub fn show<Context>(
 				}
 
 				let is_being_dragged = ui.memory(|m| m.is_anything_being_dragged());
-				if is_being_dragged && full_response.hovered() {
-					hover_data = ui.input(|i| i.pointer.hover_pos().map(|pointer| HoverData {
-						rect,
-						dst: tree_index,
-						tabs: tabs_response.hovered().then(|| tabs_response.rect),
-						pointer,
-					}));
+				if let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos()) {
+					// TODO: These rect.contains() don't feel like the best solution, but it works for now.
+					if is_being_dragged && full_response.rect.contains(pointer_pos) {
+						hover_data = Some(HoverData {
+							rect,
+							dst: tree_index,
+							tabs: tabs_response.rect.contains(pointer_pos).then(|| tabs_response.rect),
+							pointer: pointer_pos,
+						});
+					}
 				}
 			}
 		}

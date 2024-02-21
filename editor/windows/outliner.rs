@@ -64,9 +64,9 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 										.size(18.0),
 								);
 							});
-							let name_response = row.col(|ui| {
+							row.col(|ui| {
 								ui.label(format!("{}", name.name));
-							}).1;
+							});
 							row.col(|ui| {
 								ui.label(format!("({},{})", entity.index(), entity.generation()));
 							});
@@ -78,10 +78,7 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 								ctx.selection.insert(entity);
 							}
 
-							// TODO: Since `res` uses the id (and location) of the first column,
-							// this will only open the context menu when right-clicking that column.
-							// Fix `row.response()` to open the menu from any column, needs to be done upstream in egui_extras.
-							name_response.context_menu(|ui| {
+							res.context_menu(|ui| {
 								if ui.button("Delete").clicked() {
 									ctx.selection.remove(&entity);
 									cmds.despawn(entity);

@@ -80,6 +80,7 @@ impl tabs::Tab<MyContext> for ViewportTab {
 		let response = ui.add(
 			egui::Image::from_texture((egui::TextureId::User(ctx.viewport_texture_srv as u64), max_rect.size()))
 				.rounding(egui::Rounding { nw: 0.0, ne: 0.0, se: 3.0, sw: 3.0 })
+				.sense(egui::Sense::click_and_drag())
 		);
 
 		let mut toolbar_ui = ui.child_ui_with_id_source(
@@ -106,6 +107,7 @@ impl tabs::Tab<MyContext> for ViewportTab {
 			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/select.svg")).selected(self.gizmo_mode == None).rounding(egui::Rounding{nw: 5.0, ne: 5.0, se: 0.0, sw: 0.0})).clicked() {
 				self.gizmo_mode = None;
 			}
+
 			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/translate.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Translate))).clicked() {
 				self.gizmo_mode = Some(egui_gizmo::GizmoMode::Translate);
 			}

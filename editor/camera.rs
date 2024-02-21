@@ -28,7 +28,7 @@ impl EditorCamera {
 
 		if response.hovered() {
 			let dt = ui.input(|i| i.predicted_dt);
-			let scroll = ui.input(|i| i.scroll_delta.y);
+			let scroll = ui.input(|i| i.smooth_scroll_delta.y);
 
 			transform.translation -= transform.rotation * Vec3::Z * scroll * ZOOM_SPEED;
 

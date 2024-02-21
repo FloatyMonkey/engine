@@ -5,6 +5,7 @@ use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
+use std::num::NonZeroU32;
 
 pub type EntityId = u32;
 pub type ComponentId = Entity;
@@ -144,13 +145,13 @@ impl EntityLocation {
 
 #[derive(Clone, Copy)]
 pub struct EntityInfo {
-	pub generation: EntityId,
+	pub generation: NonZeroU32,
 	pub location: EntityLocation,
 }
 
 impl EntityInfo {
 	const EMPTY: Self = Self {
-		generation: 0,
+		generation: NonZeroU32::MIN,
 		location: EntityLocation::EMPTY,
 	};
 }
@@ -159,11 +160,11 @@ impl EntityInfo {
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct Entity {
 	index: EntityId,
-	generation: EntityId,
+	generation: NonZeroU32,
 }
 
 impl Entity {
-	pub const fn new(index: EntityId, generation: EntityId) -> Self {
+	pub const fn new(index: EntityId, generation: NonZeroU32) -> Self {
 		Self { index, generation }
 	}
 
@@ -172,20 +173,28 @@ impl Entity {
 	}
 
 	pub const fn generation(&self) -> EntityId {
-		self.generation
+		self.generation.get()
 	}
 }
 
 impl std::fmt::Debug for Entity {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "Entity({}, {})", self.index, self.generation)
+		write!(f, "Entity({}, {})", self.index(), self.generation())
 	}
 }
 
 impl std::fmt::Display for Entity {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "Entity({}, {})", self.index, self.generation)
+		write!(f, "Entity({}, {})", self.index(), self.generation())
 	}
+}
+
+/// Adds two numbers, wrapping to 1 instead of 0 on overflow.
+const fn wrapping_add_nonzero(lhs: NonZeroU32, rhs: u32) -> NonZeroU32 {
+	let (sum, carry) = lhs.get().overflowing_add(rhs);
+	let ret = sum + carry as u32;
+	// SAFETY: Adding the carry flag will offset overflows to start at 1 instead of 0.
+	unsafe { NonZeroU32::new_unchecked(ret) }
 }
 
 pub struct World {
@@ -231,7 +240,7 @@ impl World {
 		} else {
 			self.entities.push(EntityInfo::EMPTY);
 			debug_assert!(self.entities.len() <= EntityId::MAX as usize);
-			Entity { index: (self.entities.len() - 1) as EntityId, generation: 0 }
+			Entity { index: (self.entities.len() - 1) as EntityId, generation: NonZeroU32::MIN }
 		}
 	}
 
@@ -242,7 +251,7 @@ impl World {
 			return None;
 		}
 
-		entity_info.generation = entity_info.generation.wrapping_add(1);
+		entity_info.generation = wrapping_add_nonzero(entity_info.generation, 1);
 		self.free_entities.push(entity.index);
 
 		Some(std::mem::replace(&mut entity_info.location, EntityLocation::EMPTY))
@@ -417,10 +426,11 @@ impl<'w> EntityMut<'w> {
 	}
 
 	pub fn despawn(self) {
-		let location = self.world.free_entity(self.entity).unwrap();
-		let moved_entity = self.world.archetypes[location.archetype_id]
-			.swap_remove(location.archetype_row);
-		self.world.entities[moved_entity as usize].location = location;
+		if let Some(location) = self.world.free_entity(self.entity) {
+			let moved_entity = self.world.archetypes[location.archetype_id]
+				.swap_remove(location.archetype_row);
+			self.world.entities[moved_entity as usize].location = location;
+		}
 	}
 
 	fn as_ref(&'w self) -> EntityRef<'w> {
@@ -501,5 +511,18 @@ fn spawn_in_world<B: DynamicBundle>(world: &mut World, bundle: B, entity_index: 
 	EntityLocation {
 		archetype_id: archetype_index,
 		archetype_row: (world.archetypes[archetype_index].len() - 1) as EntityId
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn entity_niche_optimization() {
+		assert_eq!(
+			std::mem::size_of::<Entity>(),
+			std::mem::size_of::<Option<Entity>>()
+		);
 	}
 }

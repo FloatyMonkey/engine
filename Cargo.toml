@@ -11,10 +11,10 @@ bitflags = "2.4.1"
 byteorder = "1"
 egui = "0.26.2"
 egui_extras = { version = "0.26.2", features = ["svg"] }
-egui-gizmo = "0.16"
+egui-gizmo = "0.16.1"
 exr = "1.71.0"
 rand = "0.8.5"
-slang = { path = "../slang-rs" }
+slang = { git = "https://github.com/FloatyMonkey/slang-rs.git" }
 
 [dependencies.windows]
 version = "0.52.0"

@@ -12,15 +12,11 @@ use windows::{
 	Win32::System::{LibraryLoader::*, Threading::*},
 };
 
-type BeginEventOnCommandList = extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32;
-type EndEventOnCommandList = extern "stdcall" fn(*const core::ffi::c_void) -> i32;
-type SetMarkerOnCommandList = extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32;
-
 #[derive(Clone, Copy)]
 struct WinPixEventRuntime {
-	begin_event: BeginEventOnCommandList,
-	end_event: EndEventOnCommandList,
-	set_marker: SetMarkerOnCommandList,
+	begin_event: extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32,
+	end_event: extern "stdcall" fn(*const core::ffi::c_void) -> i32,
+	set_marker: extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32,
 }
 
 impl WinPixEventRuntime {
@@ -28,14 +24,10 @@ impl WinPixEventRuntime {
 		unsafe {
 			let module = LoadLibraryA(s!("WinPixEventRuntime.dll")).ok()?;
 
-			let begin_event = GetProcAddress(module, s!("PIXBeginEventOnCommandList"))?;
-			let end_event = GetProcAddress(module, s!("PIXEndEventOnCommandList"))?;
-			let set_marker = GetProcAddress(module, s!("PIXSetMarkerOnCommandList"))?;
-
 			Some(Self {
-				begin_event: std::mem::transmute::<*const usize, BeginEventOnCommandList>(begin_event as _),
-				end_event: std::mem::transmute::<*const usize, EndEventOnCommandList>(end_event as _),
-				set_marker: std::mem::transmute::<*const usize, SetMarkerOnCommandList>(set_marker as _),
+				begin_event: std::mem::transmute(GetProcAddress(module, s!("PIXBeginEventOnCommandList"))?),
+				end_event: std::mem::transmute(GetProcAddress(module, s!("PIXEndEventOnCommandList"))?),
+				set_marker: std::mem::transmute(GetProcAddress(module, s!("PIXSetMarkerOnCommandList"))?),
 			})
 		}
 	}

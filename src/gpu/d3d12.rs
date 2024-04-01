@@ -12,6 +12,11 @@ use windows::{
 	Win32::System::{LibraryLoader::*, Threading::*},
 };
 
+#[no_mangle]
+pub static D3D12SDKVersion: u32 = 611;
+#[no_mangle]
+pub static D3D12SDKPath: &[u8; 9] = b".\\D3D12\\\0";
+
 #[derive(Clone, Copy)]
 struct WinPixEventRuntime {
 	begin_event: extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32,
@@ -777,14 +782,6 @@ impl super::DeviceImpl for Device {
 
 	fn new(desc: &super::DeviceDesc) -> Device {
 		unsafe {
-			// TODO: This requires users system to be in Developer Mode,
-			// should use dllexport constants instead, but that's a bit difficult in Rust.
-			let mut sdk_config: Option<ID3D12SDKConfiguration> = None;
-
-			if let Some(config) = D3D12GetInterface(&CLSID_D3D12SDKConfiguration, &mut sdk_config).ok().and(sdk_config) {
-				config.SetSDKVersion(611, s!(".\\D3D12\\")).unwrap();
-			}
-
 			if !desc.validation.is_empty() {
 				let mut debug: Option<ID3D12Debug1> = None;
 				if let Some(debug) = D3D12GetDebugInterface(&mut debug).ok().and(debug) {

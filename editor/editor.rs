@@ -20,6 +20,9 @@ pub struct Editor {
 
 impl Editor {
 	pub fn new() -> Self {
+		// TODO: Move earlier into main.rs
+		log::set_logger(&windows::Log {}).map(|()| log::set_max_level(log::LevelFilter::Trace)).unwrap();
+
 		let egui_ctx = egui::Context::default();
 
 		egui_extras::install_image_loaders(&egui_ctx);
@@ -84,12 +87,13 @@ impl Editor {
 		let outliner = Box::new(windows::OutlinerTab::new());
 		let inspector = Box::new(windows::InspectorTab::new());
 
+		let console = Box::new(windows::ConsoleTab::new());
 		let content = Box::new(windows::ContentTab::new());
 
 		let mut tree = tabs::Tree::new(vec![viewport]);
 
 		let [a, b] = tree.split_right(tabs::NodeIndex::root(), 0.85, vec![outliner]);
-		let [_, _] = tree.split_below(a, 0.9, vec![content]);
+		let [_, _] = tree.split_below(a, 0.9, vec![console, content]);
 		let [_, _] = tree.split_below(b, 0.5, vec![inspector]);
 
 		tree

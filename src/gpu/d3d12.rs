@@ -19,9 +19,9 @@ pub static D3D12SDKPath: &[u8; 9] = b".\\D3D12\\\0";
 
 #[derive(Clone, Copy)]
 struct WinPixEventRuntime {
-	begin_event: extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32,
-	end_event: extern "stdcall" fn(*const core::ffi::c_void) -> i32,
-	set_marker: extern "stdcall" fn(*const core::ffi::c_void, u64, PSTR) -> i32,
+	begin_event: extern "stdcall" fn(*const std::ffi::c_void, u64, PSTR) -> i32,
+	end_event: extern "stdcall" fn(*const std::ffi::c_void) -> i32,
+	set_marker: extern "stdcall" fn(*const std::ffi::c_void, u64, PSTR) -> i32,
 }
 
 impl WinPixEventRuntime {
@@ -664,6 +664,25 @@ impl Heap {
 	}
 }
 
+unsafe extern "system" fn debug_callback(
+	_category: D3D12_MESSAGE_CATEGORY,
+	severity: D3D12_MESSAGE_SEVERITY,
+	_id: D3D12_MESSAGE_ID,
+	description: PCSTR,
+	_context: *mut std::ffi::c_void,
+) {
+	let log_severity = match severity {
+		D3D12_MESSAGE_SEVERITY_CORRUPTION => log::Level::Error,
+		D3D12_MESSAGE_SEVERITY_ERROR => log::Level::Error,
+		D3D12_MESSAGE_SEVERITY_WARNING => log::Level::Warn,
+		D3D12_MESSAGE_SEVERITY_INFO => log::Level::Info,
+		D3D12_MESSAGE_SEVERITY_MESSAGE => log::Level::Debug,
+		_ => unreachable!(),
+	};
+
+	log::log!(target: "gpu::d3d12", log_severity, "{}", description.display());
+}
+
 impl Device {
 	fn create_root_signature(&self, layout: &super::DescriptorLayout) -> result::Result<ID3D12RootSignature, super::Error> {
 		let mut root_params: Vec<D3D12_ROOT_PARAMETER1> = Vec::new();
@@ -817,6 +836,12 @@ impl super::DeviceImpl for Device {
 				}
 			}
 			let device = device.unwrap();
+
+			if let Ok(info_queue) = device.cast::<ID3D12InfoQueue1>() {
+				let mut cookie = 0;
+				info_queue.SetMuteDebugOutput(true);
+				info_queue.RegisterMessageCallback(Some(debug_callback), D3D12_MESSAGE_CALLBACK_IGNORE_FILTERS, std::ptr::null_mut(), &mut cookie).unwrap();
+			}
 
 			let mut feature_options5 = D3D12_FEATURE_DATA_D3D12_OPTIONS5::default();
 			let res = device.CheckFeatureSupport(

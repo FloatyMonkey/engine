@@ -1,12 +1,14 @@
 mod d3d12;
 mod vulkan;
+mod shader_compiler;
 
 use std::ops::Range;
 
 use crate::os::NativeHandle;
-use slang;
 
 type Error = super::Error;
+
+pub use shader_compiler::ShaderCompiler;
 
 // TODO: This hardcodes the backend to D3D12. Make it dynamic.
 pub type Device = d3d12::Device;
@@ -19,37 +21,6 @@ pub type GraphicsPipeline = <d3d12::Device as DeviceImpl>::GraphicsPipeline;
 pub type ComputePipeline = <d3d12::Device as DeviceImpl>::ComputePipeline;
 pub type RaytracingPipeline = <d3d12::Device as DeviceImpl>::RaytracingPipeline;
 pub type AccelerationStructure = <d3d12::Device as DeviceImpl>::AccelerationStructure;
-
-pub struct ShaderCompiler {
-	session: slang::GlobalSession,
-}
-
-impl ShaderCompiler {
-	pub fn new() -> Self {
-		Self{ session: slang::GlobalSession::new() }
-	}
-
-	pub fn compile(&self, file: &str, entry_point: &str) -> Vec<u8> {
-		let mut compile_request = self.session.create_compile_request();
-
-		compile_request
-			.set_optimization_level(slang::OptimizationLevel::High)
-			.set_codegen_target(slang::CompileTarget::Dxil)
-			.set_target_profile(self.session.find_profile("sm_6_5"))
-			.set_matrix_layout_mode(slang::MatrixLayoutMode::RowMajor)
-			.add_search_path("shaders");
-
-		let ep = compile_request
-			.add_translation_unit(slang::SourceLanguage::Slang, None)
-			.add_source_file(file)
-			.add_entry_point(entry_point, slang::Stage::None);
-
-		let res = compile_request.compile()
-			.expect("Shader compilation errors");
-
-		res.get_entry_point_code(ep).into()
-	}
-}
 
 /// Returns the highest mip number for a texture with the given resolution.
 /// This number is one less than the total number of mip levels.

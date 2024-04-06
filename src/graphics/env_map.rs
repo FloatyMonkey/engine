@@ -66,7 +66,6 @@ impl ImportanceMap {
 			depth: 1,
 			array_size: 1,
 			mip_levels,
-			samples: 1,
 			format: gpu::Format::R32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			layout: gpu::TextureLayout::ShaderResource,
@@ -117,7 +116,7 @@ impl ImportanceMap {
 		cmd.set_compute_pipeline(&self.prepare_pipeline);
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
-		cmd.dispatch(dimension.div_ceil(16), dimension.div_ceil(16), 1);
+		cmd.dispatch([dimension.div_ceil(16), dimension.div_ceil(16), 1]);
 		
 		cmd.barriers(&gpu::Barriers::global());
 

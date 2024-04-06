@@ -41,15 +41,9 @@ impl PathTracer {
 		];
 
 		let groups = vec![
-			gpu::ShaderGroup {
-				ty: gpu::ShaderGroupType::Triangles,
-				name: "hit_group".to_string(),
-				general: None,
-				closest_hit: Some(2),
-				any_hit: None,
-				intersection: None, 
-			},
-			// TODO: Other shaders as hit groups
+			gpu::ShaderGroup::general("raygen", 0),
+			gpu::ShaderGroup::general("miss", 1),
+			gpu::ShaderGroup::triangles("hit_group", Some(2), None),
 		];
 
 		let descriptor_layout = gpu::DescriptorLayout {
@@ -94,20 +88,20 @@ impl PathTracer {
 		// Address must be aligned to 64 bytes (D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT)
 		// The stride must be aligned to 32 bytes (D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT)
 		// let shader_identifier_size = pipeline.get_shader_identifier_size();
-		
+
 		let table_alignment = 64;
 		let mut shader_table_data = vec![0u8; table_alignment * 3]; // Works for now with single entry per table
 
-		pipeline.write_shader_identifier("raygen", &mut shader_table_data[table_alignment * 0..]);
-		pipeline.write_shader_identifier("miss", &mut shader_table_data[table_alignment * 1..]);
-		pipeline.write_shader_identifier("hit_group", &mut shader_table_data[table_alignment * 2..]);
+		pipeline.write_shader_identifier(0, &mut shader_table_data[table_alignment * 0..]);
+		pipeline.write_shader_identifier(1, &mut shader_table_data[table_alignment * 1..]);
+		pipeline.write_shader_identifier(2, &mut shader_table_data[table_alignment * 2..]);
 
 		let shader_table = device.create_buffer(&gpu::BufferDesc {
 			size: shader_table_data.len(),
 			usage: gpu::BufferUsage::empty(),
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
-		device.upload_buffer(&shader_table, &shader_table_data);
+		gpu::upload_buffer(device, &shader_table, &shader_table_data);
 
 		// Create the output texture
 
@@ -119,7 +113,6 @@ impl PathTracer {
 			depth: 1,
 			array_size: 1,
 			mip_levels: 1,
-			samples: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			layout: gpu::TextureLayout::UnorderedAccess,
@@ -152,6 +145,7 @@ impl PathTracer {
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch_rays(&gpu::DispatchRaysDesc {
+			size: [self.resolution[0], self.resolution[1], 1],
 			raygen: Some(gpu::ShaderTable {
 				ptr: self.shader_table.gpu_ptr().offset(64 * 0),
 				size: 32,
@@ -168,9 +162,6 @@ impl PathTracer {
 				stride: 32,
 			}),
 			callable: None,
-			width: self.resolution[0],
-			height: self.resolution[1],
-			depth: 1,
 		});
 
 		cmd.barriers(&gpu::Barriers::global());
@@ -231,7 +222,6 @@ impl Compositor {
 			depth: 1,
 			array_size: 1,
 			mip_levels: 1,
-			samples: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
 			layout: gpu::TextureLayout::UnorderedAccess,
@@ -255,7 +245,7 @@ impl Compositor {
 		};
 
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
-		cmd.dispatch(self.res[0].div_ceil(16), self.res[1].div_ceil(16), 1);
+		cmd.dispatch([self.res[0].div_ceil(16), self.res[1].div_ceil(16), 1]);
 
 		cmd.barriers(&gpu::Barriers::global());
 	}

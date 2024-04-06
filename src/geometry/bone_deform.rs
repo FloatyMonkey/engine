@@ -70,8 +70,8 @@ impl BoneDeform {
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
-		device.upload_buffer(&lookup_buffer, gpu::slice_as_u8_slice(&lookup));
-		device.upload_buffer(&weights_buffer, gpu::slice_as_u8_slice(&values));
+		gpu::upload_buffer(device, &lookup_buffer, gpu::slice_as_u8_slice(&lookup));
+		gpu::upload_buffer(device, &weights_buffer, gpu::slice_as_u8_slice(&values));
 
 		let bone_transforms_buffer = device.create_buffer(&gpu::BufferDesc {
 			size: std::mem::size_of::<Mat3x4>() * bone_count,
@@ -113,7 +113,7 @@ impl BoneDeform {
 		cmd.set_compute_pipeline(&self.compute_pipeline);
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
-		cmd.dispatch(push_constants.num_vertices.div_ceil(32), 1, 1);
+		cmd.dispatch([push_constants.num_vertices.div_ceil(32), 1, 1]);
 		
 		cmd.barriers(&gpu::Barriers::global());
 	}

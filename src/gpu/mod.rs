@@ -10,17 +10,17 @@ type Error = super::Error;
 
 pub use shader_compiler::ShaderCompiler;
 
-// TODO: This hardcodes the backend to D3D12. Make it dynamic.
+// TODO: This hardcodes the backend at compile time. Make it dynamic.
 pub type Device = d3d12::Device;
-pub type SwapChain = <d3d12::Device as DeviceImpl>::SwapChain;
-pub type CmdList = <d3d12::Device as DeviceImpl>::CmdList;
-pub type Buffer = <d3d12::Device as DeviceImpl>::Buffer;
-pub type Texture = <d3d12::Device as DeviceImpl>::Texture;
-pub type Sampler = <d3d12::Device as DeviceImpl>::Sampler;
-pub type GraphicsPipeline = <d3d12::Device as DeviceImpl>::GraphicsPipeline;
-pub type ComputePipeline = <d3d12::Device as DeviceImpl>::ComputePipeline;
-pub type RaytracingPipeline = <d3d12::Device as DeviceImpl>::RaytracingPipeline;
-pub type AccelerationStructure = <d3d12::Device as DeviceImpl>::AccelerationStructure;
+pub type Surface = <Device as DeviceImpl>::Surface;
+pub type CmdList = <Device as DeviceImpl>::CmdList;
+pub type Buffer = <Device as DeviceImpl>::Buffer;
+pub type Texture = <Device as DeviceImpl>::Texture;
+pub type Sampler = <Device as DeviceImpl>::Sampler;
+pub type GraphicsPipeline = <Device as DeviceImpl>::GraphicsPipeline;
+pub type ComputePipeline = <Device as DeviceImpl>::ComputePipeline;
+pub type RaytracingPipeline = <Device as DeviceImpl>::RaytracingPipeline;
+pub type AccelerationStructure = <Device as DeviceImpl>::AccelerationStructure;
 
 /// Returns the highest mip number for a texture with the given resolution.
 /// This number is one less than the total number of mip levels.
@@ -199,9 +199,9 @@ pub enum PowerPreference {
 	/// No preference.
 	#[default]
 	None,
-	/// Prefer GPU that uses the least power. This is often an integrated GPU.
+	/// Prefer device that uses the least power. This is often an integrated GPU.
 	LowPower,
-	/// Prefer GPU that has the highest performance. This is often a discrete or external GPU.
+	/// Prefer device that has the highest performance. This is often a discrete or external GPU.
 	HighPerformance,
 }
 
@@ -223,8 +223,16 @@ pub struct AdapterInfo {
 	pub available: Vec<String>,
 }
 
-pub struct SwapChainDesc {
+#[derive(Clone, Copy)]
+pub enum PresentMode {
+	Immediate,
+	Mailbox,
+	Fifo,
+}
+
+pub struct SurfaceDesc {
 	pub size: [u32; 2],
+	pub present_mode: PresentMode,
 	pub num_buffers: u32,
 	pub format: Format,
 }
@@ -239,9 +247,9 @@ pub enum Memory {
 bitflags! {
 	#[derive(Clone, Copy)]
 	pub struct BufferUsage: u32 {
-		const INDEX = 1 << 0;
-		const SHADER_RESOURCE = 1 << 1;
-		const UNORDERED_ACCESS = 1 << 2;
+		const INDEX                  = 1 << 0;
+		const SHADER_RESOURCE        = 1 << 1;
+		const UNORDERED_ACCESS       = 1 << 2;
 		const ACCELERATION_STRUCTURE = 1 << 3;
 	}
 }
@@ -269,10 +277,10 @@ pub enum TextureLayout {
 bitflags! {
 	#[derive(Clone, Copy)]
 	pub struct TextureUsage: u32 {
-		const SHADER_RESOURCE = 1 << 0;
+		const SHADER_RESOURCE  = 1 << 0;
 		const UNORDERED_ACCESS = 1 << 1;
-		const RENDER_TARGET = 1 << 2;
-		const DEPTH_STENCIL = 1 << 3;
+		const RENDER_TARGET    = 1 << 2;
+		const DEPTH_STENCIL    = 1 << 3;
 	}
 }
 
@@ -284,7 +292,6 @@ pub struct TextureDesc {
 
 	pub array_size: u32,
 	pub mip_levels: u32,
-	pub samples: u32,
 
 	pub format: Format,
 	pub usage: TextureUsage,
@@ -528,11 +535,7 @@ pub struct RasterizerDesc {
 	pub depth_bias: DepthBias,
 
 	pub depth_clip_enable: bool,
-	pub multisample_enable: bool,
-	pub antialiased_line_enable: bool,
 	pub conservative_rasterization_enable: bool,
-
-	pub forced_sample_count: u32,
 }
 
 // ----------------------------------------------------------------
@@ -632,13 +635,21 @@ pub enum LoadOp<T> {
 	Discard,
 }
 
-pub struct RenderPassDesc<'a, D: DeviceImpl> {
-	pub depth_stencil: Option<&'a D::Texture>,
-	pub color_attachments: &'a [&'a D::Texture],
+#[derive(Clone, Copy)]
+pub enum StoreOp {
+	Store,
+	Discard,
+}
 
-	pub color_load: LoadOp<Color<f32>>,
-	pub depth_load: LoadOp<f32>,
-	pub stencil_load: LoadOp<u8>,
+pub struct RenderTarget<'a, D: DeviceImpl, T> {
+	pub texture: &'a D::Texture,
+	pub load_op: LoadOp<T>,
+	pub store_op: StoreOp,
+}
+
+pub struct RenderPassDesc<'a, D: DeviceImpl> {
+	pub colors: &'a [RenderTarget<'a, D, Color<f32>>],
+	pub depth_stencil: Option<RenderTarget<'a, D, (f32, u8)>>,
 }
 
 bitflags! {
@@ -678,6 +689,14 @@ impl<'a, D: DeviceImpl> Barriers<'a, D> {
 		}
 	}
 
+	pub fn buffer(buffer: &'a [BufferBarrier<'a, D>]) -> Self {
+		Self {
+			global: &[],
+			buffer,
+			texture: &[],
+		}
+	}
+
 	pub fn texture(texture: &'a [TextureBarrier<'a, D>]) -> Self {
 		Self {
 			global: &[],
@@ -706,7 +725,7 @@ pub trait ComputePipelineImpl<D: DeviceImpl> {}
 
 pub trait RaytracingPipelineImpl<D: DeviceImpl> {
 	fn shader_identifier_size(&self) -> usize;
-	fn write_shader_identifier(&self, name: &str, slice: &mut [u8]);
+	fn write_shader_identifier(&self, group_index: usize, slice: &mut [u8]);
 }
 
 pub trait AccelerationStructureImpl<D: DeviceImpl> {
@@ -718,7 +737,7 @@ pub trait AccelerationStructureImpl<D: DeviceImpl> {
 }
 
 pub trait DeviceImpl: 'static + Send + Sync + Sized {
-	type SwapChain: SwapChainImpl<Self>;
+	type Surface: SurfaceImpl<Self>;
 	type CmdList: CmdListImpl<Self>;
 	type Buffer: BufferImpl<Self>;
 	type Texture: TextureImpl<Self>;
@@ -730,8 +749,8 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	fn new(desc: &DeviceDesc) -> Self;
 
-	fn create_swap_chain(&mut self, desc: &SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, Error>;
-	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList;
+	fn create_surface(&mut self, desc: &SurfaceDesc, window_handle: &NativeHandle) -> Result<Self::Surface, Error>;
+	fn create_cmd_list(&mut self, num_buffers: u32) -> Self::CmdList;
 	fn create_buffer(&mut self, desc: &BufferDesc) -> Result<Self::Buffer, Error>;
 	fn create_texture(&mut self, desc: &TextureDesc) -> Result<Self::Texture, Error>;
 	fn create_sampler(&mut self, desc: &SamplerDesc) -> Result<Self::Sampler, Error>;
@@ -744,27 +763,25 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 	// TODO: Only supports 2D texture UAVs
 	fn create_texture_view(&mut self, desc: &TextureViewDesc, texture: &Self::Texture) -> TextureView;
 
-	fn upload_buffer(&mut self, buffer: &Self::Buffer, data: &[u8]);
-	fn upload_texture(&mut self, texture: &Self::Texture, data: &[u8]);
-
 	fn submit(&self, cmd: &Self::CmdList);
+	fn queue_wait(&self);
+
 	fn adapter_info(&self) -> &AdapterInfo;
 	fn capabilities(&self) -> &Capabilities;
 
 	fn acceleration_structure_sizes(&self, desc: &AccelerationStructureBuildInputs) -> AccelerationStructureSizes;
 }
 
-pub trait SwapChainImpl<D: DeviceImpl>: 'static + Sized {
+pub trait SurfaceImpl<D: DeviceImpl>: 'static + Sized {
 	fn update(&mut self, device: &mut D, size: [u32; 2]);
 	fn wait_for_last_frame(&mut self);
-	fn num_buffers(&self) -> u32;
-	fn backbuffer_index(&self) -> u32;
-	fn backbuffer_texture(&self) -> &D::Texture;
-	fn swap(&mut self, device: &D);
+	fn acquire(&mut self) -> &D::Texture;
+	fn present(&mut self, device: &D);
 }
 
 pub trait CmdListImpl<D: DeviceImpl> {
-	fn reset(&mut self, device: &D, swap_chain: &D::SwapChain);
+	// TODO: Make not dependent on Surface
+	fn reset(&mut self, device: &D, surface: &D::Surface);
 
 	fn copy_buffer(
 		&self,
@@ -831,7 +848,7 @@ pub trait CmdListImpl<D: DeviceImpl> {
 	/// NOTE: base_vertex and instances.start aren't added to SV_VertexID, pass them manually when needed!
 	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>);
 
-	fn dispatch(&self, x: u32, y: u32, z: u32);
+	fn dispatch(&self, groups: [u32; 3]);
 	fn dispatch_rays(&self, desc: &DispatchRaysDesc);
 
 	fn build_acceleration_structure(&self, desc: &AccelerationStructureBuildDesc<D>);
@@ -844,7 +861,7 @@ pub trait CmdListImpl<D: DeviceImpl> {
 /// Converts a Sized type to a u8 slice.
 pub fn as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 	unsafe {
-		std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
+		std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
 	}
 }
 
@@ -901,10 +918,7 @@ impl Default for RasterizerDesc {
 				clamp: 0.0,
 			},
 			depth_clip_enable: true,
-			multisample_enable: false,
-			antialiased_line_enable: false,
 			conservative_rasterization_enable: false,
-			forced_sample_count: 0,
 		}
 	}
 }
@@ -1066,7 +1080,7 @@ bitflags! {
 	}
 
 	#[derive(Clone, Copy)]
-	pub struct AccelerationStructureBottomLevelFlags : u8 {
+	pub struct AccelerationStructureGeometryFlags : u8 {
 		const OPAQUE                          = 1 << 0;
 		const NO_DUPLICATE_ANY_HIT_INVOCATION = 1 << 1;
 	}
@@ -1097,7 +1111,7 @@ pub enum ShaderGroupType {
 
 pub struct ShaderGroup {
 	pub ty: ShaderGroupType,
-	pub name: String,
+	pub name: String, // TODO: Get rid of the name, it's only used by D3D12
 	pub general: Option<u32>,
 	pub closest_hit: Option<u32>,
 	pub any_hit: Option<u32>,
@@ -1122,14 +1136,12 @@ pub struct ShaderTable {
 }
 
 pub struct DispatchRaysDesc {
+	pub size: [u32; 3],
+
 	pub raygen: Option<ShaderTable>,
 	pub miss: Option<ShaderTable>,
 	pub hit_group: Option<ShaderTable>,
 	pub callable: Option<ShaderTable>,
-
-	pub width: u32,
-	pub height: u32,
-	pub depth: u32,
 }
 
 #[repr(C)]
@@ -1170,13 +1182,13 @@ impl GpuPtr {
 	}
 }
 
-pub struct AccelerationStructureAABBsDesc {
+pub struct AccelerationStructureAABBs {
 	pub data: GpuPtr,
 	pub count: usize,
 	pub stride: usize,
 }
 
-pub struct AccelerationStructureTrianglesDesc {
+pub struct AccelerationStructureTriangles {
 	pub vertex_buffer: GpuPtr,
 	pub vertex_format: Format,
 	pub vertex_count: usize,
@@ -1189,47 +1201,42 @@ pub struct AccelerationStructureTrianglesDesc {
 	pub transform: GpuPtr,
 }
 
-pub struct AccelerationStructureInstancesDesc {
+pub struct AccelerationStructureInstances {
 	pub data: GpuPtr,
 	pub count: usize,
 }
 
-pub struct AccelerationStructureSizes {
-	pub acceleration_structure_size: usize,
-	pub build_scratch_buffer_size: usize,
-	pub update_scratch_buffer_size: usize,
-}
-
 pub enum GeometryPart {
-	AABBs(AccelerationStructureAABBsDesc),
-	Triangles(AccelerationStructureTrianglesDesc),
+	AABBs(AccelerationStructureAABBs),
+	Triangles(AccelerationStructureTriangles),
 }
 
 pub struct GeometryDesc {
-	pub flags: AccelerationStructureBottomLevelFlags,
+	pub flags: AccelerationStructureGeometryFlags,
 	pub part: GeometryPart,
 }
 
-pub enum AccelerationStructureKind {
+pub enum AccelerationStructureType {
 	BottomLevel,
 	TopLevel,
 }
 
 pub struct AccelerationStructureBuildInputs {
-	pub kind: AccelerationStructureKind,
+	pub ty: AccelerationStructureType,
 	pub flags: AccelerationStructureBuildFlags,
 
-	pub instances: AccelerationStructureInstancesDesc,
+	pub instances: AccelerationStructureInstances,
 	pub geometry: Vec<GeometryDesc>,
 }
 
 pub struct AccelerationStructureDesc<'a, D: DeviceImpl> {
-	pub kind: AccelerationStructureKind,
+	pub ty: AccelerationStructureType,
 	// TODO: In Metal we can't specify the buffer (accel struct has internal buffer)
 	// They have makeAccelerationStructure(size:) and makeAccelerationStructure(descriptor:)
 	// The backend should allocate this buffer behind the scenes
 	pub buffer: &'a D::Buffer,
 	pub offset: usize,
+	pub size: usize,
 }
 
 pub struct AccelerationStructureBuildDesc<'a, D: DeviceImpl> {
@@ -1239,4 +1246,113 @@ pub struct AccelerationStructureBuildDesc<'a, D: DeviceImpl> {
 	pub src: Option<&'a D::AccelerationStructure>,
 
 	pub scratch_data: GpuPtr,
+}
+
+pub struct AccelerationStructureSizes {
+	pub acceleration_structure_size: usize,
+	pub build_scratch_buffer_size: usize,
+	pub update_scratch_buffer_size: usize,
+}
+
+impl ShaderGroup {
+	pub fn general(name: &str, general: u32) -> Self {
+		Self {
+			ty: ShaderGroupType::General,
+			name: name.to_string(),
+			general: Some(general),
+			closest_hit: None,
+			any_hit: None,
+			intersection: None,
+		}
+	}
+
+	pub fn triangles(name: &str, closest_hit: Option<u32>, any_hit: Option<u32>) -> Self {
+		Self {
+			ty: ShaderGroupType::Triangles,
+			name: name.to_string(),
+			general: None,
+			closest_hit,
+			any_hit,
+			intersection: None,
+		}
+	}
+
+	pub fn procedural(name: &str, closest_hit: Option<u32>, any_hit: Option<u32>, intersection: u32) -> Self {
+		Self {
+			ty: ShaderGroupType::Procedural,
+			name: name.to_string(),
+			general: None,
+			closest_hit,
+			any_hit,
+			intersection : Some(intersection),
+		}
+	}
+}
+
+pub fn upload_buffer<D: DeviceImpl>(device: &mut D, buffer: &D::Buffer, data: &[u8]) {
+	let cmd = device.create_cmd_list(1);
+
+	let upload_buffer = device.create_buffer(&BufferDesc {
+		size: data.len(),
+		usage: BufferUsage::empty(),
+		memory: Memory::CpuToGpu,
+	}).unwrap();
+
+	unsafe {
+		std::ptr::copy_nonoverlapping(data.as_ptr(), upload_buffer.cpu_ptr(), data.len());
+	}
+
+	cmd.copy_buffer(&upload_buffer, 0, buffer, 0, data.len() as u64);
+	cmd.barriers(&Barriers::buffer(&[BufferBarrier { buffer }]));
+
+	device.submit(&cmd);
+	device.queue_wait();
+}
+
+pub fn upload_texture<D: DeviceImpl>(device: &mut D, texture: &D::Texture, desc: &TextureDesc, data: &[u8]) {
+	let size_bytes = desc.format.size(desc.width, desc.height, desc.depth) as usize;
+	assert_eq!(size_bytes, data.len());
+
+	// TODO: Relax constraints below, make texture uploading more robust in general.
+	assert_eq!(desc.mip_levels, 1);
+	assert_eq!(desc.depth, 1);
+
+	let row_pitch = desc.format.row_pitch(desc.width);
+	let upload_pitch = align_pow2(row_pitch, 256 as u64); // TODO: hardcoded alignment
+	let upload_size = desc.height * upload_pitch;
+
+	let cmd = device.create_cmd_list(1);
+
+	let upload_buffer = device.create_buffer(&BufferDesc {
+		size: upload_size as usize,
+		usage: BufferUsage::empty(),
+		memory: Memory::CpuToGpu,
+	}).unwrap();
+
+	unsafe {
+		let mut src_ptr = data.as_ptr();
+		let mut dst_ptr = upload_buffer.cpu_ptr();
+		for _ in 0..desc.height {
+			std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, row_pitch as usize);
+			src_ptr = src_ptr.add(row_pitch as usize);
+			dst_ptr = dst_ptr.add(upload_pitch as usize);
+		}
+	}
+
+	cmd.barriers(&Barriers::texture(&[TextureBarrier {
+		texture,
+		old_layout: desc.layout,
+		new_layout: TextureLayout::CopyDst,
+	}]));
+
+	cmd.copy_buffer_to_texture(&upload_buffer, 0, upload_pitch as u32, texture, 0, 0, [0, 0, 0], [desc.width as u32, desc.height as u32, 1]);
+
+	cmd.barriers(&Barriers::texture(&[TextureBarrier {
+		texture,
+		old_layout: TextureLayout::CopyDst,
+		new_layout: desc.layout,
+	}]));
+
+	device.submit(&cmd);
+	device.queue_wait();
 }

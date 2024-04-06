@@ -10,7 +10,7 @@ use engine::*;
 
 use crate::asset::AssetServer;
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
-use crate::gpu::{self, CmdListImpl, DeviceImpl, SwapChainImpl, TextureImpl};
+use crate::gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
 use crate::graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
 use crate::math::{Mat4, transform::Transform3};
 use crate::os::{self, App, Window};
@@ -41,13 +41,14 @@ fn main() {
 
 	window.maximize();
 
-	let swap_chain_info = gpu::SwapChainDesc {
+	let surface_info = gpu::SurfaceDesc {
 		size: window.size().into(),
+		present_mode: gpu::PresentMode::Immediate,
 		num_buffers: 2,
 		format: gpu::Format::RGBA8UNorm,
 	};
 
-	let mut swap_chain = device.create_swap_chain(&swap_chain_info, &window.native_handle()).unwrap();
+	let mut surface = device.create_surface(&surface_info, &window.native_handle()).unwrap();
 	let mut cmd = device.create_cmd_list(2);
 
 	let mut egui_renderer = EguiRenderer::new(&mut device, &shader_compiler);
@@ -67,8 +68,8 @@ fn main() {
 	setup_scene(&mut editor.context.world, &mut assets);
 
 	while app.run() {
-		swap_chain.update(&mut device, window.size().into());
-		cmd.reset(&device, &swap_chain);
+		surface.update(&mut device, window.size().into());
+		cmd.reset(&device, &surface);
 
 		let raw_input = get_raw_input(&app, &window);
 
@@ -113,17 +114,18 @@ fn main() {
 		cmd.debug_event_push("Editor", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
 
 		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-			texture: swap_chain.backbuffer_texture(),
+			texture: surface.acquire(),
 			old_layout: gpu::TextureLayout::Present,
 			new_layout: gpu::TextureLayout::RenderTarget,
 		}]));
 
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
+			colors: &[gpu::RenderTarget {
+				texture: surface.acquire(),
+				load_op: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
+				store_op: gpu::StoreOp::Store,
+			}],
 			depth_stencil: None,
-			color_attachments: &[swap_chain.backbuffer_texture()],
-			color_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
-			depth_load: gpu::LoadOp::Discard,
-			stencil_load: gpu::LoadOp::Discard,
 		});
 
 		egui_renderer.paint(&cmd, &clipped_primitives, &ScreenDesc {
@@ -134,7 +136,7 @@ fn main() {
 		cmd.render_pass_end();
 
 		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-			texture: swap_chain.backbuffer_texture(),
+			texture: surface.acquire(),
 			old_layout: gpu::TextureLayout::RenderTarget,
 			new_layout: gpu::TextureLayout::Present,
 		}]));
@@ -147,8 +149,8 @@ fn main() {
 
 		device.submit(&cmd);
 
-		swap_chain.swap(&device);
+		surface.present(&device);
 	}
 
-	swap_chain.wait_for_last_frame();
+	surface.wait_for_last_frame();
 }

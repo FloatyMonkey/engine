@@ -134,7 +134,6 @@ impl GizmoRenderer {
 			depth: 1,
 			array_size: 1,
 			mip_levels: 1,
-			samples: 1,
 			format: gpu::Format::RGBA8UNorm,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::RENDER_TARGET,
 			layout: gpu::TextureLayout::RenderTarget,
@@ -164,11 +163,12 @@ impl GizmoRenderer {
 		cmd.graphics_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
+			colors: &[gpu::RenderTarget {
+				texture: &self.texture,
+				load_op: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }),
+				store_op: gpu::StoreOp::Store,
+			}],
 			depth_stencil: None,
-			color_attachments: &[&self.texture],
-			color_load: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }),
-			depth_load: gpu::LoadOp::Discard,
-			stencil_load: gpu::LoadOp::Discard,
 		});
 
 		let rect = gpu::Rect::from_size(self.resolution);

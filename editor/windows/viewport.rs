@@ -77,6 +77,10 @@ impl tabs::Tab<MyContext> for ViewportTab {
 
 		ui.set_clip_rect(max_rect);
 
+		// TODO: Also scale the render target texture
+		let camera = ctx.world.query::<&mut Camera>().iter().next().unwrap();
+		camera.sensor_height = camera.sensor_width / (max_rect.width() / max_rect.height());
+
 		let response = ui.add(
 			egui::Image::from_texture((egui::TextureId::User(ctx.viewport_texture_srv as u64), max_rect.size()))
 				.rounding(egui::Rounding { nw: 0.0, ne: 0.0, se: 3.0, sw: 3.0 })

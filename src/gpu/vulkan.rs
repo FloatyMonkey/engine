@@ -3,9 +3,12 @@
 
 use crate::os::NativeHandle;
 
-use std::{ffi::CString, ops::Range};
+use ash::{vk, extensions::{ext, khr}, prelude::VkResult};
+use gpu_allocator::vulkan as allocator;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
-use ash::vk;
+use std::{ffi::CString, ops::Range};
+use std::{ffi::{c_void, CStr, c_char}, collections::HashSet};
 
 fn map_offset(offset: &[u32; 3]) -> vk::Offset3D {
 	vk::Offset3D {
@@ -156,7 +159,7 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
-		vk_flags |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
+		vk_flags |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR; // TODO: Why is this here?
 	}
 
 	vk_flags
@@ -268,11 +271,11 @@ fn map_acceleration_structure_flags(flags: super::AccelerationStructureBuildFlag
 	vk_flags
 }
 
-fn map_acceleration_structure_bottom_level_flags(flags: super::AccelerationStructureBottomLevelFlags) -> vk::GeometryFlagsKHR {
+fn map_acceleration_structure_geometry_flags(flags: super::AccelerationStructureGeometryFlags) -> vk::GeometryFlagsKHR {
 	let mut vk_flags = vk::GeometryFlagsKHR::empty();
 
-	if flags.contains(super::AccelerationStructureBottomLevelFlags::OPAQUE)                          { vk_flags |= vk::GeometryFlagsKHR::OPAQUE; }
-	if flags.contains(super::AccelerationStructureBottomLevelFlags::NO_DUPLICATE_ANY_HIT_INVOCATION) { vk_flags |= vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION; }
+	if flags.contains(super::AccelerationStructureGeometryFlags::OPAQUE)                          { vk_flags |= vk::GeometryFlagsKHR::OPAQUE; }
+	if flags.contains(super::AccelerationStructureGeometryFlags::NO_DUPLICATE_ANY_HIT_INVOCATION) { vk_flags |= vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION; }
 
 	vk_flags
 }
@@ -288,9 +291,32 @@ fn map_acceleration_structure_instance_flags(flags: super::AccelerationStructure
 	vk_flags
 }
 
-struct SwapChain {}
+fn map_load_op<T: Default>(load_op: super::LoadOp<T>) -> (vk::AttachmentLoadOp, T) {
+	match load_op {
+		super::LoadOp::Load         => (vk::AttachmentLoadOp::LOAD, Default::default()),
+		super::LoadOp::Clear(value) => (vk::AttachmentLoadOp::CLEAR, value),
+		super::LoadOp::Discard      => (vk::AttachmentLoadOp::DONT_CARE, Default::default()),
+	}
+}
 
-impl super::SwapChainImpl<Device> for SwapChain {
+fn map_store_op(store_op: super::StoreOp) -> vk::AttachmentStoreOp {
+	match store_op {
+		super::StoreOp::Store   => vk::AttachmentStoreOp::STORE,
+		super::StoreOp::Discard => vk::AttachmentStoreOp::DONT_CARE,
+	}
+}
+
+pub struct Surface {
+	swapchain_ext: khr::Swapchain,
+
+	swapchain: vk::SwapchainKHR,
+	textures: Vec<Texture>,
+	acquire_semaphores: Vec<vk::Semaphore>,
+	next_semaphore: vk::Semaphore,
+	bb_index: usize,
+}
+
+impl super::SurfaceImpl<Device> for Surface {
 	fn update(&mut self, device: &mut Device, size: [u32; 2]) {
 		todo!()
 	}
@@ -299,66 +325,90 @@ impl super::SwapChainImpl<Device> for SwapChain {
 		todo!()
 	}
 
-	fn num_buffers(&self) -> u32 {
-		todo!()
+	fn acquire(&mut self) -> &Texture {
+		let (index, _suboptimal) = unsafe {
+			self.swapchain_ext
+				.acquire_next_image(self.swapchain, u64::MAX, self.next_semaphore, vk::Fence::null())
+				.unwrap()
+		};
+
+		std::mem::swap(
+			&mut self.acquire_semaphores[index as usize],
+			&mut self.next_semaphore,
+		);
+
+		self.bb_index = index as usize;
+		&self.textures[index as usize]
 	}
 
-	fn backbuffer_index(&self) -> u32 {
-		todo!()
-	}
+	fn present(&mut self, device: &Device) {
+		// TODO: Can these be defined in the builder itself?
+		let swapchains = [self.swapchain];
+		let image_indices = [self.bb_index as u32];
+		let wait_semaphores = [todo!()];
 
-	fn backbuffer_texture(&self) -> &Texture {
-		todo!()
-	}
+		let present_info = vk::PresentInfoKHR::builder()
+			.swapchains(&swapchains)
+			.image_indices(&image_indices)
+			.wait_semaphores(&wait_semaphores);
 
-	fn swap(&mut self, device: &Device) {
-		todo!()
+		unsafe { self.swapchain_ext.queue_present(device.graphics_queue, &present_info) }.unwrap();
 	}
 }
 
-struct Buffer {
+pub struct Buffer {
 	buffer: vk::Buffer,
+	allocation: allocator::Allocation,
+	srv_index: Option<usize>,
+	uav_index: Option<usize>,
+	cpu_ptr: *mut u8,
+	gpu_ptr: u64,
 }
 
 impl super::BufferImpl<Device> for Buffer {
 	fn srv_index(&self) -> Option<u32> {
-		todo!()
+		self.srv_index.map(|i| i as u32)
 	}
 
 	fn uav_index(&self) -> Option<u32> {
-		todo!()
+		self.uav_index.map(|i| i as u32)
 	}
-	
+
 	fn cpu_ptr(&self) -> *mut u8 {
-		todo!()
+		self.cpu_ptr
 	}
 
 	fn gpu_ptr(&self) -> super::GpuPtr {
-		todo!()
+		super::GpuPtr(self.gpu_ptr)
 	}
 }
 
-struct Texture {
+pub struct Texture {
 	image: vk::Image,
+	allocation: allocator::Allocation,
+	srv_index: Option<usize>,
+	uav_index: Option<usize>,
+	rtv: Option<vk::ImageView>,
+	dsv: Option<vk::ImageView>,
 }
 
 impl super::TextureImpl<Device> for Texture {
 	fn srv_index(&self) -> Option<u32> {
-		todo!()
+		self.srv_index.map(|i| i as u32)
 	}
 
 	fn uav_index(&self) -> Option<u32> {
-		todo!()
+		self.uav_index.map(|i| i as u32)
 	}
 }
 
-struct Sampler {
+pub struct Sampler {
 	sampler: vk::Sampler,
 }
 
 impl super::SamplerImpl<Device> for Sampler {}
 
-struct AccelerationStructure {}
+pub struct AccelerationStructure {}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {
@@ -399,7 +449,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	}
 }
 
-struct GraphicsPipeline {
+pub struct GraphicsPipeline {
 	pipeline: vk::Pipeline,
 }
 
@@ -407,7 +457,7 @@ impl super::GraphicsPipelineImpl<Device> for GraphicsPipeline {
 	
 }
 
-struct ComputePipeline {
+pub struct ComputePipeline {
 	pipeline: vk::Pipeline,
 }
 
@@ -415,7 +465,7 @@ impl super::ComputePipelineImpl<Device> for ComputePipeline {
 	
 }
 
-struct RaytracingPipeline {
+pub struct RaytracingPipeline {
 	pipeline: vk::Pipeline,
 }
 
@@ -424,17 +474,85 @@ impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
 		todo!()
 	}
 
-	fn write_shader_identifier(&self, name: &str, slice: &mut [u8]) {
+	fn write_shader_identifier(&self, group_index: usize, slice: &mut [u8]) {
 		todo!()
 	}
 }
 
-struct Device {
+unsafe extern "system" fn debug_callback(
+	message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+	_message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+	callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+	_user_data: *mut c_void,
+) -> vk::Bool32 {
+	let log_level = match message_severity {
+		vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => log::Level::Debug,
+		vk::DebugUtilsMessageSeverityFlagsEXT::INFO    => log::Level::Info,
+		vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => log::Level::Warn,
+		vk::DebugUtilsMessageSeverityFlagsEXT::ERROR   => log::Level::Error,
+		_ => unreachable!(),
+	};
+
+	let message = CStr::from_ptr((*callback_data).p_message);
+
+	log::log!(target: "gpu::vulkan", log_level, "{}", message.to_str().unwrap());
+	println!("{}", message.to_str().unwrap()); // TODO: Remove
+
+	vk::FALSE
+}
+
+fn pick_physical_device_and_queue_family_indices(
+	instance: &ash::Instance,
+	extensions: &[&CStr],
+) -> VkResult<Option<(vk::PhysicalDevice, u32)>> {
+	Ok(unsafe { instance.enumerate_physical_devices() }?
+		.into_iter()
+		.find_map(|physical_device| {
+			let has_extensions = unsafe { instance.enumerate_device_extension_properties(physical_device) }.map(
+				|exts| {
+					let set: HashSet<&CStr> = exts
+						.iter()
+						.map(|ext| unsafe {
+							CStr::from_ptr(&ext.extension_name as *const c_char)
+						})
+						.collect();
+
+					extensions.iter().all(|ext| set.contains(ext))
+				},
+			);
+
+			if has_extensions != Ok(true) {
+				return None;
+			}
+
+			let graphics_family = unsafe { instance.get_physical_device_queue_family_properties(physical_device) }
+				.into_iter()
+				.enumerate()
+				.find(|(_, queue_family)| {
+					queue_family.queue_count > 0 && queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+				});
+
+			graphics_family.map(|(i, _)| (physical_device, i as u32))
+		}))
+}
+
+pub struct Device {
+	entry: ash::Entry,
 	device: ash::Device,
+	instance: ash::Instance,
+	physical_device: vk::PhysicalDevice,
+	allocator: allocator::Allocator,
+	graphics_queue: vk::Queue,
+	command_pool: vk::CommandPool,
+	//rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+
+	acceleration_structure_ext: khr::AccelerationStructure,
+	ray_tracing_pipeline_ext: khr::RayTracingPipeline,
+	debug_utils_ext: Option<ext::DebugUtils>,
 }
 
 impl super::DeviceImpl for Device {
-	type SwapChain = SwapChain;
+	type Surface = Surface;
 	type CmdList = CmdList;
 	type Buffer = Buffer;
 	type Texture = Texture;
@@ -445,19 +563,309 @@ impl super::DeviceImpl for Device {
 	type RaytracingPipeline = RaytracingPipeline;
 
 	fn new(desc: &super::DeviceDesc) -> Self {
-		todo!()
+		let entry = unsafe { ash::Entry::load() }.unwrap();
+
+		let mut instance_extension_names = Vec::new();
+
+		let instance = {
+			const VK_LAYER_KHRONOS_VALIDATION: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") };
+
+			let mut layers: Vec<&CStr> = Vec::new();
+
+			if !desc.validation.is_empty() {
+				layers.push(VK_LAYER_KHRONOS_VALIDATION);
+			}
+
+			let layers_ptr: Vec<*const i8> = layers
+				.iter()
+				.map(|c_str| c_str.as_ptr())
+				.collect();
+
+			let supported_layer_names = entry
+				.enumerate_instance_layer_properties()
+				.unwrap()
+				.into_iter()
+				.map(|layer| unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) })
+				.collect::<Vec<_>>();
+
+			for layer in &layers {
+				if !supported_layer_names.contains(&layer) {
+					log::warn!(target: "gpu::vulkan", "Requested layer not found: {:?}", layer);
+				}
+			}
+
+			instance_extension_names.push(khr::Surface::name().as_ptr());
+
+			if !desc.validation.is_empty() {
+				instance_extension_names.push(ext::DebugUtils::name().as_ptr());
+			}
+
+			if cfg!(target_os = "windows") {
+				instance_extension_names.push(khr::Win32Surface::name().as_ptr());
+			}
+
+			let application_name = CString::new("App").unwrap(); // TODO: Hardcoded
+			let engine_name = CString::new("Engine").unwrap(); // TODO: Hardcoded
+
+			let application_info = vk::ApplicationInfo::builder()
+				.application_name(application_name.as_c_str())
+				.application_version(vk::make_api_version(0, 1, 0, 0))
+				.engine_name(engine_name.as_c_str())
+				.engine_version(vk::make_api_version(0, 1, 0, 0))
+				.api_version(vk::API_VERSION_1_3);
+
+			let instance_create_info = vk::InstanceCreateInfo::builder()
+				.application_info(&application_info)
+				.enabled_layer_names(&layers_ptr)
+				.enabled_extension_names(&instance_extension_names);
+
+			unsafe { entry.create_instance(&instance_create_info, None) }.unwrap()
+		};
+
+		let debug_utils_ext = instance_extension_names
+			.contains(&ext::DebugUtils::name().as_ptr())
+			.then(|| ext::DebugUtils::new(&entry, &instance));
+
+		if let Some(ext) = &debug_utils_ext {
+			let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+				.message_severity(
+					//vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE |
+					vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
+					vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
+					vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+				)
+				.message_type(
+					vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
+					vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE |
+					vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+				)
+				.pfn_user_callback(Some(debug_callback));
+
+			let _messenger = unsafe { ext.create_debug_utils_messenger(&debug_utils_messenger_create_info, None) }.unwrap();
+		}
+
+		let device_extension_names = [
+			khr::DeferredHostOperations::name(), // Required by AccelerationStructure
+			khr::AccelerationStructure::name(),
+			khr::RayTracingPipeline::name(),
+			//khr::RayQuery::name(),
+			khr::Swapchain::name(), // TODO: Conditionally enable
+		];
+
+		let (physical_device, queue_family_index) = pick_physical_device_and_queue_family_indices(
+			&instance,
+			&device_extension_names,
+		)
+		.unwrap()
+		.unwrap();
+
+		let device = {
+			let queue_create_info = vk::DeviceQueueCreateInfo::builder()
+				.queue_family_index(queue_family_index)
+				.queue_priorities(&[1.0])
+				.build();
+
+			let mut features2 = vk::PhysicalDeviceFeatures2::default();
+			unsafe { instance.get_physical_device_features2(physical_device, &mut features2) };
+
+			let mut vulkan11_features = vk::PhysicalDeviceVulkan11Features::builder()
+				.variable_pointers(true)
+				.variable_pointers_storage_buffer(true);
+
+			let mut vulkan12_features = vk::PhysicalDeviceVulkan12Features::builder()
+				.shader_int8(true)
+				.buffer_device_address(true)
+				.vulkan_memory_model(true)
+				.runtime_descriptor_array(true)
+				.shader_sampled_image_array_non_uniform_indexing(true)
+				.shader_storage_buffer_array_non_uniform_indexing(true)
+				.shader_storage_image_array_non_uniform_indexing(true)
+				.descriptor_indexing(true);
+
+			let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::builder()
+				.dynamic_rendering(true)
+				.synchronization2(true); // TODO: Actually use this
+
+			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+				.acceleration_structure(true);
+
+			let mut raytracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+				.ray_tracing_pipeline(true);
+
+			let queue_create_infos = [queue_create_info];
+			let device_extension_names_ptrs = device_extension_names.map(|n| n.as_ptr());
+
+			let device_create_info = vk::DeviceCreateInfo::builder()
+				.push_next(&mut features2)
+				.push_next(&mut vulkan11_features)
+				.push_next(&mut vulkan12_features)
+				.push_next(&mut vulkan13_features)
+				.push_next(&mut as_feature)
+				.push_next(&mut raytracing_pipeline)
+				.queue_create_infos(&queue_create_infos)
+				.enabled_extension_names(&device_extension_names_ptrs);
+
+			unsafe { instance.create_device(physical_device, &device_create_info, None) }.unwrap()
+		};
+
+		let allocator = allocator::Allocator::new(&allocator::AllocatorCreateDesc {
+			instance: instance.clone(),
+			device: device.clone(),
+			physical_device,
+			debug_settings: Default::default(),
+			buffer_device_address: true,
+			allocation_sizes: Default::default(),
+		}).unwrap();
+
+		let graphics_queue = unsafe { device.get_device_queue(queue_family_index, 0) };
+
+		let command_pool = {
+			let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+				.queue_family_index(queue_family_index)
+				.flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+
+			unsafe { device.create_command_pool(&command_pool_create_info, None) }.unwrap()
+		};
+
+		let acceleration_structure_ext = khr::AccelerationStructure::new(&instance, &device);
+		let ray_tracing_pipeline_ext = khr::RayTracingPipeline::new(&instance, &device);
+
+		let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+
+		{
+			let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::builder()
+				.push_next(&mut rt_pipeline_properties);
+
+			unsafe {
+				instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
+			}
+		}
+
+		Self {
+			entry,
+			instance,
+			device,
+			physical_device,
+			allocator,
+			graphics_queue,
+			command_pool,
+			acceleration_structure_ext,
+			ray_tracing_pipeline_ext,
+			debug_utils_ext,
+			//rt_pipeline_properties,
+		}
 	}
 
-	fn create_swap_chain(&mut self, desc: &super::SwapChainDesc, window_handle: &NativeHandle) -> Result<Self::SwapChain, super::Error> {
-		todo!()
+	fn create_surface(&mut self, desc: &super::SurfaceDesc, window_handle: &NativeHandle) -> Result<Self::Surface, super::Error> {
+		// TODO: Remove dependency on win32, move to platform layer
+		let hinstance = unsafe { GetModuleHandleW(None) }.unwrap();
+		let surface_create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+			.hinstance(hinstance.0 as vk::HINSTANCE)
+			.hwnd(window_handle.0 as vk::HWND);
+
+		let win32_surface_ext = khr::Win32Surface::new(&self.entry, &self.instance);
+		let surface = unsafe { win32_surface_ext.create_win32_surface(&surface_create_info, None) }.unwrap();
+
+		let swapchain_ext = khr::Swapchain::new(&self.instance, &self.device);
+
+		let present_mode = match desc.present_mode {
+			super::PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
+			super::PresentMode::Mailbox   => vk::PresentModeKHR::MAILBOX,
+			super::PresentMode::Fifo      => vk::PresentModeKHR::FIFO,
+		};
+
+		let info = vk::SwapchainCreateInfoKHR::builder()
+			.surface(surface)
+			.min_image_count(desc.num_buffers)
+			.image_format(map_format(desc.format))
+			.image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR) // TODO: Hardcoded
+			.image_extent(vk::Extent2D {
+				width: desc.size[0],
+				height: desc.size[1],
+			})
+			.image_array_layers(1)
+			.image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+			.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+			.pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
+			.composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+			.present_mode(present_mode)
+			.clipped(true);
+
+		let swapchain = unsafe { swapchain_ext.create_swapchain(&info, None) }.unwrap();
+
+		let swapchain_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
+
+		let textures = swapchain_images.iter().map(|image| {
+			todo!("Image views");
+
+			Texture {
+				image: *image,
+				allocation: unsafe { std::mem::zeroed() }, // TODO: Terrible, fix this
+				srv_index: None,
+				uav_index: None,
+				rtv: None,
+				dsv: None,
+			}
+		}).collect::<Vec<Texture>>();
+
+		let acquire_semaphores = swapchain_images.iter().map(|image| {
+			let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+			unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
+		}).collect::<Vec<vk::Semaphore>>();
+
+		let next_semaphore = {
+			let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+			unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
+		};
+
+		Ok(Surface {
+			swapchain_ext,
+			swapchain,
+			textures,
+			acquire_semaphores,
+			next_semaphore,
+			bb_index: 0,
+		})
 	}
 
-	fn create_cmd_list(&self, num_buffers: u32) -> Self::CmdList {
+	fn create_cmd_list(&mut self, num_buffers: u32) -> Self::CmdList {
 		todo!()
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
-		todo!()
+		let buffer_info = vk::BufferCreateInfo::builder()
+			.size(desc.size as _)
+			.usage(map_buffer_usage_flags(desc.usage))
+			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+		let buffer = unsafe { self.device.create_buffer(&buffer_info, None) }.unwrap();
+
+		let allocation = self.allocator.allocate(&allocator::AllocationCreateDesc {
+			requirements: unsafe { self.device.get_buffer_memory_requirements(buffer) },
+			location: match desc.memory {
+				super::Memory::GpuOnly  => gpu_allocator::MemoryLocation::GpuOnly,
+				super::Memory::CpuToGpu => gpu_allocator::MemoryLocation::CpuToGpu,
+				super::Memory::GpuToCpu => gpu_allocator::MemoryLocation::GpuToCpu,
+			},
+			linear: true,
+			name: "Allocation",
+			allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
+		}).unwrap();
+
+		unsafe { self.device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) }.unwrap();
+
+		let mapped_ptr = allocation.mapped_ptr().map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
+
+		let device_address = unsafe { self.device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::builder().buffer(buffer)) };
+
+		Ok(Buffer {
+			buffer,
+			allocation,
+			srv_index: todo!(),
+			uav_index: todo!(),
+			cpu_ptr: mapped_ptr,
+			gpu_ptr: device_address,
+		})
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
@@ -479,9 +887,36 @@ impl super::DeviceImpl for Device {
 
 		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
 
-		// TODO: Attach memory
+		let allocation = self.allocator.allocate(&allocator::AllocationCreateDesc {
+			requirements: unsafe { self.device.get_image_memory_requirements(image) },
+			location: gpu_allocator::MemoryLocation::GpuOnly,
+			linear: true,
+			name: "Allocation",
+			allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
+		}).unwrap();
 
-		Ok(Texture { image })
+		unsafe { self.device.bind_image_memory(image, allocation.memory(), allocation.offset()) }.unwrap();
+
+		let rtv = desc.usage.contains(super::TextureUsage::RENDER_TARGET).then(|| {
+			let create_info = vk::ImageViewCreateInfo::builder();
+			todo!();
+			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
+		});
+
+		let dsv = desc.usage.contains(super::TextureUsage::DEPTH_STENCIL).then(|| {
+			let create_info = vk::ImageViewCreateInfo::builder();
+			todo!();
+			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
+		});
+
+		Ok(Texture {
+			image,
+			allocation,
+			srv_index: todo!(),
+			uav_index: todo!(),
+			rtv,
+			dsv,
+		})
 	}
 
 	fn create_sampler(&mut self, desc: &super::SamplerDesc) -> Result<Self::Sampler, super::Error> {
@@ -515,6 +950,19 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, super::Error> {
+		let create_info = vk::AccelerationStructureCreateInfoKHR::builder()
+			.buffer(desc.buffer.buffer)
+			.offset(desc.offset as _)
+			.size(desc.size as _)
+			.ty(match desc.ty {
+				super::AccelerationStructureType::TopLevel    => vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+				super::AccelerationStructureType::BottomLevel => vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+			});
+
+		let acceleration_structure = unsafe { self.acceleration_structure_ext.create_acceleration_structure(&create_info, None) }.unwrap();
+
+		// TODO: srv for top level
+
 		todo!()
 	}
 
@@ -610,9 +1058,9 @@ impl super::DeviceImpl for Device {
 			.depth_attachment_format(depth_stencil_format)
 			.stencil_attachment_format(depth_stencil_format);
 
-		let graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
-			// layout
+		let create_info = vk::GraphicsPipelineCreateInfo::builder()
 			// stages
+			// layout
 			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
 			.rasterization_state(&rasterization_state)
@@ -623,32 +1071,78 @@ impl super::DeviceImpl for Device {
 			.push_next(&mut rendering)
 			.build();
 
-		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[graphics_pipeline_create_info], None) }.unwrap()[0];
+		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
 		Ok(GraphicsPipeline { pipeline })
 	}
 
 	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
-		todo!()
+		let name = CString::new("main").unwrap(); // TODO: Hardcoded
+
+		let mut compute_shader_module = vk::ShaderModuleCreateInfo {
+			p_code: desc.cs.as_ptr() as _,
+			code_size: desc.cs.len(),
+			..Default::default()
+		};
+
+		let compute_shader_stage = vk::PipelineShaderStageCreateInfo::builder()
+			.push_next(&mut compute_shader_module)
+			.stage(vk::ShaderStageFlags::COMPUTE)
+			.name(&name)
+			.build();
+		
+		let create_info = vk::ComputePipelineCreateInfo::builder()
+			.stage(compute_shader_stage)
+			.layout(todo!())
+			.build();
+
+		let pipeline = unsafe { self.device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+
+		Ok(ComputePipeline { pipeline })
 	}
 
 	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
-		todo!()
+		let groups = desc.groups.iter().map(|group| {
+			vk::RayTracingShaderGroupCreateInfoKHR::builder()
+				.ty(match group.ty {
+					super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
+					super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+					super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
+				})
+				.general_shader(group.general.unwrap_or(vk::SHADER_UNUSED_KHR))
+				.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
+				.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
+				.intersection_shader(group.intersection.unwrap_or(vk::SHADER_UNUSED_KHR))
+				.build()
+		}).collect::<Vec<_>>();
+
+		let create_info = vk::RayTracingPipelineCreateInfoKHR::builder()
+			.stages(todo!())
+			.groups(&groups)
+			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
+			.layout(todo!())
+			.build();
+
+		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+
+		Ok(RaytracingPipeline { pipeline })
 	}
 
 	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
 		todo!()
 	}
 
-	fn upload_buffer(&mut self, buffer: &Self::Buffer, data: &[u8]) {
-		todo!()
-	}
-
-	fn upload_texture(&mut self, texture: &Self::Texture, data: &[u8]) {
-		todo!()
-	}
-
 	fn submit(&self, cmd: &Self::CmdList) {
+		unsafe { self.device.end_command_buffer(cmd.command_buffer) }.unwrap();
+
+		let submit_infos = vk::SubmitInfo::builder()
+			.command_buffers(&[cmd.command_buffer])
+			.build();
+
+		unsafe { self.device.queue_submit(self.graphics_queue, &[submit_infos], vk::Fence::null()) }.unwrap();
+	}
+
+	fn queue_wait(&self) {
 		todo!()
 	}
 
@@ -665,14 +1159,14 @@ impl super::DeviceImpl for Device {
 	}
 }
 
-struct CmdList {
+pub struct CmdList {
 	command_buffer: vk::CommandBuffer,
 	device: ash::Device,
 
 	// TODO: Initialize variables, move to Device
-	acceleration_structure_ext: ash::extensions::khr::AccelerationStructure,
-	ray_tracing_pipeline_ext: ash::extensions::khr::RayTracingPipeline,
-	debug_utils_ext: Option<ash::extensions::ext::DebugUtils>,
+	acceleration_structure_ext: khr::AccelerationStructure,
+	ray_tracing_pipeline_ext: khr::RayTracingPipeline,
+	debug_utils_ext: Option<ext::DebugUtils>,
 }
 
 impl CmdList {
@@ -682,7 +1176,7 @@ impl CmdList {
 }
 
 impl super::CmdListImpl<Device> for CmdList {
-	fn reset(&mut self, device: &Device, swap_chain: &SwapChain) {
+	fn reset(&mut self, device: &Device, surface: &Surface) {
 		todo!()
 	}
 
@@ -793,9 +1287,45 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
-		let vk_info = vk::RenderingInfo::builder();
+		let color_attachments = desc.colors.iter().map(|target| {
+			let (load_op, clear) = map_load_op(target.load_op);
+			vk::RenderingAttachmentInfo::builder()
+				.image_view(target.texture.rtv.unwrap())
+				.image_layout(vk::ImageLayout::GENERAL) // TODO: COLOR_ATTACHMENT_OPTIMAL or others
+				.load_op(load_op)
+				.store_op(map_store_op(target.store_op))
+				.clear_value(vk::ClearValue {
+					color: vk::ClearColorValue {
+						float32: clear.into(),
+					},
+				})
+				.build()
+		}).collect::<Vec<_>>();
 
-		// TODO: Implement
+		let depth_stencil = desc.depth_stencil.as_ref().map(|target| {
+			let (load_op, clear) = map_load_op(target.load_op);
+			vk::RenderingAttachmentInfo::builder()
+				.image_view(target.texture.dsv.unwrap())
+				.image_layout(vk::ImageLayout::GENERAL) // TODO: DEPTH_STENCIL_ATTACHMENT_OPTIMAL or others
+				.load_op(load_op)
+				.store_op(map_store_op(target.store_op))
+				.clear_value(vk::ClearValue {
+					depth_stencil: vk::ClearDepthStencilValue {
+						depth: clear.0,
+						stencil: clear.1 as u32,
+					},
+				})
+				.build()
+		});
+
+		let mut vk_info = vk::RenderingInfo::builder()
+			.layer_count(1)
+			.color_attachments(&color_attachments);
+
+		if let Some(ref depth_stencil) = depth_stencil {
+			vk_info = vk_info.depth_attachment(&depth_stencil);
+			vk_info = vk_info.stencil_attachment(&depth_stencil); // TODO: Conditionally enable
+		}
 
 		unsafe {
 			self.device.cmd_begin_rendering(self.command_buffer, &vk_info);
@@ -948,9 +1478,9 @@ impl super::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn dispatch(&self, x: u32, y: u32, z: u32) {
+	fn dispatch(&self, groups: [u32; 3]) {
 		unsafe {
-			self.device.cmd_dispatch(self.command_buffer, x, y, z);
+			self.device.cmd_dispatch(self.command_buffer, groups[0], groups[1], groups[2]);
 		}
 	}
 
@@ -978,9 +1508,9 @@ impl super::CmdListImpl<Device> for CmdList {
 					stride: t.stride as _,
 					size: t.size as _,
 				}),
-				desc.width,
-				desc.height,
-				desc.depth,
+				desc.size[0],
+				desc.size[1],
+				desc.size[2],
 			);
 		}
 	}
@@ -990,41 +1520,34 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
-		if let Some(debug_utils) = &self.debug_utils_ext {
-			let label = CString::new(name).unwrap();
+		if let Some(ext) = &self.debug_utils_ext {
+			let name = CString::new(name).unwrap();
 			let label = vk::DebugUtilsLabelEXT::builder()
-				.label_name(&label)
+				.label_name(&name)
 				.color(color.to_f32().into());
 
-			unsafe {
-				debug_utils.cmd_insert_debug_utils_label(self.command_buffer, &label);
-			}
+			unsafe { ext.cmd_insert_debug_utils_label(self.command_buffer, &label) };
 		}
 	}
 
 	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
-		if let Some(debug_utils) = &self.debug_utils_ext {
-			let label = CString::new(name).unwrap();
+		if let Some(ext) = &self.debug_utils_ext {
+			let name = CString::new(name).unwrap();
 			let label = vk::DebugUtilsLabelEXT::builder()
-				.label_name(&label)
+				.label_name(&name)
 				.color(color.to_f32().into());
 
-			unsafe {
-				debug_utils.cmd_begin_debug_utils_label(self.command_buffer, &label);
-			}
+			unsafe { ext.cmd_begin_debug_utils_label(self.command_buffer, &label) };
 		}
 	}
 
 	fn debug_event_pop(&self) {
-		if let Some(debug_utils) = &self.debug_utils_ext {
-			unsafe {
-				debug_utils.cmd_end_debug_utils_label(self.command_buffer);
-			}
+		if let Some(ext) = &self.debug_utils_ext {
+			unsafe { ext.cmd_end_debug_utils_label(self.command_buffer) };
 		}
 	}
 }
 
-/*
 fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildInputs) {
 
 	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
@@ -1035,46 +1558,45 @@ fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildI
 		let vk_geo = match geo.part {
 
 			// TODO: pass count to next struct
-			super::GeometryPart::AABBs(aabbs) => vk::AccelerationStructureGeometryKHR {
-				geometry_type: vk::GeometryTypeKHR::AABBS,
-				flags: map_acceleration_structure_bottom_level_flags(geo.flags),
-				geometry: vk::AccelerationStructureGeometryDataKHR {
-					aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
-						data: vk::DeviceOrHostAddressConstKHR {
-							device_address: aabbs.data.0,
-						},
-						stride: aabbs.stride as _,
-						..Default::default()
-					},
-				},
-				..Default::default()
-			},
+			super::GeometryPart::AABBs(aabbs) => {
+				let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::builder()
+					.data(vk::DeviceOrHostAddressConstKHR {
+						device_address: aabbs.data.0,
+					})
+					.stride(aabbs.stride as _)
+					.build();
+
+				vk::AccelerationStructureGeometryKHR::builder()
+					.geometry_type(vk::GeometryTypeKHR::AABBS)
+					.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs })
+					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+					.build()
+			}
 
 			// TODO: pass index_count / 3 to next struct
-			super::GeometryPart::Triangles(triangles) => vk::AccelerationStructureGeometryKHR {
-				geometry_type: vk::GeometryTypeKHR::TRIANGLES,
-				flags: map_acceleration_structure_bottom_level_flags(geo.flags),
-				geometry: vk::AccelerationStructureGeometryDataKHR {
-					triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
-						vertex_format: map_format(triangles.vertex_format),
-						vertex_data: vk::DeviceOrHostAddressConstKHR {
-							device_address: triangles.vertex_data.0,
-						},
-						vertex_stride: triangles.vertex_stride as _,
-						max_vertex: triangles.vertex_count as _,
-						index_type: map_index_format(triangles.index_format),
-						index_data: vk::DeviceOrHostAddressConstKHR {
-							device_address: triangles.index_data.0,
-						},
-						transform_data: vk::DeviceOrHostAddressConstKHR {
-							device_address: triangles.transform.0,
-						},
-						..Default::default()
-					},
-				},
-				..Default::default()
-			},
+			super::GeometryPart::Triangles(triangles) => {
+				let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+					.vertex_format(map_format(triangles.vertex_format))
+					.vertex_data(vk::DeviceOrHostAddressConstKHR {
+						device_address: triangles.vertex_buffer.0,
+					})
+					.vertex_stride(triangles.vertex_stride as _)
+					.max_vertex(triangles.vertex_count as _)
+					.index_type(map_index_format(triangles.index_format))
+					.index_data(vk::DeviceOrHostAddressConstKHR {
+						device_address: triangles.index_buffer.0,
+					})
+					.transform_data(vk::DeviceOrHostAddressConstKHR {
+						device_address: triangles.transform.0,
+					})
+					.build();
+
+				vk::AccelerationStructureGeometryKHR::builder()
+					.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+					.geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
+					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+					.build()
+			}
 		};
 	}
 }
-*/

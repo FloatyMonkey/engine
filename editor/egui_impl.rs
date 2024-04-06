@@ -214,18 +214,19 @@ impl EguiRenderer {
 		if let Some(_pos) = delta.pos {
 			println!("Can't update partial texture!");
 		} else {
-			let texture = device.create_texture(&gpu::TextureDesc {
+			let texture_desc = gpu::TextureDesc {
 				width: delta.image.width() as u64,
 				height: delta.image.height() as u64,
 				depth: 1,
 				array_size: 1,
 				mip_levels: 1,
-				samples: 1,
 				format: gpu::Format::RGBA8UNorm,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
 				layout: gpu::TextureLayout::ShaderResource,
-			}).unwrap();
-			device.upload_texture(&texture, &pixels);
+			};
+
+			let texture = device.create_texture(&texture_desc).unwrap();
+			gpu::upload_texture(device, &texture, &texture_desc, &pixels);
 
 			self.textures.insert(id, texture);
 		}

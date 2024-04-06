@@ -13,6 +13,7 @@ egui = "0.26.2"
 egui_extras = { version = "0.26.2", features = ["svg"] }
 egui-gizmo = "0.16.1"
 exr = "1.71.0"
+gpu-allocator = "0.25.0"
 log = "0.4.21"
 rand = "0.8.5"
 slang = { git = "https://github.com/FloatyMonkey/slang-rs.git" }

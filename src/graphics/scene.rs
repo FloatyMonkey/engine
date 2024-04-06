@@ -105,8 +105,8 @@ impl GpuMeshData {
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
-		device.upload_buffer(&vertex_buffer, gpu::slice_as_u8_slice(&vertices));
-		device.upload_buffer(&index_buffer, gpu::slice_as_u8_slice(&indices));
+		gpu::upload_buffer(device, &vertex_buffer, gpu::slice_as_u8_slice(&vertices));
+		gpu::upload_buffer(device, &index_buffer, gpu::slice_as_u8_slice(&indices));
 
 		let blas = Blas::create(device, &vertex_buffer, &index_buffer, vertices.len(), indices.len(), std::mem::size_of::<Vertex>());
 
@@ -277,19 +277,19 @@ impl Scene {
 		if !self.texture_cache.contains_key(&asset.id()) {
 			let image = assets.get(asset).unwrap();
 
-			let texture = device.create_texture(&gpu::TextureDesc {
+			let texture_desc = gpu::TextureDesc {
 				width: image.width as u64,
 				height: image.height as u64,
 				depth: 1,
 				array_size: 1,
 				mip_levels: 1,
-				samples: 1,
 				format: gpu::Format::RGBA32Float,
 				usage: gpu::TextureUsage::SHADER_RESOURCE,
 				layout: gpu::TextureLayout::ShaderResource,
-			}).unwrap();
+			};
 
-			device.upload_texture(&texture, gpu::slice_as_u8_slice(&image.data));
+			let texture = device.create_texture(&texture_desc).unwrap();
+			gpu::upload_texture(device, &texture, &texture_desc, gpu::slice_as_u8_slice(&image.data));
 
 			self.texture_cache.insert(asset.id(), texture);
 		}

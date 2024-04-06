@@ -9,7 +9,7 @@ pub struct Blas {
 
 impl Blas {
 	pub fn create(device: &mut gpu::Device, vertex_buffer: &gpu::Buffer, index_buffer: &gpu::Buffer, vertex_count: usize, index_count: usize, vertex_stride: usize) -> Self {
-		let geo = gpu::AccelerationStructureTrianglesDesc {
+		let geo = gpu::AccelerationStructureTriangles {
 			vertex_buffer: vertex_buffer.gpu_ptr(),
 			vertex_format: gpu::Format::RGB32Float,
 			vertex_count,
@@ -21,11 +21,11 @@ impl Blas {
 		};
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
-			kind: gpu::AccelerationStructureKind::BottomLevel,
+			ty: gpu::AccelerationStructureType::BottomLevel,
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-			instances: gpu::AccelerationStructureInstancesDesc { data: gpu::GpuPtr::NULL, count: 0 },
+			instances: gpu::AccelerationStructureInstances { data: gpu::GpuPtr::NULL, count: 0 },
 			geometry: vec![gpu::GeometryDesc {
-				flags: gpu::AccelerationStructureBottomLevelFlags::OPAQUE,
+				flags: gpu::AccelerationStructureGeometryFlags::OPAQUE,
 				part: gpu::GeometryPart::Triangles(geo),
 			}],
 		};
@@ -45,9 +45,10 @@ impl Blas {
 		}).unwrap();
 
 		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
-			kind: gpu::AccelerationStructureKind::BottomLevel,
+			ty: gpu::AccelerationStructureType::BottomLevel,
 			buffer: &buffer,
 			offset: 0,
+			size: sizes.acceleration_structure_size,
 		}).unwrap();
 
 		Self {
@@ -94,9 +95,9 @@ impl Tlas {
 		}).unwrap();
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
-			kind: gpu::AccelerationStructureKind::TopLevel,
+			ty: gpu::AccelerationStructureType::TopLevel,
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-			instances: gpu::AccelerationStructureInstancesDesc { data: instance_buffer.gpu_ptr(), count },
+			instances: gpu::AccelerationStructureInstances { data: instance_buffer.gpu_ptr(), count },
 			geometry: vec![],
 		};
 
@@ -115,9 +116,10 @@ impl Tlas {
 		}).unwrap();
 
 		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
-			kind: gpu::AccelerationStructureKind::TopLevel,
+			ty: gpu::AccelerationStructureType::TopLevel,
 			buffer: &buffer,
 			offset: 0,
+			size: sizes.acceleration_structure_size,
 		}).unwrap();
 
 		Self {

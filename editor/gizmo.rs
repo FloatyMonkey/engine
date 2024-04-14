@@ -136,7 +136,7 @@ impl GizmoRenderer {
 			mip_levels: 1,
 			format: gpu::Format::RGBA8UNorm,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::RENDER_TARGET,
-			layout: gpu::TextureLayout::RenderTarget,
+			layout: gpu::TextureLayout::ShaderResource,
 		}).unwrap();
 
 		Self {
@@ -162,6 +162,12 @@ impl GizmoRenderer {
 		cmd.set_graphics_pipeline(&self.pipeline);
 		cmd.graphics_push_constants(0, gpu::as_u8_slice(&push_constants));
 
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: &self.texture,
+			old_layout: gpu::TextureLayout::ShaderResource,
+			new_layout: gpu::TextureLayout::RenderTarget,
+		}]));
+
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
 			colors: &[gpu::RenderTarget {
 				texture: &self.texture,
@@ -179,5 +185,11 @@ impl GizmoRenderer {
 		cmd.draw(0..4, 0..gizmo.vertices.len() as u32 / 2);
 
 		cmd.render_pass_end();
+
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: &self.texture,
+			old_layout: gpu::TextureLayout::RenderTarget,
+			new_layout: gpu::TextureLayout::ShaderResource,
+		}]));
 	}
 }

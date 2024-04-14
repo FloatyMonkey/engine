@@ -115,7 +115,7 @@ impl PathTracer {
 			mip_levels: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::UnorderedAccess,
+			layout: gpu::TextureLayout::ShaderResource,
 		}).unwrap();
 
 		Self {
@@ -176,9 +176,22 @@ impl PathTracer {
 
 	pub fn run(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene, samples: usize) {
 		self.reset();
+
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: &self.output_texture,
+			old_layout: gpu::TextureLayout::ShaderResource,
+			new_layout: gpu::TextureLayout::UnorderedAccess,
+		}]));
+
 		for _ in 0..samples {
 			self.render(cmd, scene);
 		}
+
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+			texture: &self.output_texture,
+			old_layout: gpu::TextureLayout::UnorderedAccess,
+			new_layout: gpu::TextureLayout::ShaderResource,
+		}]));
 	}
 }
 
@@ -224,7 +237,7 @@ impl Compositor {
 			mip_levels: 1,
 			format: gpu::Format::RGBA32Float,
 			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::UnorderedAccess,
+			layout: gpu::TextureLayout::ShaderResource,
 		}).unwrap();
 
 		Self {
@@ -235,6 +248,12 @@ impl Compositor {
 	}
 
 	pub fn process(&mut self, cmd: &mut gpu::CmdList, input: &gpu::Texture, overlay: &gpu::Texture) {
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+				texture: &self.texture,
+				old_layout: gpu::TextureLayout::ShaderResource,
+				new_layout: gpu::TextureLayout::UnorderedAccess,
+		}]));
+
 		cmd.set_compute_pipeline(&self.pipeline);
 
 		let push_constants = CompositorPushConstants {
@@ -248,6 +267,12 @@ impl Compositor {
 		cmd.dispatch([self.res[0].div_ceil(16), self.res[1].div_ceil(16), 1]);
 
 		cmd.barriers(&gpu::Barriers::global());
+
+		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
+				texture: &self.texture,
+				old_layout: gpu::TextureLayout::UnorderedAccess,
+				new_layout: gpu::TextureLayout::ShaderResource,
+		}]));
 	}
 
 	pub fn texture(&self) -> &gpu::Texture {

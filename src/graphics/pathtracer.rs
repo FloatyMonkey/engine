@@ -7,7 +7,8 @@ use rand::{RngCore, SeedableRng, rngs::StdRng};
 struct PushConstants {
 	camera: GpuCamera,
 	tlas_index: u32,
-	combined_index: u32,
+	color_pass_index: u32,
+	depth_pass_index: u32,
 	instance_data_index: u32,
 	light_data_index: u32,
 	light_count: u32,
@@ -23,7 +24,8 @@ pub struct PathTracer {
 	rng: StdRng,
 
 	resolution: [u32; 2],
-	pub output_texture: gpu::Texture,
+	pub color_pass_texture: gpu::Texture,
+	pub depth_pass_texture: gpu::Texture,
 }
 
 impl PathTracer {
@@ -55,7 +57,8 @@ impl PathTracer {
 				gpu::DescriptorBinding::bindless_srv(2), // Acceleration structures
 				gpu::DescriptorBinding::bindless_srv(3), // Textures 2D Float4
 				gpu::DescriptorBinding::bindless_srv(4), // Textures 2D Float
-				gpu::DescriptorBinding::bindless_uav(5), // RWTextures
+				gpu::DescriptorBinding::bindless_uav(5), // RWTextures 2D Float4
+				gpu::DescriptorBinding::bindless_uav(6), // RWTextures 2D Float
 			]),
 			static_samplers: Some(vec![
 				gpu::SamplerBinding {
@@ -107,7 +110,7 @@ impl PathTracer {
 
 		let resolution = [1920_u32, 1080_u32]; // TODO: Hardcoded
 
-		let output_texture = device.create_texture(&gpu::TextureDesc {
+		let color_pass_texture = device.create_texture(&gpu::TextureDesc {
 			width: resolution[0] as _,
 			height: resolution[1] as _,
 			depth: 1,
@@ -118,11 +121,23 @@ impl PathTracer {
 			layout: gpu::TextureLayout::ShaderResource,
 		}).unwrap();
 
+		let depth_pass_texture = device.create_texture(&gpu::TextureDesc {
+			width: resolution[0] as _,
+			height: resolution[1] as _,
+			depth: 1,
+			array_size: 1,
+			mip_levels: 1,
+			format: gpu::Format::R32Float,
+			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
+			layout: gpu::TextureLayout::ShaderResource,
+		}).unwrap();
+
 		Self {
 			pipeline,
 			shader_table,
 			resolution,
-			output_texture,
+			color_pass_texture,
+			depth_pass_texture,
 			sample_index: 0,
 			rng: StdRng::seed_from_u64(0),
 		}
@@ -132,7 +147,8 @@ impl PathTracer {
 		let push_constants = PushConstants {
 			camera: GpuCamera::from_camera(&scene.camera, &scene.camera_transform),
 			tlas_index: scene.tlas.accel.srv_index().unwrap(),
-			combined_index: self.output_texture.uav_index().unwrap(),
+			color_pass_index: self.color_pass_texture.uav_index().unwrap(),
+			depth_pass_index: self.depth_pass_texture.uav_index().unwrap(),
 			instance_data_index: scene.instance_data_buffer.srv_index().unwrap(),
 			light_data_index: scene.light_data_buffer.srv_index().unwrap(),
 			light_count: scene.light_count as _,
@@ -177,21 +193,33 @@ impl PathTracer {
 	pub fn run(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene, samples: usize) {
 		self.reset();
 
-		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-			texture: &self.output_texture,
-			old_layout: gpu::TextureLayout::ShaderResource,
-			new_layout: gpu::TextureLayout::UnorderedAccess,
-		}]));
+		cmd.barriers(&gpu::Barriers::texture(&[
+			gpu::TextureBarrier {
+				texture: &self.color_pass_texture,
+				old_layout: gpu::TextureLayout::ShaderResource,
+				new_layout: gpu::TextureLayout::UnorderedAccess,
+			}, gpu::TextureBarrier {
+				texture: &self.depth_pass_texture,
+				old_layout: gpu::TextureLayout::ShaderResource,
+				new_layout: gpu::TextureLayout::UnorderedAccess,
+			},
+		]));
 
 		for _ in 0..samples {
 			self.render(cmd, scene);
 		}
 
-		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-			texture: &self.output_texture,
-			old_layout: gpu::TextureLayout::UnorderedAccess,
-			new_layout: gpu::TextureLayout::ShaderResource,
-		}]));
+		cmd.barriers(&gpu::Barriers::texture(&[
+			gpu::TextureBarrier {
+				texture: &self.color_pass_texture,
+				old_layout: gpu::TextureLayout::UnorderedAccess,
+				new_layout: gpu::TextureLayout::ShaderResource,
+			}, gpu::TextureBarrier {
+				texture: &self.depth_pass_texture,
+				old_layout: gpu::TextureLayout::UnorderedAccess,
+				new_layout: gpu::TextureLayout::ShaderResource,
+			},
+		]));
 	}
 }
 

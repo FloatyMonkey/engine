@@ -17,6 +17,7 @@ RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2)
 Texture2D<float4> textures_2d_float4[] : register(t0, space3);
 Texture2D<float> textures_2d_float[] : register(t0, space4);
 RWTexture2D<float4> rw_textures_2d_float4[] : register(u0, space5);
+RWTexture2D<float4> rw_textures_2d_float[] : register(u0, space6);
 
 SamplerState linear_sampler : register(s0, space0);
 
@@ -44,7 +45,8 @@ struct GpuCamera {
 cbuffer ConstantBuffer : register(b0, space0) {
 	GpuCamera camera;
 	uint tlas_index;
-	uint combined_index;
+	uint color_pass_index;
+	uint depth_pass_index;
 	uint instance_data_index;
 	uint light_data_index;
 	uint light_count;
@@ -110,7 +112,8 @@ func lens(pixel: uint2, resolution: uint2, inout sg: PCG32si) -> Ray {
 [shader("raygeneration")]
 func raygen() {
 	let tlas = acceleration_structures[tlas_index];
-	let combined = rw_textures_2d_float4[combined_index];
+	let color_pass_tex = rw_textures_2d_float4[color_pass_index];
+	let depth_pass_tex = rw_textures_2d_float[depth_pass_index];
 
 	let rand_seed = DispatchRaysIndex().x + DispatchRaysDimensions().x * DispatchRaysIndex().y;
 
@@ -129,9 +132,18 @@ func raygen() {
 	payload.direction = camera_ray.direction;
 	payload.sg = sg;
 
+	if (accumulation_factor == 1.0) {
+		depth_pass_tex[DispatchRaysIndex().xy] = 10000.0;
+	}
+
 	for (int bounce = 0; bounce < BOUNCES; bounce++) {
 		let ray: RayDesc = { payload.origin, 0.0, payload.direction, 10000.0 };
 		TraceRay(tlas, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
+
+		if (bounce == 0 && any(payload.throughput)) {
+			let depth = length(payload.origin - camera_ray.origin);
+			depth_pass_tex[DispatchRaysIndex().xy] = depth;
+		}
 
 		if (russian_roulette(payload.throughput, sample_next_1d(payload.sg))) {
 			break;
@@ -142,8 +154,8 @@ func raygen() {
 		}
 	}
 
-	let color = lerp(combined[DispatchRaysIndex().xy].xyz, payload.radiance, accumulation_factor);
-	combined[DispatchRaysIndex().xy] = float4(color, 1.0);
+	let color = lerp(color_pass_tex[DispatchRaysIndex().xy].xyz, payload.radiance, accumulation_factor);
+	color_pass_tex[DispatchRaysIndex().xy] = float4(color, 1.0);
 }
 
 struct ShadingCtx {

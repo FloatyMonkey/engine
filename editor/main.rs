@@ -103,7 +103,7 @@ fn main() {
 		if let Some((scene, path_tracer)) = &mut renderer {
 			scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
 			path_tracer.run(&mut cmd, &scene, 20);
-			compositor.process(&mut cmd, &path_tracer.output_texture, &gizmo_renderer.texture);
+			compositor.process(&mut cmd, &path_tracer.color_pass_texture, &gizmo_renderer.texture);
 		}
 
 		editor.context.viewport_texture_srv = compositor.texture().srv_index().unwrap();

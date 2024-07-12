@@ -89,13 +89,8 @@ fn main() {
 		//gizmo.line(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 3.0), 0xFF0000FF);
 		//gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
 		//gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
-
-		if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
-			let view_matrix = Mat4::from(camera_transform.inv());
-			let projection_matrix = camera.projection_matrix();
-			let view_projection = projection_matrix * view_matrix;
-			gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data);
-		}
+		//gizmo.capsule(Vec3::new(5.0, 0.0, 0.0), 0.5, 2.0, 0xFFFF00FF);
+		//gizmo.cylinder(Vec3::new(3.0, 0.0, 0.0), 0.5, 1.0, 0xFFFF00FF);
 
 		// Path Tracer
 		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
@@ -103,6 +98,14 @@ fn main() {
 		if let Some((scene, path_tracer)) = &mut renderer {
 			scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
 			path_tracer.run(&mut cmd, &scene, 20);
+
+			if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
+				let view_matrix = Mat4::from(camera_transform.inv());
+				let projection_matrix = camera.projection_matrix();
+				let view_projection = projection_matrix * view_matrix;
+				gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data, &path_tracer.depth_pass_texture);
+			}
+
 			compositor.process(&mut cmd, &path_tracer.color_pass_texture, &gizmo_renderer.texture);
 		}
 

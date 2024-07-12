@@ -141,8 +141,8 @@ func raygen() {
 		TraceRay(tlas, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
 
 		if (bounce == 0 && any(payload.throughput)) {
-			let depth = length(payload.origin - camera_ray.origin);
-			depth_pass_tex[DispatchRaysIndex().xy] = depth;
+			let view_depth = abs(dot(camera.w, payload.origin - camera.position));
+			depth_pass_tex[DispatchRaysIndex().xy] = view_depth;
 		}
 
 		if (russian_roulette(payload.throughput, sample_next_1d(payload.sg))) {

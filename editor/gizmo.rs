@@ -1,5 +1,5 @@
 use engine::math::{Vec2, Vec3, UnitQuaternion, Unit};
-use engine::gpu::{self, CmdListImpl, DeviceImpl, BufferImpl};
+use engine::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
 
 #[repr(C)]
 struct Vertex {
@@ -10,11 +10,37 @@ struct Vertex {
 }
 
 fn circle_iter(radius: f32, segments: usize) -> impl Iterator<Item = Vec2> {
-	(0..segments + 1).map(move |i| {
+	(0..segments).map(move |i| {
 		let angle = i as f32 * std::f32::consts::TAU / segments as f32;
 		let sin_cos = angle.sin_cos();
 		Vec2::new(sin_cos.0, sin_cos.1) * radius
 	})
+}
+
+fn arc_iter(radius: f32, segments: usize, start: f32, end: f32) -> impl Iterator<Item = Vec2> {
+	(0..segments + 1).map(move |i| {
+		let angle = start + (end - start) * i as f32 / segments as f32;
+		let sin_cos = angle.sin_cos();
+		Vec2::new(sin_cos.0, sin_cos.1) * radius
+	})
+}
+
+#[derive(Clone, Copy)]
+pub struct Stroke {
+	pub color: u32,
+	pub width: f32,
+}
+
+impl From<u32> for Stroke {
+	fn from(color: u32) -> Self {
+		Self { color, width: 3.0 }
+	}
+}
+
+impl From<(u32, f32)> for Stroke {
+	fn from((color, width): (u32, f32)) -> Self {
+		Self { color, width }
+	}
 }
 
 pub struct Gizmo {
@@ -28,27 +54,32 @@ impl Gizmo {
 		}
 	}
 
-	pub fn line(&mut self, start: Vec3, end: Vec3, color: u32) {
+	pub fn line(&mut self, start: Vec3, end: Vec3, stroke: impl Into<Stroke>) {
+		let stroke = stroke.into();
+
 		self.vertices.push(Vertex {
 			position: start,
-			size: 2.0,
-			color,
+			size: stroke.width,
+			color: stroke.color,
 		});
 
 		self.vertices.push(Vertex {
 			position: end,
-			size: 2.0,
-			color,
+			size: stroke.width,
+			color: stroke.color,
 		});
 	}
 
 	pub fn line_loop(&mut self, points: impl IntoIterator<Item = Vec3>, color: u32) {
 		let mut points = points.into_iter();
 		let mut prev = points.next().unwrap();
+		let first = prev;
 		for point in points {
 			self.line(prev, point, color);
 			prev = point;
 		}
+		// Close the loop
+		self.line(prev, first, color);
 	}
 
 	pub fn circle(&mut self, center: Vec3, normal: Unit<Vec3>, radius: f32, color: u32) {
@@ -67,6 +98,47 @@ impl Gizmo {
 		let positions = circle_iter(radius, 64).map(|p| center + Vec3::new(p.x, p.y, 0.0));
 		self.line_loop(positions, color);
 	}
+
+	pub fn capsule(&mut self, center: Vec3, radius: f32, height: f32, color: u32) {
+		let cylinder_half_height = height / 2.0 - radius;
+
+		let pi = std::f32::consts::PI;
+		let res = 64;
+
+		let top_arc_x = arc_iter(radius, res, - pi / 2.0, pi / 2.0).map(|p| center + Vec3::new(0.0, p.x, p.y + cylinder_half_height));
+		let bottom_arc_x = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0).map(|p| center + Vec3::new(0.0, p.x, p.y - cylinder_half_height));
+
+		let positions = top_arc_x.chain(bottom_arc_x);
+		self.line_loop(positions, color);
+
+		let top_arc_y = arc_iter(radius, res, - pi / 2.0, pi / 2.0).map(|p| center + Vec3::new(p.x, 0.0, p.y + cylinder_half_height));
+		let bottom_arc_y = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0).map(|p| center + Vec3::new(p.x, 0.0, p.y - cylinder_half_height));
+
+		let positions = top_arc_y.chain(bottom_arc_y);
+		self.line_loop(positions, color);
+
+		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, cylinder_half_height));
+		self.line_loop(positions, color);
+
+		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -cylinder_half_height));
+		self.line_loop(positions, color);
+	}
+
+	pub fn cylinder(&mut self, center: Vec3, radius: f32, height: f32, color: u32) {
+		let half_height = height / 2.0;
+
+		let res = 64;
+
+		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, half_height));
+		self.line_loop(positions, color);
+
+		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -half_height));
+		self.line_loop(positions, color);
+
+		for (a, b) in circle_iter(radius, 4).map(|p| ((center + Vec3::new(p.x, p.y, -half_height)), (center + Vec3::new(p.x, p.y, half_height)))) {
+			self.line(a, b, color);
+		}
+	}
 }
 
 // TODO: Dynamically reallocate
@@ -77,6 +149,7 @@ struct PushConstants {
 	view_projection: [[f32; 4]; 4],
 	screen_size: [f32; 2],
 	vb_index: u32,
+	depth_texture_id: u32,
 }
 
 pub struct GizmoRenderer {
@@ -106,8 +179,20 @@ impl GizmoRenderer {
 				}),
 				bindings: Some(vec![
 					gpu::DescriptorBinding::bindless_srv(1), // buffers
+					gpu::DescriptorBinding::bindless_srv(2), // textures
 				]),
-				static_samplers: None,
+				static_samplers: Some(vec![
+					gpu::SamplerBinding {
+						shader_register: 0,
+						register_space: 0,
+						sampler_desc: gpu::SamplerDesc {
+							filter_min: gpu::FilterMode::Linear,
+							filter_mag: gpu::FilterMode::Linear,
+							filter_mip: gpu::FilterMode::Linear,
+							..Default::default()
+						},
+					},
+				]),
 			},
 			rasterizer: gpu::RasterizerDesc::default(),
 			depth_stencil: gpu::DepthStencilDesc::default(),
@@ -147,7 +232,7 @@ impl GizmoRenderer {
 		}
 	}
 
-	pub fn render(&mut self, cmd: &mut gpu::CmdList, gizmo: &Gizmo, view_projection: &[[f32; 4]; 4]) {
+	pub fn render(&mut self, cmd: &mut gpu::CmdList, gizmo: &Gizmo, view_projection: &[[f32; 4]; 4], depth_texture: &gpu::Texture) {
 		let map_vb = self.vb.cpu_ptr() as *mut Vertex;
 		unsafe {
 			std::ptr::copy_nonoverlapping(gizmo.vertices.as_ptr(), map_vb, gizmo.vertices.len());
@@ -157,6 +242,7 @@ impl GizmoRenderer {
 			view_projection: *view_projection,
 			screen_size: [self.resolution[0] as f32, self.resolution[1] as f32],
 			vb_index: self.vb.srv_index().unwrap(),
+			depth_texture_id: depth_texture.srv_index().unwrap(),
 		};
 
 		cmd.set_graphics_pipeline(&self.pipeline);

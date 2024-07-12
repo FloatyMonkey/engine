@@ -17,6 +17,8 @@ struct PushConstants {
 	accumulation_factor: f32,
 }
 
+// TODO: Document depth pass:
+// View-space depth, perpendicular distance from camera plane to intersection point, ie. not distance between camera position and intersection point
 pub struct PathTracer {
 	pipeline: gpu::RaytracingPipeline,
 	shader_table: gpu::Buffer,

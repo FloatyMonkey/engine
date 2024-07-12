@@ -4,9 +4,13 @@ cbuffer ConstantBuffer : register(b0) {
 	float4x4 view_projection;
 	float2 screen_size;
 	uint vb_index;
+	uint depth_texture_id;
 }
 
 ByteAddressBuffer buffers[] : register(t0, space1);
+Texture2D<float> textures_2d_float[] : register(t0, space2);
+
+SamplerState linear_sampler : register(s0, space0);
 
 static const float ANTIALIASING = 1.0;
 
@@ -69,11 +73,19 @@ PsInput main_vs(VsInput input) {
 
 [shader("pixel")]
 float4 main_ps(PsInput input) : SV_Target {
-	var color = input.color;
+	let scene_depth_texture = textures_2d_float[depth_texture_id];
+
+	float2 uv = input.position.xy / screen_size;
+	float scene_depth = scene_depth_texture.Sample(linear_sampler, uv).r;
+
+	float gizmo_depth = input.position.w;
+
+	let alpha_multiplier = gizmo_depth > scene_depth ? 0.25 : 1.0;
+
+	let color = input.color;
 
 	var d = abs(input.edge_distance) / input.size;
 	d = smoothstep(1.0, 1.0 - (ANTIALIASING / input.size), d);
-	color.a *= d;
 
-	return color;
+	return float4(color.rgb, color.a * d * alpha_multiplier);
 }

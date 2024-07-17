@@ -104,7 +104,7 @@ pub struct WindowDesc {
 	pub rect: Rect<i32>,
 }
 
-pub struct NativeHandle(pub isize);
+pub struct NativeHandle(pub usize);
 
 pub trait App {
 	type Window: Window;

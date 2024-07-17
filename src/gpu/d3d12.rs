@@ -69,7 +69,7 @@ pub struct Surface {
 	size: [u32; 2],
 	num_buffers: u32,
 	present_mode: super::PresentMode,
-	flags: u32,
+	flags: DXGI_SWAP_CHAIN_FLAG,
 	bb_index: usize,
 	swap_chain: IDXGISwapChain3,
 	fence: ID3D12Fence,
@@ -488,8 +488,7 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 				break;
 			}
 
-			let mut desc = std::mem::zeroed();
-			adapter.unwrap().GetDesc1(&mut desc)?;
+			let desc = adapter?.GetDesc1()?;
 
 			let adapter_name_len = desc.Description.iter().take_while(|&&c| c != 0).count();
 			let adapter_name = String::from_utf16_lossy(&desc.Description[..adapter_name_len]);
@@ -505,8 +504,7 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 		let adapter_index = adapter_index.unwrap_or(0);
 
 		let adapter = factory.EnumAdapterByGpuPreference::<IDXGIAdapter1>(adapter_index as u32, gpu_preference)?;
-		let mut desc = std::mem::zeroed();
-		adapter.GetDesc1(&mut desc)?;
+		let desc = adapter.GetDesc1()?;
 
 		let adapter_info = super::AdapterInfo {
 			name: adapter_names[adapter_index as usize].to_string(),
@@ -760,7 +758,7 @@ impl super::DeviceImpl for Device {
 			}
 
 			let dxgi_factory_flags = if !desc.validation.is_empty() {
-				0
+				DXGI_CREATE_FACTORY_FLAGS::default()
 			} else {
 				DXGI_CREATE_FACTORY_DEBUG
 			};
@@ -834,7 +832,7 @@ impl super::DeviceImpl for Device {
 
 	fn create_surface(&mut self, desc: &super::SurfaceDesc, window_handle: &NativeHandle) -> result::Result<Surface, super::Error> {
 		unsafe {
-			let flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING.0;
+			let flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 			let format = desc.format;
 			let dxgi_format = map_format(format);
 
@@ -845,7 +843,7 @@ impl super::DeviceImpl for Device {
 				Format: dxgi_format,
 				BufferUsage: DXGI_USAGE_RENDER_TARGET_OUTPUT,
 				SwapEffect: DXGI_SWAP_EFFECT_FLIP_DISCARD,
-				Flags: flags as u32,
+				Flags: flags.0 as u32,
 				SampleDesc: DXGI_SAMPLE_DESC {
 					Count: 1,
 					Quality: 0,
@@ -857,7 +855,7 @@ impl super::DeviceImpl for Device {
 				.dxgi_factory
 				.CreateSwapChainForHwnd(
 					&self.command_queue,
-					HWND(window_handle.0),
+					HWND(window_handle.0 as _),
 					&swap_chain_desc,
 					None,
 					None,
@@ -870,7 +868,7 @@ impl super::DeviceImpl for Device {
 				size: desc.size,
 				num_buffers: desc.num_buffers,
 				present_mode: desc.present_mode,
-				flags: flags as u32,
+				flags,
 				bb_index: 0,
 				fence: self.device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?,
 				fence_last_signalled_value: 0,
@@ -1393,7 +1391,7 @@ impl super::DeviceImpl for Device {
 		unsafe {
 			let command_list = &cmd.command_list[cmd.bb_index];
 			command_list.Close().unwrap();
-			self.command_queue.ExecuteCommandLists(&[Some(command_list.can_clone_into())]);
+			self.command_queue.ExecuteCommandLists(&[Some(command_list.cast().unwrap())]);
 		}
 	}
 
@@ -1484,8 +1482,8 @@ impl super::SurfaceImpl<Device> for Surface {
 	fn present(&mut self, device: &Device) {
 		let (sync, flags) = match self.present_mode {
 			super::PresentMode::Immediate => (0, DXGI_PRESENT_ALLOW_TEARING),
-			super::PresentMode::Mailbox => (0, 0),
-			super::PresentMode::Fifo => (1, 0),
+			super::PresentMode::Mailbox => (0, DXGI_PRESENT::default()),
+			super::PresentMode::Fifo => (1, DXGI_PRESENT::default()),
 		};
 
 		unsafe { self.swap_chain.Present(sync, flags) }.ok().unwrap();

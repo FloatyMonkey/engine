@@ -90,7 +90,7 @@ impl App {
 	fn set_capture(&mut self, window: HWND) {
 		unsafe {
 			let any_down = self.proc_data.mouse_down.iter().any(|v| *v);
-			if !any_down && GetCapture() == HWND(0) {
+			if !any_down && GetCapture() == HWND::default() {
 				SetCapture(window);
 			}
 		}
@@ -140,7 +140,7 @@ impl super::App for App {
 				mouse_pos: super::Point{ x: 0, y: 0 },
 				cursor: super::Cursor::Arrow,
 				proc_data: ProcData {
-					mouse_hwnd: HWND(0),
+					mouse_hwnd: HWND::default(),
 					mouse_tracked: false,
 					mouse_down: [false; 3],
 					events: Vec::new(),
@@ -170,9 +170,9 @@ impl super::App for App {
 				None,
 				self.hinstance,
 				Some(self as *const _ as _), // TODO: Ptr might break
-			);
+			).unwrap();
 
-			let enable_dark_mode = BOOL::from(true);
+			let enable_dark_mode = true.into();
 			DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &enable_dark_mode as *const BOOL as *const _, std::mem::size_of::<BOOL>() as _).unwrap();
 
 			Window {
@@ -197,7 +197,7 @@ impl super::App for App {
 
 		unsafe {
 			while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).into() {
-				TranslateMessage(&msg);
+				let _ = TranslateMessage(&msg);
 				DispatchMessageW(&msg);
 
 				if msg.message == WM_QUIT {
@@ -220,7 +220,7 @@ impl super::App for App {
 	fn enumerate_monitors() -> Vec<super::MonitorInfo> {
 		let mut monitors: Vec<super::MonitorInfo> = Vec::new();
 		unsafe {
-			EnumDisplayMonitors(HDC(0), None, Some(monitor_enum_proc), LPARAM(&mut monitors as *mut _ as _));
+			let _ = EnumDisplayMonitors(None, None, Some(monitor_enum_proc), LPARAM(&mut monitors as *mut _ as _));
 		}
 		monitors
 	}
@@ -231,7 +231,7 @@ impl super::App for App {
 		}
 		self.cursor = *cursor;
 		unsafe {
-			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR(0)), |c| LoadCursorW(HINSTANCE::default(), c)) {
+			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(HINSTANCE::default(), c)) {
 				SetCursor(cursor);
 			}
 		}
@@ -253,7 +253,7 @@ impl super::Window for Window {
 
 	fn position(&self) -> super::Point<i32> {
 		let mut pos = POINT { x: 0, y: 0 };
-		unsafe { ClientToScreen(self.hwnd, &mut pos); }
+		unsafe { let _ = ClientToScreen(self.hwnd, &mut pos); }
 		super::Point { x: pos.x, y: pos.y }
 	}
 
@@ -267,7 +267,7 @@ impl super::Window for Window {
 		let flags = SWP_NOZORDER | SWP_NOSIZE | SWP_NOACTIVATE;
 		unsafe {
 			AdjustWindowRectEx(&mut rect, self.ws, false, self.wsex).unwrap();
-			SetWindowPos(self.hwnd, HWND(0), rect.left, rect.top, 0, 0, flags).unwrap();
+			SetWindowPos(self.hwnd, None, rect.left, rect.top, 0, 0, flags).unwrap();
 		}
 	}
 
@@ -290,7 +290,7 @@ impl super::Window for Window {
 		let flags = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
 		unsafe {
 			AdjustWindowRectEx(&mut rect, self.ws, false, self.wsex).unwrap();
-			SetWindowPos(self.hwnd, HWND(0), 0, 0, rect.right - rect.left, rect.bottom - rect.top, flags).unwrap();
+			SetWindowPos(self.hwnd, None, 0, 0, rect.right - rect.left, rect.bottom - rect.top, flags).unwrap();
 		}
 	}
 
@@ -299,7 +299,7 @@ impl super::Window for Window {
 	}
 
 	fn minimize(&self) {
-		unsafe { ShowWindow(self.hwnd, SW_MINIMIZE); }
+		unsafe { let _ = ShowWindow(self.hwnd, SW_MINIMIZE); }
 	}
 
 	fn is_maximized(&self) -> bool {
@@ -307,7 +307,7 @@ impl super::Window for Window {
 	}
 
 	fn maximize(&self) {
-		unsafe { ShowWindow(self.hwnd, SW_MAXIMIZE); }
+		unsafe { let _ = ShowWindow(self.hwnd, SW_MAXIMIZE); }
 	}
 
 	fn is_focused(&self) -> bool {
@@ -316,10 +316,10 @@ impl super::Window for Window {
 
 	fn focus(&self) {
 		unsafe {
-			SetActiveWindow(self.hwnd);
+			SetActiveWindow(self.hwnd).unwrap();
 			BringWindowToTop(self.hwnd).unwrap();
-			SetForegroundWindow(self.hwnd);
-			SetFocus(self.hwnd);
+			let _ = SetForegroundWindow(self.hwnd);
+			SetFocus(self.hwnd).unwrap();
 		}
 	}
 
@@ -328,7 +328,7 @@ impl super::Window for Window {
 			x: mouse_pos.x,
 			y: mouse_pos.y,
 		};
-		unsafe { ScreenToClient(self.hwnd, &mut mp); }
+		unsafe { let _ = ScreenToClient(self.hwnd, &mut mp); }
 		super::Point { x: mp.x, y: mp.y }
 	}
 
@@ -378,7 +378,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			LRESULT(0)
 		}
 		WM_MOUSELEAVE => {
-			proc_data.mouse_hwnd = HWND(0);
+			proc_data.mouse_hwnd = HWND::default();
 			proc_data.mouse_tracked = false;
 			LRESULT(0)
 		}
@@ -431,7 +431,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			LRESULT(0)
 		}
 		WM_PAINT => {
-			ValidateRect(window, None);
+			let _ = ValidateRect(window, None);
 			LRESULT(0)
 		}
 		WM_CHAR => {
@@ -453,7 +453,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 		}
 		WM_SETCURSOR => {
 			if (lparam.0 & 0xffff) as u32 == HTCLIENT {
-				if let Ok(cursor) = map_cursor(&app.cursor).map_or(Ok(HCURSOR(0)), |c| LoadCursorW(HINSTANCE::default(), c)) {
+				if let Ok(cursor) = map_cursor(&app.cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(HINSTANCE::default(), c)) {
 					SetCursor(cursor);
 				}
 				LRESULT(1)

@@ -3,7 +3,7 @@
 
 use crate::os::NativeHandle;
 
-use ash::{vk, extensions::{ext, khr}, prelude::VkResult};
+use ash::{vk, prelude::VkResult};
 use gpu_allocator::vulkan as allocator;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
@@ -307,7 +307,7 @@ fn map_store_op(store_op: super::StoreOp) -> vk::AttachmentStoreOp {
 }
 
 pub struct Surface {
-	swapchain_ext: khr::Swapchain,
+	swapchain_ext: ash::khr::swapchain::Device,
 
 	swapchain: vk::SwapchainKHR,
 	textures: Vec<Texture>,
@@ -342,12 +342,11 @@ impl super::SurfaceImpl<Device> for Surface {
 	}
 
 	fn present(&mut self, device: &Device) {
-		// TODO: Can these be defined in the builder itself?
 		let swapchains = [self.swapchain];
 		let image_indices = [self.bb_index as u32];
 		let wait_semaphores = [todo!()];
 
-		let present_info = vk::PresentInfoKHR::builder()
+		let present_info = vk::PresentInfoKHR::default()
 			.swapchains(&swapchains)
 			.image_indices(&image_indices)
 			.wait_semaphores(&wait_semaphores);
@@ -546,9 +545,9 @@ pub struct Device {
 	command_pool: vk::CommandPool,
 	//rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
 
-	acceleration_structure_ext: khr::AccelerationStructure,
-	ray_tracing_pipeline_ext: khr::RayTracingPipeline,
-	debug_utils_ext: Option<ext::DebugUtils>,
+	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
+	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
+	debug_utils_ext: Option<ash::ext::debug_utils::Instance>,
 }
 
 impl super::DeviceImpl for Device {
@@ -568,7 +567,8 @@ impl super::DeviceImpl for Device {
 		let mut instance_extension_names = Vec::new();
 
 		let instance = {
-			const VK_LAYER_KHRONOS_VALIDATION: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") };
+			const VK_LAYER_KHRONOS_VALIDATION: &CStr =
+				unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") };
 
 			let mut layers: Vec<&CStr> = Vec::new();
 
@@ -576,17 +576,17 @@ impl super::DeviceImpl for Device {
 				layers.push(VK_LAYER_KHRONOS_VALIDATION);
 			}
 
-			let layers_ptr: Vec<*const i8> = layers
+			let layers_ptrs: Vec<*const i8> = layers
 				.iter()
 				.map(|c_str| c_str.as_ptr())
 				.collect();
 
-			let supported_layer_names = entry
+			let supported_layer_names = unsafe { entry
 				.enumerate_instance_layer_properties()
 				.unwrap()
 				.into_iter()
 				.map(|layer| unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) })
-				.collect::<Vec<_>>();
+				.collect::<Vec<_>>() };
 
 			for layer in &layers {
 				if !supported_layer_names.contains(&layer) {
@@ -594,40 +594,45 @@ impl super::DeviceImpl for Device {
 				}
 			}
 
-			instance_extension_names.push(khr::Surface::name().as_ptr());
+			instance_extension_names.push(vk::KHR_SURFACE_NAME);
 
 			if !desc.validation.is_empty() {
-				instance_extension_names.push(ext::DebugUtils::name().as_ptr());
+				instance_extension_names.push(vk::EXT_DEBUG_UTILS_NAME);
 			}
 
 			if cfg!(target_os = "windows") {
-				instance_extension_names.push(khr::Win32Surface::name().as_ptr());
+				instance_extension_names.push(vk::KHR_WIN32_SURFACE_NAME);
 			}
+
+			let instance_ptrs = instance_extension_names
+				.iter()
+				.map(|n| n.as_ptr())
+				.collect::<Vec<_>>();
 
 			let application_name = CString::new("App").unwrap(); // TODO: Hardcoded
 			let engine_name = CString::new("Engine").unwrap(); // TODO: Hardcoded
 
-			let application_info = vk::ApplicationInfo::builder()
+			let application_info = vk::ApplicationInfo::default()
 				.application_name(application_name.as_c_str())
 				.application_version(vk::make_api_version(0, 1, 0, 0))
 				.engine_name(engine_name.as_c_str())
 				.engine_version(vk::make_api_version(0, 1, 0, 0))
 				.api_version(vk::API_VERSION_1_3);
 
-			let instance_create_info = vk::InstanceCreateInfo::builder()
+			let instance_create_info = vk::InstanceCreateInfo::default()
 				.application_info(&application_info)
-				.enabled_layer_names(&layers_ptr)
-				.enabled_extension_names(&instance_extension_names);
+				.enabled_layer_names(&layers_ptrs)
+				.enabled_extension_names(&instance_ptrs);
 
 			unsafe { entry.create_instance(&instance_create_info, None) }.unwrap()
 		};
 
 		let debug_utils_ext = instance_extension_names
-			.contains(&ext::DebugUtils::name().as_ptr())
-			.then(|| ext::DebugUtils::new(&entry, &instance));
+			.contains(&vk::EXT_DEBUG_UTILS_NAME)
+			.then(|| ash::ext::debug_utils::Instance::new(&entry, &instance));
 
 		if let Some(ext) = &debug_utils_ext {
-			let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+			let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
 				.message_severity(
 					//vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE |
 					vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
@@ -645,11 +650,11 @@ impl super::DeviceImpl for Device {
 		}
 
 		let device_extension_names = [
-			khr::DeferredHostOperations::name(), // Required by AccelerationStructure
-			khr::AccelerationStructure::name(),
-			khr::RayTracingPipeline::name(),
-			//khr::RayQuery::name(),
-			khr::Swapchain::name(), // TODO: Conditionally enable
+			vk::KHR_DEFERRED_HOST_OPERATIONS_NAME, // Required by AccelerationStructure
+			vk::KHR_ACCELERATION_STRUCTURE_NAME,
+			vk::KHR_RAY_TRACING_PIPELINE_NAME,
+			//vk::KHR_RAY_QUERY_NAME,
+			vk::KHR_SWAPCHAIN_NAME, // TODO: Conditionally enable
 		];
 
 		let (physical_device, queue_family_index) = pick_physical_device_and_queue_family_indices(
@@ -660,19 +665,18 @@ impl super::DeviceImpl for Device {
 		.unwrap();
 
 		let device = {
-			let queue_create_info = vk::DeviceQueueCreateInfo::builder()
+			let queue_create_info = vk::DeviceQueueCreateInfo::default()
 				.queue_family_index(queue_family_index)
-				.queue_priorities(&[1.0])
-				.build();
+				.queue_priorities(&[1.0]);
 
 			let mut features2 = vk::PhysicalDeviceFeatures2::default();
 			unsafe { instance.get_physical_device_features2(physical_device, &mut features2) };
 
-			let mut vulkan11_features = vk::PhysicalDeviceVulkan11Features::builder()
+			let mut vulkan11_features = vk::PhysicalDeviceVulkan11Features::default()
 				.variable_pointers(true)
 				.variable_pointers_storage_buffer(true);
 
-			let mut vulkan12_features = vk::PhysicalDeviceVulkan12Features::builder()
+			let mut vulkan12_features = vk::PhysicalDeviceVulkan12Features::default()
 				.shader_int8(true)
 				.buffer_device_address(true)
 				.vulkan_memory_model(true)
@@ -682,20 +686,20 @@ impl super::DeviceImpl for Device {
 				.shader_storage_image_array_non_uniform_indexing(true)
 				.descriptor_indexing(true);
 
-			let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::builder()
+			let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::default()
 				.dynamic_rendering(true)
 				.synchronization2(true); // TODO: Actually use this
 
-			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
 				.acceleration_structure(true);
 
-			let mut raytracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+			let mut raytracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
 				.ray_tracing_pipeline(true);
 
 			let queue_create_infos = [queue_create_info];
 			let device_extension_names_ptrs = device_extension_names.map(|n| n.as_ptr());
 
-			let device_create_info = vk::DeviceCreateInfo::builder()
+			let device_create_info = vk::DeviceCreateInfo::default()
 				.push_next(&mut features2)
 				.push_next(&mut vulkan11_features)
 				.push_next(&mut vulkan12_features)
@@ -720,20 +724,20 @@ impl super::DeviceImpl for Device {
 		let graphics_queue = unsafe { device.get_device_queue(queue_family_index, 0) };
 
 		let command_pool = {
-			let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+			let command_pool_create_info = vk::CommandPoolCreateInfo::default()
 				.queue_family_index(queue_family_index)
 				.flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
 
 			unsafe { device.create_command_pool(&command_pool_create_info, None) }.unwrap()
 		};
 
-		let acceleration_structure_ext = khr::AccelerationStructure::new(&instance, &device);
-		let ray_tracing_pipeline_ext = khr::RayTracingPipeline::new(&instance, &device);
+		let acceleration_structure_ext = ash::khr::acceleration_structure::Device::new(&instance, &device);
+		let ray_tracing_pipeline_ext = ash::khr::ray_tracing_pipeline::Device::new(&instance, &device);
 
 		let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
 		{
-			let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::builder()
+			let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
 				.push_next(&mut rt_pipeline_properties);
 
 			unsafe {
@@ -759,14 +763,14 @@ impl super::DeviceImpl for Device {
 	fn create_surface(&mut self, desc: &super::SurfaceDesc, window_handle: &NativeHandle) -> Result<Self::Surface, super::Error> {
 		// TODO: Remove dependency on win32, move to platform layer
 		let hinstance = unsafe { GetModuleHandleW(None) }.unwrap();
-		let surface_create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+		let surface_create_info = vk::Win32SurfaceCreateInfoKHR::default()
 			.hinstance(hinstance.0 as vk::HINSTANCE)
 			.hwnd(window_handle.0 as vk::HWND);
 
-		let win32_surface_ext = khr::Win32Surface::new(&self.entry, &self.instance);
+		let win32_surface_ext = ash::khr::win32_surface::Instance::new(&self.entry, &self.instance);
 		let surface = unsafe { win32_surface_ext.create_win32_surface(&surface_create_info, None) }.unwrap();
 
-		let swapchain_ext = khr::Swapchain::new(&self.instance, &self.device);
+		let swapchain_ext = ash::khr::swapchain::Device::new(&self.instance, &self.device);
 
 		let present_mode = match desc.present_mode {
 			super::PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
@@ -774,7 +778,7 @@ impl super::DeviceImpl for Device {
 			super::PresentMode::Fifo      => vk::PresentModeKHR::FIFO,
 		};
 
-		let info = vk::SwapchainCreateInfoKHR::builder()
+		let info = vk::SwapchainCreateInfoKHR::default()
 			.surface(surface)
 			.min_image_count(desc.num_buffers)
 			.image_format(map_format(desc.format))
@@ -809,12 +813,12 @@ impl super::DeviceImpl for Device {
 		}).collect::<Vec<Texture>>();
 
 		let acquire_semaphores = swapchain_images.iter().map(|image| {
-			let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+			let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 			unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
 		}).collect::<Vec<vk::Semaphore>>();
 
 		let next_semaphore = {
-			let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
+			let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 			unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
 		};
 
@@ -833,7 +837,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
-		let buffer_info = vk::BufferCreateInfo::builder()
+		let buffer_info = vk::BufferCreateInfo::default()
 			.size(desc.size as _)
 			.usage(map_buffer_usage_flags(desc.usage))
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
@@ -856,7 +860,7 @@ impl super::DeviceImpl for Device {
 
 		let mapped_ptr = allocation.mapped_ptr().map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
 
-		let device_address = unsafe { self.device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::builder().buffer(buffer)) };
+		let device_address = unsafe { self.device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer)) };
 
 		Ok(Buffer {
 			buffer,
@@ -869,7 +873,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
-		let create_info = vk::ImageCreateInfo::builder()
+		let create_info = vk::ImageCreateInfo::default()
 			.image_type(map_image_type(&desc))
 			.format(map_format(desc.format))
 			.extent(vk::Extent3D {
@@ -898,13 +902,13 @@ impl super::DeviceImpl for Device {
 		unsafe { self.device.bind_image_memory(image, allocation.memory(), allocation.offset()) }.unwrap();
 
 		let rtv = desc.usage.contains(super::TextureUsage::RENDER_TARGET).then(|| {
-			let create_info = vk::ImageViewCreateInfo::builder();
+			let create_info = vk::ImageViewCreateInfo::default();
 			todo!();
 			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
 		});
 
 		let dsv = desc.usage.contains(super::TextureUsage::DEPTH_STENCIL).then(|| {
-			let create_info = vk::ImageViewCreateInfo::builder();
+			let create_info = vk::ImageViewCreateInfo::default();
 			todo!();
 			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
 		});
@@ -920,7 +924,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_sampler(&mut self, desc: &super::SamplerDesc) -> Result<Self::Sampler, super::Error> {
-		let mut create_info = vk::SamplerCreateInfo::builder()
+		let mut create_info = vk::SamplerCreateInfo::default()
 			.address_mode_u(map_address_mode(desc.address_u))
 			.address_mode_v(map_address_mode(desc.address_v))
 			.address_mode_w(map_address_mode(desc.address_w))
@@ -950,7 +954,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, super::Error> {
-		let create_info = vk::AccelerationStructureCreateInfoKHR::builder()
+		let create_info = vk::AccelerationStructureCreateInfoKHR::default()
 			.buffer(desc.buffer.buffer)
 			.offset(desc.offset as _)
 			.size(desc.size as _)
@@ -967,25 +971,25 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
-		let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::builder()
+		let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
 			.topology(map_topology(desc.topology));
 
-		let viewport_state = vk::PipelineViewportStateCreateInfo::builder()
+		let viewport_state = vk::PipelineViewportStateCreateInfo::default()
 			.viewport_count(1)
 			.scissor_count(1);
 
-		let mut rasterization_state = vk::PipelineRasterizationStateCreateInfo::builder()
+		let mut rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
 			.depth_clamp_enable(true)
 			.polygon_mode(map_polygon_mode(&desc.rasterizer.polygon_mode))
 			.cull_mode(map_cull_mode(&desc.rasterizer.cull_mode))
 			.front_face(if desc.rasterizer.front_ccw { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE })
 			.line_width(1.0);
 
-		let multisample_state = vk::PipelineMultisampleStateCreateInfo::builder()
+		let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
 			.rasterization_samples(vk::SampleCountFlags::TYPE_1)
 			.sample_mask(&[1]);
 
-		let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::builder()
+		let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfo::default()
 			.depth_test_enable(desc.depth_stencil.depth_test_enable)
 			.depth_write_enable(desc.depth_stencil.depth_write_enable)
 			.depth_compare_op(map_compare_op(desc.depth_stencil.depth_op))
@@ -1018,7 +1022,7 @@ impl super::DeviceImpl for Device {
 		}
 
 		let color_attachments = desc.color_attachments.iter().map(|attachment| {
-			let mut vk_attachment = vk::PipelineColorBlendAttachmentState::builder()
+			let mut vk_attachment = vk::PipelineColorBlendAttachmentState::default()
 				.color_write_mask(vk::ColorComponentFlags::from_raw(attachment.write_mask.bits() as u32));
 
 			if let Some(ref blend) = attachment.blend {
@@ -1032,13 +1036,13 @@ impl super::DeviceImpl for Device {
 					.alpha_blend_op(map_blend_op(&blend.alpha_op));
 			}
 
-			vk_attachment.build()
+			vk_attachment
 		}).collect::<Vec<_>>();
 
-		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
 			.attachments(&color_attachments);
 
-		let dynamic_state = vk::PipelineDynamicStateCreateInfo::builder()
+		let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
 			.dynamic_states(&[
 				vk::DynamicState::VIEWPORT,
 				vk::DynamicState::SCISSOR,
@@ -1053,12 +1057,12 @@ impl super::DeviceImpl for Device {
 
 		let depth_stencil_format = map_format(desc.depth_stencil.format);
 
-		let mut rendering = vk::PipelineRenderingCreateInfo::builder()
+		let mut rendering = vk::PipelineRenderingCreateInfo::default()
 			.color_attachment_formats(&color_target_formats)
 			.depth_attachment_format(depth_stencil_format)
 			.stencil_attachment_format(depth_stencil_format);
 
-		let create_info = vk::GraphicsPipelineCreateInfo::builder()
+		let create_info = vk::GraphicsPipelineCreateInfo::default()
 			// stages
 			// layout
 			.input_assembly_state(&input_assembly_state)
@@ -1068,8 +1072,7 @@ impl super::DeviceImpl for Device {
 			.depth_stencil_state(&depth_stencil_state)
 			.color_blend_state(&color_blend_state)
 			.dynamic_state(&dynamic_state)
-			.push_next(&mut rendering)
-			.build();
+			.push_next(&mut rendering);
 
 		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
@@ -1085,16 +1088,14 @@ impl super::DeviceImpl for Device {
 			..Default::default()
 		};
 
-		let compute_shader_stage = vk::PipelineShaderStageCreateInfo::builder()
+		let compute_shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.push_next(&mut compute_shader_module)
 			.stage(vk::ShaderStageFlags::COMPUTE)
-			.name(&name)
-			.build();
+			.name(&name);
 		
-		let create_info = vk::ComputePipelineCreateInfo::builder()
+		let create_info = vk::ComputePipelineCreateInfo::default()
 			.stage(compute_shader_stage)
-			.layout(todo!())
-			.build();
+			.layout(todo!());
 
 		let pipeline = unsafe { self.device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
@@ -1103,7 +1104,7 @@ impl super::DeviceImpl for Device {
 
 	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
 		let groups = desc.groups.iter().map(|group| {
-			vk::RayTracingShaderGroupCreateInfoKHR::builder()
+			vk::RayTracingShaderGroupCreateInfoKHR::default()
 				.ty(match group.ty {
 					super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
 					super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
@@ -1113,15 +1114,13 @@ impl super::DeviceImpl for Device {
 				.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.intersection_shader(group.intersection.unwrap_or(vk::SHADER_UNUSED_KHR))
-				.build()
 		}).collect::<Vec<_>>();
 
-		let create_info = vk::RayTracingPipelineCreateInfoKHR::builder()
+		let create_info = vk::RayTracingPipelineCreateInfoKHR::default()
 			.stages(todo!())
 			.groups(&groups)
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
-			.layout(todo!())
-			.build();
+			.layout(todo!());
 
 		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
@@ -1135,9 +1134,10 @@ impl super::DeviceImpl for Device {
 	fn submit(&self, cmd: &Self::CmdList) {
 		unsafe { self.device.end_command_buffer(cmd.command_buffer) }.unwrap();
 
-		let submit_infos = vk::SubmitInfo::builder()
-			.command_buffers(&[cmd.command_buffer])
-			.build();
+		let command_buffers = [cmd.command_buffer];
+
+		let submit_infos = vk::SubmitInfo::default()
+			.command_buffers(&command_buffers);
 
 		unsafe { self.device.queue_submit(self.graphics_queue, &[submit_infos], vk::Fence::null()) }.unwrap();
 	}
@@ -1164,9 +1164,9 @@ pub struct CmdList {
 	device: ash::Device,
 
 	// TODO: Initialize variables, move to Device
-	acceleration_structure_ext: khr::AccelerationStructure,
-	ray_tracing_pipeline_ext: khr::RayTracingPipeline,
-	debug_utils_ext: Option<ext::DebugUtils>,
+	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
+	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
+	debug_utils_ext: Option<ash::ext::debug_utils::Device>,
 }
 
 impl CmdList {
@@ -1289,7 +1289,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
 		let color_attachments = desc.colors.iter().map(|target| {
 			let (load_op, clear) = map_load_op(target.load_op);
-			vk::RenderingAttachmentInfo::builder()
+			vk::RenderingAttachmentInfo::default()
 				.image_view(target.texture.rtv.unwrap())
 				.image_layout(vk::ImageLayout::GENERAL) // TODO: COLOR_ATTACHMENT_OPTIMAL or others
 				.load_op(load_op)
@@ -1299,12 +1299,11 @@ impl super::CmdListImpl<Device> for CmdList {
 						float32: clear.into(),
 					},
 				})
-				.build()
 		}).collect::<Vec<_>>();
 
 		let depth_stencil = desc.depth_stencil.as_ref().map(|target| {
 			let (load_op, clear) = map_load_op(target.load_op);
-			vk::RenderingAttachmentInfo::builder()
+			vk::RenderingAttachmentInfo::default()
 				.image_view(target.texture.dsv.unwrap())
 				.image_layout(vk::ImageLayout::GENERAL) // TODO: DEPTH_STENCIL_ATTACHMENT_OPTIMAL or others
 				.load_op(load_op)
@@ -1315,10 +1314,9 @@ impl super::CmdListImpl<Device> for CmdList {
 						stencil: clear.1 as u32,
 					},
 				})
-				.build()
 		});
 
-		let mut vk_info = vk::RenderingInfo::builder()
+		let mut vk_info = vk::RenderingInfo::default()
 			.layer_count(1)
 			.color_attachments(&color_attachments);
 
@@ -1340,25 +1338,22 @@ impl super::CmdListImpl<Device> for CmdList {
 
 	fn barriers(&self, barriers: &super::Barriers<Device>) {
 		let memory_barriers = barriers.global.iter().map(|barrier| {
-			vk::MemoryBarrier2::builder()
-				.build()
+			vk::MemoryBarrier2::default()
 		}).collect::<Vec<_>>();
 
 		let buffer_memory_barriers = barriers.buffer.iter().map(|barrier| {
-			vk::BufferMemoryBarrier2::builder()
+			vk::BufferMemoryBarrier2::default()
 				.buffer(barrier.buffer.buffer)
-				.build()
 		}).collect::<Vec<_>>();
 
 		let image_memory_barriers = barriers.texture.iter().map(|barrier| {
-			vk::ImageMemoryBarrier2::builder()
+			vk::ImageMemoryBarrier2::default()
 				.old_layout(map_image_layout(barrier.old_layout))
 				.new_layout(map_image_layout(barrier.new_layout))
 				.image(barrier.texture.image)
-				.build()
 		}).collect::<Vec<_>>();
 
-		let dependency_info = vk::DependencyInfo::builder()
+		let dependency_info = vk::DependencyInfo::default()
 			.memory_barriers(&memory_barriers)
 			.buffer_memory_barriers(&buffer_memory_barriers)
 			.image_memory_barriers(&image_memory_barriers);
@@ -1522,7 +1517,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
 		if let Some(ext) = &self.debug_utils_ext {
 			let name = CString::new(name).unwrap();
-			let label = vk::DebugUtilsLabelEXT::builder()
+			let label = vk::DebugUtilsLabelEXT::default()
 				.label_name(&name)
 				.color(color.to_f32().into());
 
@@ -1533,7 +1528,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
 		if let Some(ext) = &self.debug_utils_ext {
 			let name = CString::new(name).unwrap();
-			let label = vk::DebugUtilsLabelEXT::builder()
+			let label = vk::DebugUtilsLabelEXT::default()
 				.label_name(&name)
 				.color(color.to_f32().into());
 
@@ -1559,23 +1554,21 @@ fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildI
 
 			// TODO: pass count to next struct
 			super::GeometryPart::AABBs(aabbs) => {
-				let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::builder()
+				let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::default()
 					.data(vk::DeviceOrHostAddressConstKHR {
 						device_address: aabbs.data.0,
 					})
-					.stride(aabbs.stride as _)
-					.build();
+					.stride(aabbs.stride as _);
 
-				vk::AccelerationStructureGeometryKHR::builder()
+				vk::AccelerationStructureGeometryKHR::default()
 					.geometry_type(vk::GeometryTypeKHR::AABBS)
 					.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs })
 					.flags(map_acceleration_structure_geometry_flags(geo.flags))
-					.build()
 			}
 
 			// TODO: pass index_count / 3 to next struct
 			super::GeometryPart::Triangles(triangles) => {
-				let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
+				let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
 					.vertex_format(map_format(triangles.vertex_format))
 					.vertex_data(vk::DeviceOrHostAddressConstKHR {
 						device_address: triangles.vertex_buffer.0,
@@ -1588,14 +1581,12 @@ fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildI
 					})
 					.transform_data(vk::DeviceOrHostAddressConstKHR {
 						device_address: triangles.transform.0,
-					})
-					.build();
+					});
 
-				vk::AccelerationStructureGeometryKHR::builder()
+				vk::AccelerationStructureGeometryKHR::default()
 					.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
 					.geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
 					.flags(map_acceleration_structure_geometry_flags(geo.flags))
-					.build()
 			}
 		};
 	}

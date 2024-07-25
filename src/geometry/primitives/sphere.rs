@@ -24,12 +24,12 @@ pub fn sphere(radius: f32, meridians: usize, parallels: usize) -> Mesh {
 	let v_top = mesh.add_vertex([0.0, 0.0, radius]);
 
 	for p in 0..parallels - 1 {
-		let theta = delta_theta * (p + 1) as f32;
+		let theta = (p + 1) as f32 * delta_theta;
 		let sin_theta = theta.sin();
 		let cos_theta = theta.cos();
 
 		for m in 0..meridians {
-			let phi = delta_phi * m as f32;
+			let phi = m as f32 * delta_phi;
 			let x = radius * sin_theta * phi.cos();
 			let y = radius * sin_theta * phi.sin();
 			let z = radius * cos_theta;

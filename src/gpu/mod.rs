@@ -861,14 +861,14 @@ pub trait CmdListImpl<D: DeviceImpl> {
 /// Converts a Sized type to a u8 slice.
 pub fn as_u8_slice<T: Sized>(p: &T) -> &[u8] {
 	unsafe {
-		std::slice::from_raw_parts((p as *const T) as *const u8, std::mem::size_of::<T>())
+		std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
 	}
 }
 
 /// Converts a Sized slice to a u8 slice.
 pub fn slice_as_u8_slice<T: Sized>(p: &[T]) -> &[u8] {
 	unsafe {
-		std::slice::from_raw_parts((p.as_ptr() as *const T) as *const u8, std::mem::size_of::<T>() * p.len())
+		std::slice::from_raw_parts(p.as_ptr() as *const u8, std::mem::size_of_val(p))
 	}
 }
 
@@ -1318,7 +1318,7 @@ pub fn upload_texture<D: DeviceImpl>(device: &mut D, texture: &D::Texture, desc:
 	assert_eq!(desc.depth, 1);
 
 	let row_pitch = desc.format.row_pitch(desc.width);
-	let upload_pitch = align_pow2(row_pitch, 256 as u64); // TODO: hardcoded alignment
+	let upload_pitch = align_pow2(row_pitch, 256); // TODO: hardcoded alignment
 	let upload_size = desc.height * upload_pitch;
 
 	let cmd = device.create_cmd_list(1);

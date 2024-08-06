@@ -50,7 +50,7 @@ fn parse_binary(data: &[u8]) -> Mesh {
 			)
 		}
 
-		let value_count = *lookup.last().unwrap() as usize;
+		let value_count = *lookup.last().unwrap();
 
 		let mut values = Vec::with_capacity(value_count);
 		for _ in 0..value_count {

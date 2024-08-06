@@ -177,7 +177,7 @@ impl<'w, Q: QueryParam> Iterator for QueryIter<'w, Q> {
 				}
 				self.fetch = MaybeUninit::new(Q::fetch(self.world, archetype));
 				self.row = 0;
-				self.len = archetype.len() as usize;
+				self.len = archetype.len();
 			}
 
 			// SAFETY: `fetch` was initialized prior.

@@ -162,7 +162,7 @@ pub struct GizmoRenderer {
 impl GizmoRenderer {
 	pub fn new(resolution: [u32; 2], device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
 		let vb = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
+			size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
@@ -175,7 +175,7 @@ impl GizmoRenderer {
 			ps: Some(&pixel_shader),
 			descriptor_layout: gpu::DescriptorLayout {
 				push_constants: Some(gpu::PushConstantBinding {
-					size: std::mem::size_of::<PushConstants>() as u32,
+					size: size_of::<PushConstants>() as u32,
 				}),
 				bindings: Some(vec![
 					gpu::DescriptorBinding::bindless_srv(1), // buffers

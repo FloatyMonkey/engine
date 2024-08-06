@@ -52,7 +52,7 @@ impl PathTracer {
 
 		let descriptor_layout = gpu::DescriptorLayout {
 			push_constants: Some(gpu::PushConstantBinding {
-				size: std::mem::size_of::<PushConstants>() as u32,
+				size: size_of::<PushConstants>() as u32,
 			}),
 			bindings: Some(vec![
 				gpu::DescriptorBinding::bindless_srv(1), // Buffers
@@ -245,7 +245,7 @@ impl Compositor {
 
 		let descriptor_layout = gpu::DescriptorLayout {
 			push_constants: Some(gpu::PushConstantBinding {
-				size: std::mem::size_of::<CompositorPushConstants>() as u32,
+				size: size_of::<CompositorPushConstants>() as u32,
 			}),
 			bindings: Some(vec![
 				gpu::DescriptorBinding::bindless_srv(1),

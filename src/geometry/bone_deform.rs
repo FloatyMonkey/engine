@@ -42,7 +42,7 @@ impl BoneDeform {
 
 		let descriptor_layout = gpu::DescriptorLayout {
 			push_constants: Some(gpu::PushConstantBinding {
-				size: std::mem::size_of::<PushConstants>() as u32,
+				size: size_of::<PushConstants>() as u32,
 			}),
 			bindings: Some(vec![
 				gpu::DescriptorBinding::bindless_srv(1),
@@ -59,13 +59,13 @@ impl BoneDeform {
 		let (lookup, values) = to_gpu_data(&mesh.vertex_groups);
 
 		let lookup_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<u32>() * lookup.len(),
+			size: size_of::<u32>() * lookup.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		let weights_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<u32>() * values.len(),
+			size: size_of::<u32>() * values.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
@@ -74,13 +74,13 @@ impl BoneDeform {
 		gpu::upload_buffer(device, &weights_buffer, gpu::slice_as_u8_slice(&values));
 
 		let bone_transforms_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<Mat3x4>() * bone_count,
+			size: size_of::<Mat3x4>() * bone_count,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let transformed_vertex_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<Vertex>() * mesh.vertices.len(),
+			size: size_of::<Vertex>() * mesh.vertices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE | gpu::BufferUsage::UNORDERED_ACCESS,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();

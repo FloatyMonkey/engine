@@ -521,8 +521,8 @@ mod tests {
 	#[test]
 	fn entity_niche_optimization() {
 		assert_eq!(
-			std::mem::size_of::<Entity>(),
-			std::mem::size_of::<Option<Entity>>()
+			size_of::<Entity>(),
+			size_of::<Option<Entity>>()
 		);
 	}
 }

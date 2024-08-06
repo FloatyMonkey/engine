@@ -6,8 +6,8 @@ use crate::os::{self, App, Window};
 use crate::gpu::{self, DeviceImpl, CmdListImpl, BufferImpl, TextureImpl};
 
 // TODO: Dynamically reallocate
-const VERTEX_BUFFER_SIZE: usize = std::mem::size_of::<egui::epaint::Vertex>() * 100000;
-const INDEX_BUFFER_SIZE: usize = std::mem::size_of::<u32>() * 3 * 100000;
+const VERTEX_BUFFER_SIZE: usize = size_of::<egui::epaint::Vertex>() * 100000;
+const INDEX_BUFFER_SIZE: usize = size_of::<u32>() * 3 * 100000;
 
 pub struct ScreenDesc {
 	pub size_in_pixels: [u32; 2],
@@ -34,13 +34,13 @@ pub struct EguiRenderer {
 impl EguiRenderer {
 	pub fn new(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
 		let vb = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
+			size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let ib = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<u32>() * INDEX_BUFFER_SIZE,
+			size: size_of::<u32>() * INDEX_BUFFER_SIZE,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();

@@ -173,7 +173,7 @@ impl super::App for App {
 			).unwrap();
 
 			let enable_dark_mode = true.into();
-			DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &enable_dark_mode as *const BOOL as *const _, std::mem::size_of::<BOOL>() as _).unwrap();
+			DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &enable_dark_mode as *const BOOL as *const _, size_of::<BOOL>() as _).unwrap();
 
 			Window {
 				hwnd,
@@ -353,7 +353,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 	let app = &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut App);
 	let proc_data = &mut app.proc_data;
 
-	match message as u32 {
+	match message {
 		WM_CREATE => {
 			let create_struct = &*(lparam.0 as *const CREATESTRUCTW);
 			SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _);
@@ -368,7 +368,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			if !proc_data.mouse_tracked {
 				// Call TrackMouseEvent to receive WM_MOUSELEAVE events
 				TrackMouseEvent(&mut TRACKMOUSEEVENT {
-					cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+					cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
 					dwFlags: TME_LEAVE,
 					hwndTrack: window,
 					dwHoverTime: HOVER_DEFAULT,
@@ -469,7 +469,7 @@ unsafe extern "system" fn monitor_enum_proc(monitor: HMONITOR, _hdc: HDC, _lprec
 	let monitors = &mut *(lparam.0 as *mut Vec<super::MonitorInfo>);
 
 	let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
-	info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+	info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
 
 	if GetMonitorInfoW(monitor, &mut info as *mut _ as *mut _) == false {
 		return false.into();

@@ -133,7 +133,7 @@ fn map_border_color(border_color: super::BorderColor) -> vk::BorderColor {
 fn map_image_type(desc: &super::TextureDesc) -> vk::ImageType {
 	if desc.depth > 1 { return vk::ImageType::TYPE_3D; }
 	if desc.height > 1 { return vk::ImageType::TYPE_2D; }
-	return vk::ImageType::TYPE_1D;
+	vk::ImageType::TYPE_1D
 }
 
 fn map_image_layout(layout: super::TextureLayout) -> vk::ImageLayout {
@@ -415,7 +415,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	}
 
 	fn instance_descriptor_size() -> usize {
-		std::mem::size_of::<vk::AccelerationStructureInstanceKHR>()
+		size_of::<vk::AccelerationStructureInstanceKHR>()
 	}
 
 	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
@@ -443,7 +443,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 		};
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(&vk_instance as *const _ as _, slice.as_mut_ptr(), std::mem::size_of::<vk::AccelerationStructureInstanceKHR>());
+			std::ptr::copy_nonoverlapping(&vk_instance as *const _ as _, slice.as_mut_ptr(), size_of::<vk::AccelerationStructureInstanceKHR>());
 		}
 	}
 }
@@ -585,11 +585,11 @@ impl super::DeviceImpl for Device {
 				.enumerate_instance_layer_properties()
 				.unwrap()
 				.into_iter()
-				.map(|layer| unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) })
+				.map(|layer| CStr::from_ptr(layer.layer_name.as_ptr()))
 				.collect::<Vec<_>>() };
 
 			for layer in &layers {
-				if !supported_layer_names.contains(&layer) {
+				if !supported_layer_names.contains(layer) {
 					log::warn!(target: "gpu::vulkan", "Requested layer not found: {:?}", layer);
 				}
 			}
@@ -874,7 +874,7 @@ impl super::DeviceImpl for Device {
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
 		let create_info = vk::ImageCreateInfo::default()
-			.image_type(map_image_type(&desc))
+			.image_type(map_image_type(desc))
 			.format(map_format(desc.format))
 			.extent(vk::Extent3D {
 				width: desc.width as _,
@@ -1016,7 +1016,7 @@ impl super::DeviceImpl for Device {
 		if desc.rasterizer.depth_bias.constant != 0.0 || desc.rasterizer.depth_bias.slope != 0.0 {
 			rasterization_state = rasterization_state
 				.depth_bias_enable(true)
-				.depth_bias_constant_factor(desc.rasterizer.depth_bias.constant as f32)
+				.depth_bias_constant_factor(desc.rasterizer.depth_bias.constant)
 				.depth_bias_clamp(desc.rasterizer.depth_bias.clamp)
 				.depth_bias_slope_factor(desc.rasterizer.depth_bias.slope);
 		}
@@ -1321,8 +1321,8 @@ impl super::CmdListImpl<Device> for CmdList {
 			.color_attachments(&color_attachments);
 
 		if let Some(ref depth_stencil) = depth_stencil {
-			vk_info = vk_info.depth_attachment(&depth_stencil);
-			vk_info = vk_info.stencil_attachment(&depth_stencil); // TODO: Conditionally enable
+			vk_info = vk_info.depth_attachment(depth_stencil);
+			vk_info = vk_info.stencil_attachment(depth_stencil); // TODO: Conditionally enable
 		}
 
 		unsafe {

@@ -288,13 +288,13 @@ fn map_address_compare_op(op: Option<super::CompareOp>) -> D3D12_COMPARISON_FUNC
 fn map_resource_dimension(desc: &super::TextureDesc) -> D3D12_RESOURCE_DIMENSION {
 	if desc.depth > 1 { return D3D12_RESOURCE_DIMENSION_TEXTURE3D; }
 	if desc.height > 1 { return D3D12_RESOURCE_DIMENSION_TEXTURE2D; }
-	return D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+	D3D12_RESOURCE_DIMENSION_TEXTURE1D
 }
 
 fn map_srv_dimension(desc: &super::TextureDesc) -> D3D12_SRV_DIMENSION {
 	if desc.depth > 1 { return D3D12_SRV_DIMENSION_TEXTURE3D; }
 	if desc.height > 1 { return D3D12_SRV_DIMENSION_TEXTURE2D; }
-	return D3D12_SRV_DIMENSION_TEXTURE1D;
+	D3D12_SRV_DIMENSION_TEXTURE1D
 }
 
 fn map_texture_layout(layout: super::TextureLayout) -> D3D12_BARRIER_LAYOUT {
@@ -496,7 +496,7 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 			adapter_names.push(adapter_name);
 
 			let adapter_flag = DXGI_ADAPTER_FLAG(desc.Flags as i32);
-			if (adapter_flag & DXGI_ADAPTER_FLAG_SOFTWARE) == DXGI_ADAPTER_FLAG_NONE && adapter_index == None {
+			if (adapter_flag & DXGI_ADAPTER_FLAG_SOFTWARE) == DXGI_ADAPTER_FLAG_NONE && adapter_index.is_none() {
 				adapter_index = Some(i as i32);
 			}
 		}
@@ -514,7 +514,7 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 			available: adapter_names,
 		};
 
-		return Ok((adapter, adapter_info));
+		Ok((adapter, adapter_info))
 	}
 }
 
@@ -793,7 +793,7 @@ impl super::DeviceImpl for Device {
 			let res = device.CheckFeatureSupport(
 				D3D12_FEATURE_D3D12_OPTIONS5,
 				&mut feature_options5 as *mut _ as *mut _,
-				std::mem::size_of::<D3D12_FEATURE_DATA_D3D12_OPTIONS5>() as _,
+				size_of::<D3D12_FEATURE_DATA_D3D12_OPTIONS5>() as _,
 			);
 
 			let capabilities = super::Capabilities {
@@ -813,7 +813,7 @@ impl super::DeviceImpl for Device {
 			let dsv_heap = Heap::new(&device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 100); // TODO: Hardcoded
 
 			let pix = desc.validation.contains(super::Validation::DEBUGGER)
-				.then(|| WinPixEventRuntime::load()).flatten();
+				.then(WinPixEventRuntime::load).flatten();
 
 			Device {
 				adapter_info,
@@ -954,7 +954,7 @@ impl super::DeviceImpl for Device {
 						Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
 							Buffer: D3D12_BUFFER_SRV {
 								FirstElement: 0, // offset / sizeof(u32)
-								NumElements: (desc.size / std::mem::size_of::<u32>()) as u32, // (desc.size - offset) / sizeof(u32)
+								NumElements: (desc.size / size_of::<u32>()) as u32, // (desc.size - offset) / sizeof(u32)
 								StructureByteStride: 0,
 								Flags: D3D12_BUFFER_SRV_FLAG_RAW,
 							}
@@ -976,7 +976,7 @@ impl super::DeviceImpl for Device {
 						Anonymous: D3D12_UNORDERED_ACCESS_VIEW_DESC_0 {
 							Buffer: D3D12_BUFFER_UAV {
 								FirstElement: 0,
-								NumElements: (desc.size / std::mem::size_of::<u32>()) as u32,
+								NumElements: (desc.size / size_of::<u32>()) as u32,
 								StructureByteStride: 0,
 								CounterOffsetInBytes: 0,
 								Flags: D3D12_BUFFER_UAV_FLAG_RAW,
@@ -1182,7 +1182,7 @@ impl super::DeviceImpl for Device {
 			BlendState: D3D12_BLEND_DESC {
 				AlphaToCoverageEnable: false.into(),
 				IndependentBlendEnable: true.into(),
-				RenderTarget: map_color_attachments(&desc.color_attachments),
+				RenderTarget: map_color_attachments(desc.color_attachments),
 			},
 			DepthStencilState: D3D12_DEPTH_STENCIL_DESC {
 				DepthEnable: depth_stencil.depth_test_enable.into(),
@@ -1214,7 +1214,7 @@ impl super::DeviceImpl for Device {
 			..Default::default()
 		};
 
-		for i in 0..desc.color_attachments.len() as usize {
+		for i in 0..desc.color_attachments.len() {
 			dx_desc.RTVFormats[i] = map_format(desc.color_attachments[i].format);
 		}
 		
@@ -1229,7 +1229,7 @@ impl super::DeviceImpl for Device {
 
 	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> result::Result<ComputePipeline, super::Error> {
 		let cs = &desc.cs;
-		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
+		let root_signature = self.create_root_signature(desc.descriptor_layout)?;
 
 		let dx_desc = D3D12_COMPUTE_PIPELINE_STATE_DESC {
 			CS: D3D12_SHADER_BYTECODE {
@@ -1489,10 +1489,10 @@ impl super::SurfaceImpl<Device> for Surface {
 		unsafe { self.swap_chain.Present(sync, flags) }.ok().unwrap();
 
 		let fv = self.fence_last_signalled_value + 1;
-		unsafe { device.command_queue.Signal(&self.fence, fv as u64) }.unwrap();
+		unsafe { device.command_queue.Signal(&self.fence, fv) }.unwrap();
 
 		self.fence_last_signalled_value = fv;
-		self.frame_fence_value[self.bb_index as usize] = fv;
+		self.frame_fence_value[self.bb_index] = fv;
 
 		self.bb_index = (self.bb_index + 1) % self.num_buffers as usize;
 	}
@@ -1983,7 +1983,7 @@ impl super::CmdListImpl<Device> for CmdList {
 	}
 
 	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
-		let info = AccelerationStructureInfo::build(&desc.inputs);
+		let info = AccelerationStructureInfo::build(desc.inputs);
 
 		// TODO: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE if desc.src.is_some()
 
@@ -2056,7 +2056,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	}
 
 	fn instance_descriptor_size() -> usize {
-		std::mem::size_of::<D3D12_RAYTRACING_INSTANCE_DESC>()
+		size_of::<D3D12_RAYTRACING_INSTANCE_DESC>()
 	}
 
 	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
@@ -2074,7 +2074,7 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 		};
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(&dx_instance as *const _ as _, slice.as_mut_ptr(), std::mem::size_of::<D3D12_RAYTRACING_INSTANCE_DESC>());
+			std::ptr::copy_nonoverlapping(&dx_instance as *const _ as _, slice.as_mut_ptr(), size_of::<D3D12_RAYTRACING_INSTANCE_DESC>());
 		}
 	}
 }
@@ -2140,10 +2140,11 @@ impl AccelerationStructureInfo {
 			},
 		}).collect();
 
-		let mut dx_input = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS::default();
-
-		dx_input.Flags = map_acceleration_structure_build_flags(inputs.flags);
-		dx_input.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		let mut dx_input = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS {
+			Flags: map_acceleration_structure_build_flags(inputs.flags),
+			DescsLayout: D3D12_ELEMENTS_LAYOUT_ARRAY,
+			..Default::default()
+		};
 
 		match inputs.ty {
 			super::AccelerationStructureType::BottomLevel => {

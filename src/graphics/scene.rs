@@ -94,13 +94,13 @@ impl GpuMeshData {
 		let indices: Vec<u32> = mesh.indices.iter().map(|i| *i as u32).collect();
 
 		let vertex_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<Vertex>() * vertices.len(),
+			size: size_of::<Vertex>() * vertices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
 
 		let index_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<u32>() * indices.len(),
+			size: size_of::<u32>() * indices.len(),
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
@@ -108,7 +108,7 @@ impl GpuMeshData {
 		gpu::upload_buffer(device, &vertex_buffer, gpu::slice_as_u8_slice(&vertices));
 		gpu::upload_buffer(device, &index_buffer, gpu::slice_as_u8_slice(&indices));
 
-		let blas = Blas::create(device, &vertex_buffer, &index_buffer, vertices.len(), indices.len(), std::mem::size_of::<Vertex>());
+		let blas = Blas::create(device, &vertex_buffer, &index_buffer, vertices.len(), indices.len(), size_of::<Vertex>());
 
 		Self {
 			vertex_buffer,
@@ -137,13 +137,13 @@ impl Scene {
 		let tlas = Tlas::create(device, MAX_INSTANCES);
 
 		let instance_data_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<Instance>() * MAX_INSTANCES,
+			size: size_of::<Instance>() * MAX_INSTANCES,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
 
 		let light_data_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: std::mem::size_of::<GpuLight>() * MAX_LIGHTS,
+			size: size_of::<GpuLight>() * MAX_LIGHTS,
 			usage: gpu::BufferUsage::SHADER_RESOURCE,
 			memory: gpu::Memory::CpuToGpu,
 		}).unwrap();
@@ -237,7 +237,7 @@ impl Scene {
 		let instance_descriptor_size = gpu::AccelerationStructure::instance_descriptor_size();
 
 		let instance_data = unsafe { std::slice::from_raw_parts_mut(self.instance_data_buffer.cpu_ptr() as *mut Instance, MAX_INSTANCES) };
-		let instance_descriptors = unsafe { std::slice::from_raw_parts_mut(self.tlas.instance_buffer.cpu_ptr() as *mut u8, MAX_INSTANCES * instance_descriptor_size) };
+		let instance_descriptors = unsafe { std::slice::from_raw_parts_mut(self.tlas.instance_buffer.cpu_ptr(), MAX_INSTANCES * instance_descriptor_size) };
 
 		let mut instance_index = 0;
 
@@ -269,12 +269,12 @@ impl Scene {
 		// ACCELERATION STRUCTURES
 
 		cmd.barriers(&gpu::Barriers::global()); // Global barrier to ensure the BLASes are visible to TLAS
-		self.tlas.build(&cmd);
+		self.tlas.build(cmd);
 		cmd.barriers(&gpu::Barriers::global()); // Global barrier to ensure the TLAS is visible to the raytracing pipeline
 	}
 
 	fn get_texture_from_cache(&mut self, asset: &AssetId<Image>, device: &mut gpu::Device, assets: &AssetServer) -> &gpu::Texture {
-		if !self.texture_cache.contains_key(&asset.id()) {
+		self.texture_cache.entry(asset.id()).or_insert_with(|| {
 			let image = assets.get(asset).unwrap();
 
 			let texture_desc = gpu::TextureDesc {
@@ -291,21 +291,17 @@ impl Scene {
 			let texture = device.create_texture(&texture_desc).unwrap();
 			gpu::upload_texture(device, &texture, &texture_desc, gpu::slice_as_u8_slice(&image.data));
 
-			self.texture_cache.insert(asset.id(), texture);
-		}
-		
-		self.texture_cache.get(&asset.id()).unwrap()
+			texture
+		})
 	}
 
 	fn get_mesh_from_cache(&mut self, asset: &AssetId<mesh::Mesh>, device: &mut gpu::Device, cmd: &gpu::CmdList, assets: &AssetServer) -> &GpuMeshData {
-		if !self.mesh_cache.contains_key(&asset.id()) {
+		self.mesh_cache.entry(asset.id()).or_insert_with(|| {
 			let mesh = assets.get(asset).unwrap();
 			let mut gpu_mesh_data = GpuMeshData::from_mesh(device, mesh);
-			gpu_mesh_data.blas.build(&cmd);
-			self.mesh_cache.insert(asset.id(), gpu_mesh_data);
-		}
-
-		self.mesh_cache.get(&asset.id()).unwrap()
+			gpu_mesh_data.blas.build(cmd);
+			gpu_mesh_data
+		})
 	}
 }
 

@@ -34,11 +34,11 @@ impl ShaderCompiler {
 		let entry_point = module.find_entry_point_by_name(entry_point_name).unwrap();
 
 		let program = session.create_composite_component_type(&[
-			module.downcast(), entry_point.downcast(),
-		]);
+			module.downcast().clone(), entry_point.downcast().clone(),
+		]).unwrap();
 
-		let linked_program = program.link();
+		let linked_program = program.link().unwrap();
 
-		linked_program.get_entry_point_code(0, 0)
+		linked_program.get_entry_point_code(0, 0).unwrap().as_slice().to_vec()
 	}
 }

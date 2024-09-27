@@ -732,6 +732,9 @@ pub trait AccelerationStructureImpl<D: DeviceImpl> {
 	/// Only valid for top-level acceleration structures.
 	fn srv_index(&self) -> Option<u32>;
 
+	/// Only valid for bottom-level acceleration structures.
+	fn gpu_ptr(&self) -> GpuPtr;
+
 	fn instance_descriptor_size() -> usize;
 	fn write_instance_descriptor(instance: &AccelerationStructureInstance, slice: &mut [u8]);
 }
@@ -1156,6 +1159,7 @@ pub struct AccelerationStructureInstance {
 	pub mask: u8,
 	pub contribution_to_hit_group_index: u32,
 	pub flags: AccelerationStructureInstanceFlags,
+	/// [`GpuPtr`] retrieved using [`AccelerationStructureImpl::gpu_ptr`].
 	pub bottom_level: GpuPtr, // TODO: Just use an index? MTL: accelerationStructureIndex
 }
 

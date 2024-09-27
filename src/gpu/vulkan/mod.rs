@@ -407,11 +407,19 @@ pub struct Sampler {
 
 impl super::SamplerImpl<Device> for Sampler {}
 
-pub struct AccelerationStructure {}
+pub struct AccelerationStructure {
+	acceleration_structure: vk::AccelerationStructureKHR,
+	srv_index: Option<usize>,
+	gpu_ptr: u64,
+}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {
-		todo!()
+		self.srv_index.map(|i| i as u32)
+	}
+
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		super::GpuPtr(self.gpu_ptr)
 	}
 
 	fn instance_descriptor_size() -> usize {
@@ -965,9 +973,21 @@ impl super::DeviceImpl for Device {
 
 		let acceleration_structure = unsafe { self.acceleration_structure_ext.create_acceleration_structure(&create_info, None) }.unwrap();
 
-		// TODO: srv for top level
+		let srv_index = todo!();
 
-		todo!()
+		let gpu_ptr = unsafe { self
+			.acceleration_structure_ext
+			.get_acceleration_structure_device_address(
+				&vk::AccelerationStructureDeviceAddressInfoKHR::default()
+					.acceleration_structure(acceleration_structure)
+			)
+		};
+
+		Ok(AccelerationStructure {
+			acceleration_structure,
+			srv_index,
+			gpu_ptr,
+		})
 	}
 
 	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {

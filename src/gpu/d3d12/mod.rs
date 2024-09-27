@@ -12,8 +12,11 @@ use windows::{
 };
 
 #[no_mangle]
+#[allow(non_upper_case_globals)]
 pub static D3D12SDKVersion: u32 = 611;
+
 #[no_mangle]
+#[allow(non_upper_case_globals)]
 pub static D3D12SDKPath: &[u8; 9] = b".\\D3D12\\\0";
 
 #[derive(Clone, Copy)]
@@ -82,6 +85,7 @@ pub struct Surface {
 pub struct AccelerationStructure {
 	resource: ID3D12Resource,
 	srv_index: Option<usize>,
+	gpu_ptr: u64,
 }
 
 pub struct GraphicsPipeline {
@@ -1136,9 +1140,12 @@ impl super::DeviceImpl for Device {
 			self.resource_heap.handle_to_index(&h)
 		});
 
+		let gpu_ptr = unsafe { desc.buffer.resource.GetGPUVirtualAddress() + (desc.offset as u64) };
+
 		Ok(AccelerationStructure {
 			resource: desc.buffer.resource.clone(),
 			srv_index,
+			gpu_ptr,
 		})
 	}
 
@@ -2053,6 +2060,10 @@ impl super::SamplerImpl<Device> for Sampler {}
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {
 		self.srv_index.map(|i| i as u32)
+	}
+
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		super::GpuPtr(self.gpu_ptr)
 	}
 
 	fn instance_descriptor_size() -> usize {

@@ -875,17 +875,17 @@ pub fn slice_as_u8_slice<T: Sized>(p: &[T]) -> &[u8] {
 	}
 }
 
-/// Aligns value to the alignment specified by align, value must be a power of 2.
-pub fn align_pow2(value: u64, align: u64) -> u64 {
-	(value + (align - 1)) & !(align - 1)
+/// Aligns `value` to the specified by `alignment`, `value` must be a power of 2.
+pub fn align_pow2(value: u64, alignment: u64) -> u64 {
+	(value + alignment - 1) & !(alignment - 1)
 }
 
-/// Aligns value to the alignment specified by align, value can be non-power of 2.
-pub fn align(value: u64, align: u64) -> u64 {
-	let div = value / align;
-	let rem = value % align;
+/// Aligns `value` to the specified `alignment`, `value` can be a non-power of 2.
+pub fn align(value: u64, alignment: u64) -> u64 {
+	let div = value / alignment;
+	let rem = value % alignment;
 	if rem != 0 {
-		return (div + 1) * align;
+		return (div + 1) * alignment;
 	}
 	value
 }

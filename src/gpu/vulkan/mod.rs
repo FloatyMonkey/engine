@@ -1125,13 +1125,46 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
+		let modules = desc.libraries.iter().map(|library| {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: library.shader.len(),
+				p_code: library.shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			unsafe { self.device.create_shader_module(&create_info, None) }.unwrap()
+		}).collect::<Vec<_>>();
+
+		let names = desc.libraries.iter().map(|library| {
+			CString::new(library.entry.clone()).unwrap()
+		}).collect::<Vec<_>>();
+
+		let stages = desc.libraries.iter().enumerate().map(|(i, library)| {
+			let stage = match library.ty {
+				super::ShaderType::Raygen       => vk::ShaderStageFlags::RAYGEN_KHR,
+				super::ShaderType::Miss         => vk::ShaderStageFlags::MISS_KHR,
+				super::ShaderType::Intersection => vk::ShaderStageFlags::INTERSECTION_KHR,
+				super::ShaderType::ClosestHit   => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+				super::ShaderType::AnyHit       => vk::ShaderStageFlags::ANY_HIT_KHR,
+				super::ShaderType::Callable     => vk::ShaderStageFlags::CALLABLE_KHR,
+				_ => panic!(),
+			};
+
+			vk::PipelineShaderStageCreateInfo::default()
+				.stage(stage)
+				.module(modules[i])
+				.name(names[i].as_c_str())
+		}).collect::<Vec<_>>();
+
 		let groups = desc.groups.iter().map(|group| {
+			let ty = match group.ty {
+				super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
+				super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+				super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
+			};
+
 			vk::RayTracingShaderGroupCreateInfoKHR::default()
-				.ty(match group.ty {
-					super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
-					super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
-					super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
-				})
+				.ty(ty)
 				.general_shader(group.general.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
@@ -1139,14 +1172,25 @@ impl super::DeviceImpl for Device {
 		}).collect::<Vec<_>>();
 
 		let create_info = vk::RayTracingPipelineCreateInfoKHR::default()
-			.stages(todo!())
+			.stages(&stages)
 			.groups(&groups)
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
 			.layout(todo!());
 
-		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
+			vk::DeferredOperationKHR::null(),
+			vk::PipelineCache::null(),
+			&[create_info],
+			None
+		) }.unwrap()[0];
 
-		Ok(RaytracingPipeline { pipeline })
+		for module in modules {
+			unsafe { self.device.destroy_shader_module(module, None) };
+		}
+
+		Ok(RaytracingPipeline {
+			pipeline
+		})
 	}
 
 	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
@@ -1165,7 +1209,7 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn queue_wait(&self) {
-		todo!()
+		unsafe { self.device.queue_wait_idle(self.graphics_queue) }.unwrap();
 	}
 
 	fn adapter_info(&self) -> &super::AdapterInfo {

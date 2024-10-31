@@ -93,7 +93,7 @@ fn map_format(format: super::Format) -> vk::Format {
 fn map_index_format(format: super::Format) -> vk::IndexType {
 	match format {
 		super::Format::Unknown => vk::IndexType::NONE_KHR,
-		super::Format::R8UInt  => vk::IndexType::UINT8_EXT,
+		super::Format::R8UInt  => vk::IndexType::UINT8_KHR,
 		super::Format::R16UInt => vk::IndexType::UINT16,
 		super::Format::R32UInt => vk::IndexType::UINT32,
 		_ => panic!(),
@@ -810,7 +810,7 @@ impl super::DeviceImpl for Device {
 		let swapchain_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
 
 		let textures = swapchain_images.iter().map(|image| {
-			todo!("Image views");
+			// TODO: todo!("Image views");
 
 			Texture {
 				image: *image,
@@ -843,7 +843,21 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_cmd_list(&mut self, num_buffers: u32) -> Self::CmdList {
-		todo!()
+		let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
+			.command_pool(self.command_pool)
+			.level(vk::CommandBufferLevel::PRIMARY)
+			.command_buffer_count(num_buffers);
+
+		let command_buffers = unsafe { self.device.allocate_command_buffers(&command_buffer_allocate_info) }.unwrap();
+
+		CmdList {
+			bb_index: 0,
+			command_buffers,
+			device: self.device.clone(),
+			acceleration_structure_ext: self.acceleration_structure_ext.clone(),
+			ray_tracing_pipeline_ext: self.ray_tracing_pipeline_ext.clone(),
+			debug_utils_ext: None, // TODO: pass this in
+		}
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
@@ -1198,9 +1212,11 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn submit(&self, cmd: &Self::CmdList) {
-		unsafe { self.device.end_command_buffer(cmd.command_buffer) }.unwrap();
+		let command_buffer = cmd.command_buffers[cmd.bb_index];
 
-		let command_buffers = [cmd.command_buffer];
+		unsafe { self.device.end_command_buffer(command_buffer) }.unwrap();
+
+		let command_buffers = [command_buffer];
 
 		let submit_infos = vk::SubmitInfo::default()
 			.command_buffers(&command_buffers);
@@ -1221,12 +1237,29 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
-		todo!()
+		let info = AccelerationStructureInfo::build(desc);
+
+		let mut size_info = vk::AccelerationStructureBuildSizesInfoKHR::default();
+		unsafe {
+			self.acceleration_structure_ext.get_acceleration_structure_build_sizes(
+				vk::AccelerationStructureBuildTypeKHR::DEVICE,
+				&info.build_info,
+				&info.max_primitve_counts,
+				&mut size_info,
+			)
+		}
+
+		super::AccelerationStructureSizes {
+			acceleration_structure_size: size_info.acceleration_structure_size as _,
+			update_scratch_size: size_info.update_scratch_size as _,
+			build_scratch_size: size_info.build_scratch_size as _,
+		}
 	}
 }
 
 pub struct CmdList {
-	command_buffer: vk::CommandBuffer,
+	bb_index: usize,
+	command_buffers: Vec<vk::CommandBuffer>,
 	device: ash::Device,
 
 	// TODO: Initialize variables, move to Device
@@ -1235,51 +1268,129 @@ pub struct CmdList {
 	debug_utils_ext: Option<ash::ext::debug_utils::Device>,
 }
 
-fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildInputs) {
+struct AccelerationStructureInfo<'a> {
+	build_info: vk::AccelerationStructureBuildGeometryInfoKHR<'a>,
+	_geometry: Box<[vk::AccelerationStructureGeometryKHR<'a>]>,
+	build_range_infos: Box<[vk::AccelerationStructureBuildRangeInfoKHR]>,
+	max_primitve_counts: Box<[u32]>,
+}
 
-	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
-	let primitive_counts: Vec<usize> = Vec::new();
-	//let range_infos: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = Vec::new();
+impl<'a> AccelerationStructureInfo<'a> {
+	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> vk::AccelerationStructureGeometryKHR {
+		let aabbs_data = vk::AccelerationStructureGeometryAabbsDataKHR::default()
+			.data(vk::DeviceOrHostAddressConstKHR {
+				device_address: aabbs.data.0,
+			})
+			.stride(aabbs.stride as _);
 
-	for geo in inputs.geometry {
-		let vk_geo = match geo.part {
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::AABBS)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs: aabbs_data })
+			.flags(map_acceleration_structure_geometry_flags(aabbs.flags))
+	}
 
-			// TODO: pass count to next struct
-			super::GeometryPart::AABBs(aabbs) => {
-				let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::default()
-					.data(vk::DeviceOrHostAddressConstKHR {
-						device_address: aabbs.data.0,
-					})
-					.stride(aabbs.stride as _);
+	fn map_triangles(triangles: &super::AccelerationStructureTriangles) -> vk::AccelerationStructureGeometryKHR {
+		let triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+			.vertex_format(map_format(triangles.vertex_format))
+			.vertex_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.vertex_buffer.0,
+			})
+			.vertex_stride(triangles.vertex_stride as _)
+			.max_vertex(triangles.vertex_count as _)
+			.index_type(map_index_format(triangles.index_format))
+			.index_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.index_buffer.0,
+			})
+			.transform_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.transform.0,
+			});
 
-				vk::AccelerationStructureGeometryKHR::default()
-					.geometry_type(vk::GeometryTypeKHR::AABBS)
-					.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs })
-					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { triangles: triangles_data })
+			.flags(map_acceleration_structure_geometry_flags(triangles.flags))
+	}
+
+	fn map_instances(instances: &super::AccelerationStructureInstances) -> vk::AccelerationStructureGeometryKHR {
+		let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default()
+			.data(vk::DeviceOrHostAddressConstKHR {
+				device_address: instances.data.0,
+			});
+
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::INSTANCES)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { instances: instances_data })
+	}
+
+	fn build(desc: &'a super::AccelerationStructureBuildInputs) -> Self {
+		let (geometries, max_primitve_counts, ranges) = match &desc.entries {
+			super::AccelerationStructureEntries::Instances(instances) => {
+				let ranges = vk::AccelerationStructureBuildRangeInfoKHR::default()
+					.primitive_count(instances.count as u32);
+
+				(vec![Self::map_instances(instances)], vec![instances.count as u32], vec![ranges])
 			}
+			super::AccelerationStructureEntries::Triangles(in_geometries) => {
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = in_geometries.iter().map(|triangles| {
+					Self::map_triangles(triangles)
+				}).collect();
 
-			// TODO: pass index_count / 3 to next struct
-			super::GeometryPart::Triangles(triangles) => {
-				let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-					.vertex_format(map_format(triangles.vertex_format))
-					.vertex_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.vertex_buffer.0,
-					})
-					.vertex_stride(triangles.vertex_stride as _)
-					.max_vertex(triangles.vertex_count as _)
-					.index_type(map_index_format(triangles.index_format))
-					.index_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.index_buffer.0,
-					})
-					.transform_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.transform.0,
-					});
+				let primitive_counts: Vec<u32> = in_geometries.iter().map(|triangles| {
+					if triangles.index_buffer.is_null() {
+						triangles.vertex_count as u32
+					} else {
+						triangles.index_count as u32 / 3
+					}
+				}).collect();
 
-				vk::AccelerationStructureGeometryKHR::default()
-					.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-					.geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
-					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = in_geometries.iter().map(|triangles| {
+					vk::AccelerationStructureBuildRangeInfoKHR::default()
+						.primitive_count(if triangles.index_buffer.is_null() {
+							triangles.vertex_count as u32
+						} else {
+							triangles.index_count as u32 / 3
+						})
+				}).collect();
+
+				(geometries, primitive_counts, ranges)
+			}
+			super::AccelerationStructureEntries::AABBs(aabbs) => {
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = aabbs.iter().map(|aabb| {
+					Self::map_aabbs(aabb)
+				}).collect();
+
+				let primitive_counts: Vec<u32> = aabbs.iter().map(|aabb| {
+					aabb.count as u32
+				}).collect();
+
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = aabbs.iter().map(|aabb| {
+					vk::AccelerationStructureBuildRangeInfoKHR::default()
+						.primitive_count(aabb.count as u32)
+				}).collect();
+
+				(geometries, primitive_counts, ranges)
 			}
 		};
+
+		let ty = match &desc.entries {
+			super::AccelerationStructureEntries::Instances(_) => {
+				vk::AccelerationStructureTypeKHR::TOP_LEVEL
+			}
+			_ => vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+		};
+
+		let mut build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
+			.ty(ty)
+			.flags(map_acceleration_structure_flags(desc.flags));
+
+		build_info.geometry_count = geometries.len() as _;
+		build_info.p_geometries = geometries.as_ptr();
+
+		Self {
+			build_info,
+			max_primitve_counts: max_primitve_counts.into_boxed_slice(),
+			build_range_infos: ranges.into_boxed_slice(),
+			_geometry: geometries.into_boxed_slice(),
+		}
 	}
 }

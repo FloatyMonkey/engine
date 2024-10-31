@@ -18,16 +18,12 @@ impl Blas {
 			index_format: gpu::Format::R32UInt,
 			index_count,
 			transform: gpu::GpuPtr::NULL,
+			flags: gpu::AccelerationStructureGeometryFlags::OPAQUE,
 		};
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
-			ty: gpu::AccelerationStructureType::BottomLevel,
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-			instances: gpu::AccelerationStructureInstances { data: gpu::GpuPtr::NULL, count: 0 },
-			geometry: vec![gpu::GeometryDesc {
-				flags: gpu::AccelerationStructureGeometryFlags::OPAQUE,
-				part: gpu::GeometryPart::Triangles(geo),
-			}],
+			entries: gpu::AccelerationStructureEntries::Triangles(vec![geo]),
 		};
 
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
@@ -39,7 +35,7 @@ impl Blas {
 		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.build_scratch_buffer_size,
+			size: sizes.build_scratch_size,
 			usage: gpu::BufferUsage::UNORDERED_ACCESS,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();
@@ -60,8 +56,8 @@ impl Blas {
 	}
 
 	pub fn set_vertex_buffer(&mut self, vertex_buffer: &gpu::Buffer) {
-		if let gpu::GeometryPart::Triangles(geo) = &mut self.build_inputs.geometry[0].part {
-			geo.vertex_buffer = vertex_buffer.gpu_ptr();
+		if let gpu::AccelerationStructureEntries::Triangles(geo) = &mut self.build_inputs.entries {
+			geo[0].vertex_buffer = vertex_buffer.gpu_ptr();
 		}
 	}
 
@@ -95,10 +91,10 @@ impl Tlas {
 		}).unwrap();
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
-			ty: gpu::AccelerationStructureType::TopLevel,
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
-			instances: gpu::AccelerationStructureInstances { data: instance_buffer.gpu_ptr(), count },
-			geometry: vec![],
+			entries: gpu::AccelerationStructureEntries::Instances(
+				gpu::AccelerationStructureInstances { data: instance_buffer.gpu_ptr(), count }
+			),
 		};
 
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
@@ -110,7 +106,7 @@ impl Tlas {
 		}).unwrap();
 
 		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.build_scratch_buffer_size,
+			size: sizes.build_scratch_size,
 			usage: gpu::BufferUsage::UNORDERED_ACCESS,
 			memory: gpu::Memory::GpuOnly,
 		}).unwrap();

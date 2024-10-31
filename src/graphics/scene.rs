@@ -264,7 +264,9 @@ impl Scene {
 			instance_index += 1;
 		}
 
-		self.tlas.build_inputs.instances.count = instance_index;
+		self.tlas.build_inputs.entries = gpu::AccelerationStructureEntries::Instances(
+			gpu::AccelerationStructureInstances { data: self.tlas.instance_buffer.gpu_ptr(), count: instance_index }
+		);
 
 		// ACCELERATION STRUCTURES
 

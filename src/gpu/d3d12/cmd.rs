@@ -3,7 +3,7 @@ use crate::gpu;
 
 impl CmdList {
 	fn cmd(&self) -> &ID3D12GraphicsCommandList7 {
-		&self.command_list[self.bb_index]
+		&self.command_lists[self.bb_index]
 	}
 }
 
@@ -13,8 +13,8 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		self.bb_index = bb;
 		if surface.frame_fence_value[bb] != 0 {
 			unsafe {
-				self.command_allocator[bb].Reset().unwrap();
-				self.command_list[bb].Reset(&self.command_allocator[bb], None).unwrap();
+				self.command_allocators[bb].Reset().unwrap();
+				self.command_lists[bb].Reset(&self.command_allocators[bb], None).unwrap();
 			}
 		}
 

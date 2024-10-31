@@ -110,8 +110,8 @@ pub struct RaytracingPipeline {
 #[derive(Clone)]
 pub struct CmdList {
 	bb_index: usize,
-	command_allocator: Vec<ID3D12CommandAllocator>,
-	command_list: Vec<ID3D12GraphicsCommandList7>,
+	command_allocators: Vec<ID3D12CommandAllocator>,
+	command_lists: Vec<ID3D12GraphicsCommandList7>,
 	pix: Option<WinPixEventRuntime>,
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
@@ -901,8 +901,8 @@ impl super::DeviceImpl for Device {
 
 			CmdList {
 				bb_index: 0,
-				command_allocator: command_allocators,
-				command_list: command_lists,
+				command_allocators,
+				command_lists,
 				pix: self.pix,
 				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
@@ -1398,7 +1398,7 @@ impl super::DeviceImpl for Device {
 
 	fn submit(&self, cmd: &CmdList) {
 		unsafe {
-			let command_list = &cmd.command_list[cmd.bb_index];
+			let command_list = &cmd.command_lists[cmd.bb_index];
 			command_list.Close().unwrap();
 			self.command_queue.ExecuteCommandLists(&[Some(command_list.cast().unwrap())]);
 		}
@@ -1431,8 +1431,8 @@ impl super::DeviceImpl for Device {
 
 		super::AccelerationStructureSizes {
 			acceleration_structure_size: prebuild_info.ResultDataMaxSizeInBytes as _,
-			build_scratch_buffer_size: prebuild_info.ScratchDataSizeInBytes as _,
-			update_scratch_buffer_size: prebuild_info.UpdateScratchDataSizeInBytes as _,
+			build_scratch_size: prebuild_info.ScratchDataSizeInBytes as _,
+			update_scratch_size: prebuild_info.UpdateScratchDataSizeInBytes as _,
 		}
 	}
 }
@@ -1591,45 +1591,54 @@ impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
 
 struct AccelerationStructureInfo {
 	desc: D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS,
-	_geometry_descs: Vec<D3D12_RAYTRACING_GEOMETRY_DESC>, // Here to keep the geometries alive
+	_geometry: Vec<D3D12_RAYTRACING_GEOMETRY_DESC>,
 }
 
 // TODO: Move into CmdList::build_acceleration_structure
 impl AccelerationStructureInfo {
-	fn build(inputs: &super::AccelerationStructureBuildInputs) -> Self {
-		let geometries: Vec<D3D12_RAYTRACING_GEOMETRY_DESC> = inputs.geometry.iter().map(|g| match &g.part {
-			super::GeometryPart::AABBs(aabbs) => D3D12_RAYTRACING_GEOMETRY_DESC {
-				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS,
-				Flags: map_acceleration_structure_geometry_flags(g.flags),
-				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
-					AABBs: D3D12_RAYTRACING_GEOMETRY_AABBS_DESC {
-						AABBCount: aabbs.count as _,
-						AABBs: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
-							StartAddress: aabbs.data.0,
-							StrideInBytes: aabbs.stride as _,
-						},
-					}
-				},
+	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> D3D12_RAYTRACING_GEOMETRY_DESC {
+		D3D12_RAYTRACING_GEOMETRY_DESC {
+			Type: D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS,
+			Flags: map_acceleration_structure_geometry_flags(aabbs.flags),
+			Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
+				AABBs: D3D12_RAYTRACING_GEOMETRY_AABBS_DESC {
+					AABBCount: aabbs.count as _,
+					AABBs: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
+						StartAddress: aabbs.data.0,
+						StrideInBytes: aabbs.stride as _,
+					},
+				}
 			},
-			super::GeometryPart::Triangles(triangles) => D3D12_RAYTRACING_GEOMETRY_DESC {
-				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
-				Flags: map_acceleration_structure_geometry_flags(g.flags),
-				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
-					Triangles: D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC {
-						Transform3x4: triangles.transform.0,
-						IndexFormat: map_format(triangles.index_format),
-						VertexFormat: map_format(triangles.vertex_format),
-						IndexCount: triangles.index_count as _,
-						VertexCount: triangles.vertex_count as _,
-						IndexBuffer: triangles.index_buffer.0,
-						VertexBuffer: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
-							StartAddress: triangles.vertex_buffer.0,
-							StrideInBytes: triangles.vertex_stride as _,
-						},
+		}
+	}
+
+	fn map_triangles(triangles: &super::AccelerationStructureTriangles) -> D3D12_RAYTRACING_GEOMETRY_DESC {
+		D3D12_RAYTRACING_GEOMETRY_DESC {
+			Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+			Flags: map_acceleration_structure_geometry_flags(triangles.flags),
+			Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
+				Triangles: D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC {
+					Transform3x4: triangles.transform.0,
+					IndexFormat: map_format(triangles.index_format),
+					VertexFormat: map_format(triangles.vertex_format),
+					IndexCount: triangles.index_count as _,
+					VertexCount: triangles.vertex_count as _,
+					IndexBuffer: triangles.index_buffer.0,
+					VertexBuffer: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
+						StartAddress: triangles.vertex_buffer.0,
+						StrideInBytes: triangles.vertex_stride as _,
 					},
 				},
 			},
-		}).collect();
+		}
+	}
+
+	fn build(inputs: &super::AccelerationStructureBuildInputs) -> Self {
+		let geometries: Vec<D3D12_RAYTRACING_GEOMETRY_DESC> = match &inputs.entries {
+			super::AccelerationStructureEntries::AABBs(aabbs) => aabbs.iter().map(Self::map_aabbs).collect(),
+			super::AccelerationStructureEntries::Triangles(triangles) => triangles.iter().map(Self::map_triangles).collect(),
+			super::AccelerationStructureEntries::Instances(_) => Vec::new(),
+		};
 
 		let mut dx_input = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS {
 			Flags: map_acceleration_structure_build_flags(inputs.flags),
@@ -1637,26 +1646,33 @@ impl AccelerationStructureInfo {
 			..Default::default()
 		};
 
-		match inputs.ty {
-			super::AccelerationStructureType::BottomLevel => {
+		match &inputs.entries {
+			super::AccelerationStructureEntries::AABBs(aabbs) => {
 				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-				dx_input.NumDescs = inputs.geometry.len() as _;
+				dx_input.NumDescs = aabbs.len() as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
 					pGeometryDescs: geometries.as_ptr(),
 				};
 			},
-			super::AccelerationStructureType::TopLevel => {
-				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-				dx_input.NumDescs = inputs.instances.count as _;
+			super::AccelerationStructureEntries::Triangles(triangles) => {
+				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+				dx_input.NumDescs = triangles.len() as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
-					InstanceDescs: inputs.instances.data.0,
+					pGeometryDescs: geometries.as_ptr(),
+				};
+			}
+			super::AccelerationStructureEntries::Instances(instances) => {
+				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+				dx_input.NumDescs = instances.count as _;
+				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
+					InstanceDescs: instances.data.0,
 				};
 			},
 		};
 
 		Self {
 			desc: dx_input,
-			_geometry_descs: geometries,
+			_geometry: geometries,
 		}
 	}
 }

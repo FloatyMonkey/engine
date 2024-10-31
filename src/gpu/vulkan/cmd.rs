@@ -3,7 +3,7 @@ use crate::gpu;
 
 impl CmdList {
 	fn cmd(&self) -> vk::CommandBuffer {
-		self.command_buffer
+		self.command_buffers[self.bb_index]
 	}
 }
 
@@ -21,7 +21,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		size: u64,
 	) {
 		unsafe {
-			self.device.cmd_copy_buffer(self.command_buffer, src.buffer, dst.buffer, &[vk::BufferCopy {
+			self.device.cmd_copy_buffer(self.cmd(), src.buffer, dst.buffer, &[vk::BufferCopy {
 				src_offset,
 				dst_offset,
 				size,
@@ -42,7 +42,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		size: [u32; 3],
 	) {
 		unsafe {
-			self.device.cmd_copy_image(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::ImageCopy {
+			self.device.cmd_copy_image(self.cmd(), src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::ImageCopy {
 				src_subresource: vk::ImageSubresourceLayers {
 					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
 					mip_level: src_mip_level,
@@ -74,7 +74,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		size: [u32; 3],
 	) {
 		unsafe {
-			self.device.cmd_copy_buffer_to_image(self.command_buffer, src.buffer, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::BufferImageCopy {
+			self.device.cmd_copy_buffer_to_image(self.cmd(), src.buffer, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::BufferImageCopy {
 				buffer_offset: src_offset,
 				buffer_row_length: src_bytes_per_row,
 				buffer_image_height: 0,
@@ -102,7 +102,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		size: [u32; 3],
 	) {
 		unsafe {
-			self.device.cmd_copy_image_to_buffer(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.buffer, &[vk::BufferImageCopy {
+			self.device.cmd_copy_image_to_buffer(self.cmd(), src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.buffer, &[vk::BufferImageCopy {
 				buffer_offset: dst_offset,
 				buffer_row_length: dst_bytes_per_row,
 				buffer_image_height: 0,
@@ -158,13 +158,13 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		}
 
 		unsafe {
-			self.device.cmd_begin_rendering(self.command_buffer, &vk_info);
+			self.device.cmd_begin_rendering(self.cmd(), &vk_info);
 		}
 	}
 
 	fn render_pass_end(&self) {
 		unsafe {
-			self.device.cmd_end_rendering(self.command_buffer);
+			self.device.cmd_end_rendering(self.cmd());
 		}
 	}
 
@@ -191,7 +191,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			.image_memory_barriers(&image_memory_barriers);
 
 		unsafe {
-			self.device.cmd_pipeline_barrier2(self.command_buffer, &dependency_info);
+			self.device.cmd_pipeline_barrier2(self.cmd(), &dependency_info);
 		}
 
 		panic!("Not fully implemented");
@@ -208,7 +208,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		};
 
 		unsafe {
-			self.device.cmd_set_viewport(self.command_buffer, 0, &[vk_viewport]);
+			self.device.cmd_set_viewport(self.cmd(), 0, &[vk_viewport]);
 		}
 	}
 
@@ -225,19 +225,19 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		};
 
 		unsafe {
-			self.device.cmd_set_scissor(self.command_buffer, 0, &[vk_rect]);
+			self.device.cmd_set_scissor(self.cmd(), 0, &[vk_rect]);
 		}
 	}
 
 	fn set_blend_constant(&self, color: gpu::Color<f32>) {
 		unsafe {
-			self.device.cmd_set_blend_constants(self.command_buffer, &[color.r, color.g, color.b, color.a]);
+			self.device.cmd_set_blend_constants(self.cmd(), &[color.r, color.g, color.b, color.a]);
 		}
 	}
 
 	fn set_stencil_reference(&self, reference: u32) {
 		unsafe {
-			self.device.cmd_set_stencil_reference(self.command_buffer, vk::StencilFaceFlags::FRONT_AND_BACK, reference);
+			self.device.cmd_set_stencil_reference(self.cmd(), vk::StencilFaceFlags::FRONT_AND_BACK, reference);
 		}
 	}
 
@@ -245,32 +245,32 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		let vk_format = map_index_format(format);
 
 		unsafe {
-			self.device.cmd_bind_index_buffer(self.command_buffer, buffer.buffer, offset, vk_format);
+			self.device.cmd_bind_index_buffer(self.cmd(), buffer.buffer, offset, vk_format);
 		}
 	}
 
 	fn set_graphics_pipeline(&self, pipeline: &GraphicsPipeline) {
 		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+			self.device.cmd_bind_pipeline(self.cmd(), vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
 		}
 	}
 
 	fn set_compute_pipeline(&self, pipeline: &ComputePipeline) {
 		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
+			self.device.cmd_bind_pipeline(self.cmd(), vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
 		}
 	}
 
 	fn set_raytracing_pipeline(&self, pipeline: &RaytracingPipeline) {
 		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, pipeline.pipeline);
+			self.device.cmd_bind_pipeline(self.cmd(), vk::PipelineBindPoint::RAY_TRACING_KHR, pipeline.pipeline);
 		}
 	}
 
 	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
 		/*unsafe {
 			self.device.cmd_push_constants(
-				self.command_buffer,
+				self.cmd(),
 				self.pipeline_layout,
 				vk::ShaderStageFlags::ALL_GRAPHICS,
 				0,
@@ -283,7 +283,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 	fn compute_push_constants(&self, offset: u32, data: &[u8]) {
 		/*unsafe {
 			self.device.cmd_push_constants(
-				self.command_buffer,
+				self.cmd(),
 				self.pipeline_layout,
 				vk::ShaderStageFlags::COMPUTE,
 				0,
@@ -295,26 +295,26 @@ impl gpu::CmdListImpl<Device> for CmdList {
 
 	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
 		unsafe {
-			self.device.cmd_draw(self.command_buffer, vertices.len() as u32, instances.len() as u32, vertices.start, vertices.start);
+			self.device.cmd_draw(self.cmd(), vertices.len() as u32, instances.len() as u32, vertices.start, vertices.start);
 		}
 	}
 
 	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
 		unsafe {
-			self.device.cmd_draw_indexed(self.command_buffer, indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
+			self.device.cmd_draw_indexed(self.cmd(), indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
 		}
 	}
 
 	fn dispatch(&self, groups: [u32; 3]) {
 		unsafe {
-			self.device.cmd_dispatch(self.command_buffer, groups[0], groups[1], groups[2]);
+			self.device.cmd_dispatch(self.cmd(), groups[0], groups[1], groups[2]);
 		}
 	}
 
 	fn dispatch_rays(&self, desc: &gpu::DispatchRaysDesc) {
 		unsafe {
 			self.ray_tracing_pipeline_ext.cmd_trace_rays(
-				self.command_buffer,
+				self.cmd(),
 				&desc.raygen.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
 					device_address: t.ptr.0,
 					stride: t.stride as _,
@@ -343,7 +343,25 @@ impl gpu::CmdListImpl<Device> for CmdList {
 	}
 
 	fn build_acceleration_structure(&self, desc: &gpu::AccelerationStructureBuildDesc<Device>) {
-		todo!()
+		let mut info = AccelerationStructureInfo::build(desc.inputs);
+
+		info.build_info.dst_acceleration_structure = desc.dst.acceleration_structure;
+		info.build_info.scratch_data.device_address = desc.scratch_data.0;
+
+		if let Some(src) = desc.src {
+			info.build_info.src_acceleration_structure = src.acceleration_structure;
+		}
+
+		unsafe {
+			let infos = [info.build_info];
+			let build_range_infos: &[&[_]] = &[&info.build_range_infos];
+
+			self.acceleration_structure_ext.cmd_build_acceleration_structures(
+				self.cmd(),
+				&infos,
+				build_range_infos,
+			);
+		}
 	}
 
 	fn debug_marker(&self, name: &str, color: gpu::Color<u8>) {
@@ -353,7 +371,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				.label_name(&name)
 				.color(color.to_f32().into());
 
-			unsafe { ext.cmd_insert_debug_utils_label(self.command_buffer, &label) };
+			unsafe { ext.cmd_insert_debug_utils_label(self.cmd(), &label) };
 		}
 	}
 
@@ -364,13 +382,13 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				.label_name(&name)
 				.color(color.to_f32().into());
 
-			unsafe { ext.cmd_begin_debug_utils_label(self.command_buffer, &label) };
+			unsafe { ext.cmd_begin_debug_utils_label(self.cmd(), &label) };
 		}
 	}
 
 	fn debug_event_pop(&self) {
 		if let Some(ext) = &self.debug_utils_ext {
-			unsafe { ext.cmd_end_debug_utils_label(self.command_buffer) };
+			unsafe { ext.cmd_end_debug_utils_label(self.cmd()) };
 		}
 	}
 }

@@ -183,6 +183,11 @@ pub enum Format {
 	D32FloatS8UIntX24,
 }
 
+pub enum Backend {
+	D3D12,
+	Vulkan,
+}
+
 bitflags! {
 	pub struct Validation : u8 {
 		/// Enable cpu based command list validation.
@@ -216,11 +221,9 @@ pub struct Capabilities {
 
 pub struct AdapterInfo {
 	pub name: String,
-	pub dedicated_video_memory: usize,
-	pub dedicated_system_memory: usize,
-	pub shared_system_memory: usize,
-	/// List of all available adapters.
-	pub available: Vec<String>,
+	pub vendor: u32,
+	pub device: u32,
+	pub backend: Backend,
 }
 
 #[derive(Clone, Copy)]

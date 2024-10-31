@@ -546,6 +546,9 @@ fn pick_physical_device_and_queue_family_indices(
 }
 
 pub struct Device {
+	adapter_info: super::AdapterInfo,
+	capabilities: super::Capabilities,
+
 	entry: ash::Entry,
 	device: ash::Device,
 	instance: ash::Instance,
@@ -586,11 +589,6 @@ impl super::DeviceImpl for Device {
 				layers.push(VK_LAYER_KHRONOS_VALIDATION);
 			}
 
-			let layers_ptrs: Vec<*const i8> = layers
-				.iter()
-				.map(|c_str| c_str.as_ptr())
-				.collect();
-
 			let supported_layer_names = unsafe { entry
 				.enumerate_instance_layer_properties()
 				.unwrap()
@@ -614,9 +612,14 @@ impl super::DeviceImpl for Device {
 				instance_extension_names.push(vk::KHR_WIN32_SURFACE_NAME);
 			}
 
-			let instance_ptrs = instance_extension_names
+			let layer_ptrs = layers
 				.iter()
-				.map(|n| n.as_ptr())
+				.map(|s| s.as_ptr())
+				.collect::<Vec<_>>();
+
+			let extension_ptrs = instance_extension_names
+				.iter()
+				.map(|s| s.as_ptr())
 				.collect::<Vec<_>>();
 
 			let application_name = CString::new("App").unwrap(); // TODO: Hardcoded
@@ -624,15 +627,15 @@ impl super::DeviceImpl for Device {
 
 			let application_info = vk::ApplicationInfo::default()
 				.application_name(application_name.as_c_str())
-				.application_version(vk::make_api_version(0, 1, 0, 0))
+				.application_version(vk::make_api_version(0, 0, 1, 0)) // TODO: Hardcoded
 				.engine_name(engine_name.as_c_str())
-				.engine_version(vk::make_api_version(0, 1, 0, 0))
+				.engine_version(vk::make_api_version(0, 0, 1, 0)) // TODO: Hardcoded
 				.api_version(vk::API_VERSION_1_3);
 
 			let instance_create_info = vk::InstanceCreateInfo::default()
 				.application_info(&application_info)
-				.enabled_layer_names(&layers_ptrs)
-				.enabled_extension_names(&instance_ptrs);
+				.enabled_layer_names(&layer_ptrs)
+				.enabled_extension_names(&extension_ptrs);
 
 			unsafe { entry.create_instance(&instance_create_info, None) }.unwrap()
 		};
@@ -746,16 +749,32 @@ impl super::DeviceImpl for Device {
 
 		let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
-		{
-			let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
-				.push_next(&mut rt_pipeline_properties);
+		let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
+			.push_next(&mut rt_pipeline_properties);
 
-			unsafe {
-				instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
-			}
+		unsafe {
+			instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
 		}
 
+		let adapter_info = super::AdapterInfo {
+			name: physical_device_properties2
+				.properties
+				.device_name_as_c_str()
+				.unwrap_or_default()
+				.to_string_lossy()
+				.into_owned(),
+			vendor: physical_device_properties2.properties.vendor_id,
+			device: physical_device_properties2.properties.device_id,
+			backend: super::Backend::Vulkan,
+		};
+
+		let capabilities = super::Capabilities {
+			raytracing: true, // TODO: Hardcoded
+		};
+
 		Self {
+			adapter_info,
+			capabilities,
 			entry,
 			instance,
 			device,
@@ -861,9 +880,11 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
+		let default_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS; // TODO: Hardcoded default flags
+
 		let buffer_info = vk::BufferCreateInfo::default()
 			.size(desc.size as _)
-			.usage(map_buffer_usage_flags(desc.usage))
+			.usage(map_buffer_usage_flags(desc.usage) | default_flags) 
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
 
 		let buffer = unsafe { self.device.create_buffer(&buffer_info, None) }.unwrap();
@@ -889,8 +910,8 @@ impl super::DeviceImpl for Device {
 		Ok(Buffer {
 			buffer,
 			allocation,
-			srv_index: todo!(),
-			uav_index: todo!(),
+			srv_index: None, // TODO
+			uav_index: None,
 			cpu_ptr: mapped_ptr,
 			gpu_ptr: device_address,
 		})
@@ -1229,11 +1250,11 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn adapter_info(&self) -> &super::AdapterInfo {
-		todo!()
+		&self.adapter_info
 	}
 
 	fn capabilities(&self) -> &super::Capabilities {
-		todo!()
+		&self.capabilities
 	}
 
 	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {

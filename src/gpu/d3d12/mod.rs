@@ -514,10 +514,9 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 
 		let adapter_info = super::AdapterInfo {
 			name: adapter_names[adapter_index as usize].to_string(),
-			dedicated_video_memory: desc.DedicatedVideoMemory,
-			dedicated_system_memory: desc.DedicatedSystemMemory,
-			shared_system_memory: desc.SharedSystemMemory,
-			available: adapter_names,
+			vendor: desc.VendorId,
+			device: desc.DeviceId,
+			backend: super::Backend::D3D12,
 		};
 
 		Ok((adapter, adapter_info))
@@ -1594,7 +1593,6 @@ struct AccelerationStructureInfo {
 	_geometry: Vec<D3D12_RAYTRACING_GEOMETRY_DESC>,
 }
 
-// TODO: Move into CmdList::build_acceleration_structure
 impl AccelerationStructureInfo {
 	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> D3D12_RAYTRACING_GEOMETRY_DESC {
 		D3D12_RAYTRACING_GEOMETRY_DESC {

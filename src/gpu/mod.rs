@@ -10,8 +10,10 @@ type Error = super::Error;
 
 pub use shader_compiler::ShaderCompiler;
 
+pub const BACKEND: Backend = Backend::Vulkan;
+
 // TODO: This hardcodes the backend at compile time. Make it dynamic.
-pub type Device = d3d12::Device;
+pub type Device = vulkan::Device;
 pub type Surface = <Device as DeviceImpl>::Surface;
 pub type CmdList = <Device as DeviceImpl>::CmdList;
 pub type Buffer = <Device as DeviceImpl>::Buffer;

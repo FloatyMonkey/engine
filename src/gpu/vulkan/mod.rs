@@ -1028,6 +1028,49 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
+		let mut shader_modules = Vec::new();
+		let mut shader_stages = Vec::new();
+
+		if let Some(shader) = desc.vs {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: shader.len(),
+				p_code: shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
+
+			shader_modules.push(module);
+
+			let stage = vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlags::VERTEX)
+				.module(module)
+				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+
+			shader_stages.push(stage);
+		}
+
+		if let Some(shader) = desc.ps {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: shader.len(),
+				p_code: shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
+
+			shader_modules.push(module);
+
+			let stage = vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlags::FRAGMENT)
+				.module(module)
+				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+
+			shader_stages.push(stage);
+		}
+
+		let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
+
 		let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
 			.topology(map_topology(desc.topology));
 
@@ -1120,8 +1163,9 @@ impl super::DeviceImpl for Device {
 			.stencil_attachment_format(depth_stencil_format);
 
 		let create_info = vk::GraphicsPipelineCreateInfo::default()
-			// stages
-			// layout
+			.stages(&shader_stages)
+			// TODO: layout
+			.vertex_input_state(&vertex_input_state)
 			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
 			.rasterization_state(&rasterization_state)
@@ -1133,28 +1177,34 @@ impl super::DeviceImpl for Device {
 
 		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
+		for module in shader_modules {
+			unsafe { self.device.destroy_shader_module(module, None) };
+		}
+
 		Ok(GraphicsPipeline { pipeline })
 	}
 
 	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
-		let name = CString::new("main").unwrap(); // TODO: Hardcoded
-
-		let mut compute_shader_module = vk::ShaderModuleCreateInfo {
+		let shader_module_create_info = vk::ShaderModuleCreateInfo {
 			p_code: desc.cs.as_ptr() as _,
 			code_size: desc.cs.len(),
 			..Default::default()
 		};
 
-		let compute_shader_stage = vk::PipelineShaderStageCreateInfo::default()
-			.push_next(&mut compute_shader_module)
+		let shader_module = unsafe { self.device.create_shader_module(&shader_module_create_info, None) }.unwrap();
+
+		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
-			.name(&name);
+			.module(shader_module)
+			.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
 		
 		let create_info = vk::ComputePipelineCreateInfo::default()
-			.stage(compute_shader_stage)
+			.stage(shader_stage)
 			.layout(todo!());
 
 		let pipeline = unsafe { self.device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+
+		unsafe { self.device.destroy_shader_module(shader_module, None) };
 
 		Ok(ComputePipeline { pipeline })
 	}

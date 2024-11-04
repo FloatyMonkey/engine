@@ -1,15 +1,16 @@
+implementing light;
+
 import math;
 import onb;
-import light;
-import sampling;
+import pathtracer.sampling;
 import sample_generator;
 
-struct SphereLight: Light {
-	float3 emission;
-	float3 position;
-	float radius;
+public struct SphereLight: Light {
+	public float3 emission;
+	public float3 position;
+	public float radius;
 
-	func sample_li<S: SampleGenerator>(p: float3, inout sg: S) -> LightLiSample {
+	public func sample_li<S: SampleGenerator>(p: float3, inout sg: S) -> LightLiSample {
 		let u = sample_next_2d(sg);
 
 		let r_sq = sqr(radius);
@@ -52,7 +53,7 @@ struct SphereLight: Light {
 		return ls;
 	}
 
-	func pdf_li(p: float3, wi: float3) -> float {
+	public func pdf_li(p: float3, wi: float3) -> float {
 		return 0.0; // TODO: implement
 	}
 }

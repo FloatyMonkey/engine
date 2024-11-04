@@ -1,18 +1,24 @@
+module light;
+
+__include lights.dome_light;
+__include lights.rect_light;
+__include lights.sphere_light;
+
 import sample_generator;
 import spectrum;
 
-struct LightLiSample {
+public struct LightLiSample {
 	/// Incident radiance at the shading point (unshadowed).
-	SampledSpectrum li;
+	public SampledSpectrum li;
 	/// Normalized direction from the shading point to the sampled point on the light in world space.
-	float3 wi;
+	public float3 wi;
 	/// Distance from the shading point to the sampled point on the light.
-	float distance;
+	public float distance;
 	/// Probability density with respect to solid angle to sample direction `wi`.
-	float pdf;
+	public float pdf;
 }
 
-interface Light {
+public interface Light {
 	/// Samples an incident direction at point `p` along which illumination from the light may be arriving.
 	func sample_li<S: SampleGenerator>(p: float3, inout sg: S) -> LightLiSample;
 

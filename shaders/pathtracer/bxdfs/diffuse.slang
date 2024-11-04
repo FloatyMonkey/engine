@@ -8,31 +8,25 @@ import pathtracer.sampling;
 struct DiffuseBxdf: Bxdf {
 	SampledSpectrum albedo;
 
-	func f(wo: float3, wi: float3) -> SampledSpectrum {
-		if (!onb::same_hemisphere(wo, wi)) {
-			return SampledSpectrum(0.0);
+	func eval(wi: float3, wo: float3) -> BxdfEval {
+		if (!onb::same_hemisphere(wi, wo)) {
+			return {};
 		}
 
-		return albedo / PI;
+		let pdf = cosine_hemisphere_pdf(onb::abs_cos_theta(wo));
+
+		return { albedo / PI, pdf };
 	}
 
-	func sample_f<S: SampleGenerator>(wo: float3, inout sg: S) -> BxdfSample {
-		var wi = sample_cosine_hemisphere(sample_next_2d(sg));
+	func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
+		var wo = sample_cosine_hemisphere(sample_next_2d(sg));
 
-		if (wo.z < 0.0) {
-			wi.z *= -1.0;
+		if (wi.z < 0.0) {
+			wo.z *= -1.0;
 		}
 
-		let pdf = cosine_hemisphere_pdf(onb::abs_cos_theta(wi));
+		let pdf = cosine_hemisphere_pdf(onb::abs_cos_theta(wo));
 
-		return { wi, pdf, albedo / PI, BxdfLobe::DiffuseReflection };
-	}
-
-	func pdf(wo: float3, wi: float3) -> float {
-		if (!onb::same_hemisphere(wo, wi)) {
-			return 0.0;
-		}
-
-		return cosine_hemisphere_pdf(onb::abs_cos_theta(wi));
+		return { wo, pdf, albedo / PI, BxdfLobe::DiffuseReflection };
 	}
 }

@@ -2,31 +2,36 @@ import onb;
 import sample_generator;
 import spectrum;
 
-enum BxdfLobe {
+public enum BxdfLobe {
 	Reflection   = 1 << 0,
 	Transmission = 1 << 1,
 
 	Diffuse      = 1 << 2,
 	Glossy       = 1 << 3,
-	Specular     = 1 << 4,
+	Singular     = 1 << 4,
 
-	DiffuseReflection    = (uint)BxdfLobe::Diffuse  | (uint)BxdfLobe::Reflection,
-	DiffuseTransmission  = (uint)BxdfLobe::Diffuse  | (uint)BxdfLobe::Transmission,
-	GlossyReflection     = (uint)BxdfLobe::Glossy   | (uint)BxdfLobe::Reflection,
-	GlossyTransmission   = (uint)BxdfLobe::Glossy   | (uint)BxdfLobe::Transmission,
-	SpecularReflection   = (uint)BxdfLobe::Specular | (uint)BxdfLobe::Reflection,
-	SpecularTransmission = (uint)BxdfLobe::Specular | (uint)BxdfLobe::Transmission,
+	DiffuseReflection    = Diffuse  | Reflection,
+	DiffuseTransmission  = Diffuse  | Transmission,
+	GlossyReflection     = Glossy   | Reflection,
+	GlossyTransmission   = Glossy   | Transmission,
+	SingularReflection   = Singular | Reflection,
+	SingularTransmission = Singular | Transmission,
 }
 
-struct BxdfSample {
+public struct BxdfEval {
+	public SampledSpectrum f;
+	public float pdf;
+}
+
+public struct BxdfSample {
 	/// Incident direction.
-	float3 wi;
-	/// Probability density with respect to solid angle to sample direction `wi`.
-	float pdf;
+	public float3 wo;
+	/// Probability density with respect to solid angle to sample direction `wo`.
+	public float pdf;
 	/// BxDF value.
-	SampledSpectrum f; // TODO: Optimize by making this the samples `weight` ie. f * cos_theta / pdf.
+	public SampledSpectrum f; // TODO: Optimize by making this the samples `weight` ie. f * cos_theta / pdf.
 	/// Sampled lobe.
-	BxdfLobe lobe;
+	public BxdfLobe lobe;
 }
 
 /// Bidirectional Distribution Function.
@@ -34,38 +39,29 @@ struct BxdfSample {
 /// # Conventions:
 /// - Operations are done in a local coordinate frame with normal N=(0,0,1), tangent T=(1,0,0) and bitangent B=(0,1,0).
 /// - The incident and outgoing direction point away from the shading location.
-/// - The incident direction `wi` is sampled.
-interface Bxdf {
+/// - The outgoing direction `wo` is sampled.
+public interface Bxdf {
 	/// Evaluates the BxDF for incident direction `wi` and outgoing direction `wo`.
-	func f(wo: float3, wi: float3) -> SampledSpectrum;
+	func eval(wi: float3, wo: float3) -> BxdfEval;
 
-	/// Samples an incident direction for outgoing direction `wo`.
-	func sample_f<S: SampleGenerator>(wo: float3, inout sg: S) -> BxdfSample;
-
-	/// Probability density with respect to solid angle to sample incident direction `wi` from outgoing direction `wo`.
-	func pdf(wo: float3, wi: float3) -> float;
+	/// Samples an outgoing direction for incident direction `wi`.
+	func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample;
 }
 
-struct Bsdf<B: Bxdf> {
+public struct Bsdf<B: Bxdf> {
 	B bxdf;
 	Onb basis;
 
-	func f(wo: float3, wi: float3) -> SampledSpectrum {
-		let wo_local = basis.world_to_local(wo);
+	public func eval(wi: float3, wo: float3) -> BxdfEval {
 		let wi_local = basis.world_to_local(wi);
-		return bxdf.f(wo_local, wi_local);
+		let wo_local = basis.world_to_local(wo);
+		return bxdf.eval(wi_local, wo_local);
 	}
 
-	func sample_f<S: SampleGenerator>(wo: float3, inout sg: S) -> BxdfSample {
-		let wo_local = basis.world_to_local(wo);
-		var sample = bxdf.sample_f(wo_local, sg);
-		sample.wi = basis.local_to_world(sample.wi);
+	public func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
+		let wi_local = basis.world_to_local(wi);
+		var sample = bxdf.sample(wi_local, sg);
+		sample.wo = basis.local_to_world(sample.wo);
 		return sample;
-	}
-
-	func pdf(wo: float3, wi: float3) -> float {
-		let wo_local = basis.world_to_local(wo);
-		let wi_local = basis.world_to_local(wi);
-		return bxdf.pdf(wo_local, wi_local);
 	}
 }

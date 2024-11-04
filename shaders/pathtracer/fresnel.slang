@@ -28,7 +28,7 @@ func fr_conductor(cos_theta_i: float, eta: float, k: float) -> float {
 	float rp = ((cos_theta_i_sq * a_sq_plus_b_sq + sin_theta_i_qu) - (2.0 * a * cos_theta_i * sin_theta_i_sq))/
 			   ((cos_theta_i_sq * a_sq_plus_b_sq + sin_theta_i_qu) + (2.0 * a * cos_theta_i * sin_theta_i_sq));
 
-	return 0.5f * (rs + rs * rp);
+	return 0.5 * (rs + rs * rp);
 }
 
 func fr_conductor(cos_theta_i: float, eta: float3, k: float3) -> float3 {

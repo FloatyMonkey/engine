@@ -8,9 +8,6 @@ import spectrum;
 
 import bxdfs.diffuse;
 import bxdfs.conductor;
-import lights.dome_light;
-import lights.rect_light;
-import lights.sphere_light;
 
 ByteAddressBuffer buffers[] : register(t0, space1);
 RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2);
@@ -262,13 +259,14 @@ func closesthit(inout RayPayload payload, attributes: BuiltInTriangleIntersectio
 		let ls = sample_light(ctx.position, payload.sg, sampled_light_pmf);
 
 		if (ls.pdf > 0.0) {
-			let f = bsdf.f(wo, ls.wi) * abs(dot(ls.wi, ctx.normal));
+			let bsdf_eval = bsdf.eval(wo, ls.wi);
+			let f = bsdf_eval.f * abs(dot(ls.wi, ctx.normal));
 
 			let light_ray: RayDesc = { ctx.shading_point, 1e-4, ls.wi, ls.distance - 1e-4 };
 
 			if (!occluded(tlas, light_ray)) {
 				let p_l = sampled_light_pmf * ls.pdf;
-				let p_b = bsdf.pdf(wo, ls.wi);
+				let p_b = bsdf_eval.pdf;
 
 				let w_l = power_heuristic(1.0, p_l, 1.0, p_b);
 
@@ -279,18 +277,18 @@ func closesthit(inout RayPayload payload, attributes: BuiltInTriangleIntersectio
 
 	// Sample bsdf
 	{
-		let sampled_f = bsdf.sample_f(wo, payload.sg);
+		let bsdf_sample = bsdf.sample(wo, payload.sg);
 
-		if (sampled_f.pdf < 1e-5) {
+		if (bsdf_sample.pdf < 1e-5) {
 			payload.throughput = 0.0;
 			return;
 		}
 
-		payload.throughput *= sampled_f.f * abs(dot(sampled_f.wi, ctx.normal)) / sampled_f.pdf;
-		payload.pdf = sampled_f.pdf;
+		payload.throughput *= bsdf_sample.f * abs(dot(bsdf_sample.wo, ctx.normal)) / bsdf_sample.pdf;
+		payload.pdf = bsdf_sample.pdf;
 
 		payload.origin = offset_ray_origin(ctx.position, ctx.geometric_normal);
-		payload.direction = sampled_f.wi;
+		payload.direction = bsdf_sample.wo;
 	}
 }
 
@@ -311,7 +309,7 @@ func miss(inout RayPayload payload) {
 		let light: DomeLight = { env_map, linear_sampler, { importance_map, light_data.base_mip } };
 
 		var w_b: float = 1.0;
-		if (payload.depth != 0) { // TODO: && !specular bounce
+		if (payload.depth != 0) { // TODO: && !specular (singular) bounce
 			let p_b = payload.pdf;
 			let p_l = light_pmf(i) * light.pdf_li(0.0, payload.direction); // TODO: Pass correct position instead of 0.0
 			w_b = power_heuristic(1.0, p_b, 1.0, p_l);

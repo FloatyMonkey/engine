@@ -1,14 +1,15 @@
-import light;
+implementing light;
+
 import sample_generator;
 
-struct RectLight: Light {
-	float3 emission;
-	float3 position;
-	float3 area_scaled_normal;
-	float3 x;
-	float3 y;
+public struct RectLight: Light {
+	public float3 emission;
+	public float3 position;
+	public float3 area_scaled_normal;
+	public float3 x;
+	public float3 y;
 
-	func sample_li<S: SampleGenerator>(p: float3, inout sg: S) -> LightLiSample {
+	public func sample_li<S: SampleGenerator>(p: float3, inout sg: S) -> LightLiSample {
 		let u = sample_next_2d(sg);
 
 		let on_light = position + x * (u.x - 0.5) + y * (u.y - 0.5);
@@ -38,7 +39,7 @@ struct RectLight: Light {
 		return ls;
 	}
 
-	func pdf_li(p: float3, wi: float3) -> float {
+	public func pdf_li(p: float3, wi: float3) -> float {
 		let to_light = position - p;
 
 		let dist_squared = dot(to_light, to_light);

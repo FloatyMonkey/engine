@@ -1,9 +1,6 @@
 static const float PI = 3.14159265358979323846;
 
-static const float FLT_MAX = 3.402823466e+38;
-static const float FLT_MIN = 1.175494351e-38;
-
-func sqr(x: float) -> float {
+func sqr<T: IArithmetic>(x: T) -> T {
 	return x * x;
 }
 
@@ -23,17 +20,17 @@ func distance_sq(a: float3, b: float3) -> float {
 	return dot(a - b, a - b);
 }
 
-func srgb_from_linear(float3 rgb) -> float3 {
+func srgb_from_linear(rgb: float3) -> float3 {
 	return select(rgb <= 0.0031308, rgb * 12.92, 1.055 * pow(rgb, 1.0 / 2.4) - 0.055);
 }
 
-func linear_from_srgb(float3 rgb) -> float3 {
+func linear_from_srgb(rgb: float3) -> float3 {
 	return select(rgb <= 0.040449936, rgb / 12.92, pow((rgb + 0.055) / 1.055, 2.4));
 }
 
 /// Returns a relative luminance of an input linear RGB color in the ITU-R BT.709 color space.
 func luminance(rgb: float3) -> float {
-	return dot(rgb, float3(0.2126f, 0.7152f, 0.0722f));
+	return dot(rgb, float3(0.2126, 0.7152, 0.0722));
 }
 
 /// Converts normalized direction `n` to position in [0, 1] in the equirectangular map (unsigned normalized).

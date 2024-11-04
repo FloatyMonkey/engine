@@ -84,7 +84,7 @@ struct TrowbridgeReitzDistribution: MicrofacetDistribution {
 		// [Dupey & Benyoub 2023, *Sampling Visible GGX Normals with Spherical Caps*](https://arxiv.org/pdf/2306.05044.pdf)
 		let phi = 2.0 * PI * u[0];
 		let z = (1.0 - u[1]) * (1.0 + wh.z) - wh.z;
-		let sin_theta = safe_sqrt(1.0 - z * z);
+		let sin_theta = safe_sqrt(1.0 - sqr(z));
 		let c = float3(sin_theta * cos(phi), sin_theta * sin(phi), z);
 		let h = c + wh;
 

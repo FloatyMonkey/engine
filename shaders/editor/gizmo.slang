@@ -80,7 +80,9 @@ float4 main_ps(PsInput input) : SV_Target {
 
 	float gizmo_depth = input.position.w;
 
-	let alpha_multiplier = gizmo_depth > scene_depth ? 0.25 : 1.0;
+	// TODO: Use parameter to control depth based alpha.
+    // let alpha_multiplier = gizmo_depth > scene_depth ? 0.25 : 1.0;
+    let alpha_multiplier = 1.0;
 
 	let color = input.color;
 

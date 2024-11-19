@@ -12,7 +12,7 @@ use crate::asset::AssetServer;
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
 use crate::gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
 use crate::graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
-use crate::math::{Mat4, transform::Transform3};
+use crate::math::{Unit, Vec3, Mat4, transform::Transform3};
 use crate::os::{self, App, Window};
 use crate::scene::setup_scene;
 
@@ -84,13 +84,41 @@ fn main() {
 		}
 
 		// Gizmo
-		let gizmo = gizmo::Gizmo::new();
+		let mut gizmo = gizmo::Gizmo::new();
 
 		//gizmo.line(Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 3.0), 0xFF0000FF);
 		//gizmo.circle(Vec3::new(0.0, 0.0, 0.0), Vec3::Z, 1.0, 0x00FF00FF);
 		//gizmo.sphere(Vec3::new(0.0, 0.0, 1.0), 1.0, 0x0000FFFF);
 		//gizmo.capsule(Vec3::new(5.0, 0.0, 0.0), 0.5, 2.0, 0xFFFF00FF);
 		//gizmo.cylinder(Vec3::new(3.0, 0.0, 0.0), 0.5, 1.0, 0xFFFF00FF);
+
+		fn arrow(gizmo: &mut gizmo::Gizmo, pos: Vec3, dir: Unit<Vec3>, color: u32, scale: f32, camera_up: Vec3) {
+			// Line
+			gizmo.line(pos + dir * scale * 0.05, pos + dir * scale, color);
+
+			// Circle at the base of the arrow
+			let disk_scale = scale * 0.06;
+			gizmo.circle(pos + dir * scale, dir, disk_scale, color);
+
+			// Camera facing arrow
+			let ve = camera_up - camera_up.project_onto(dir);
+			let vd = ve.cross(*dir).normalize() * disk_scale;
+
+			gizmo.line(pos + dir * scale + vd, pos + dir * scale * 1.2, color);
+			gizmo.line(pos + dir * scale - vd, pos + dir * scale * 1.2, color);
+		}
+
+		if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
+			let pos = Vec3::ZERO;
+			let distance = camera_transform.translation.distance(pos);
+
+			let scale = distance * (camera.focal_length / camera.sensor_width) * (50.0 / 1280.0); // TODO: use viewport width
+			let camera_up = *(camera_transform.rotation * Vec3::Z);
+
+			arrow(&mut gizmo, pos, Vec3::X, 0xf63652ff, scale, camera_up);
+			arrow(&mut gizmo, pos, Vec3::Y, 0x70a41cff, scale, camera_up);
+			arrow(&mut gizmo, pos, Vec3::Z, 0x2f84e3ff, scale, camera_up);
+		}
 
 		// Path Tracer
 		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });

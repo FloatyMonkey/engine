@@ -8,6 +8,7 @@ pub mod transform;
 mod complex;
 mod dual;
 mod quaternion;
+mod ray;
 mod unit;
 
 use num::{cast, Number, NumberOps};
@@ -19,6 +20,7 @@ pub use matrix::{
 	Vector, Vector2, Vector3, Vector4,
 };
 pub use quaternion::{Quaternion, UnitQuaternion};
+pub use ray::Ray;
 pub use unit::Unit;
 
 pub type Vec2 = Vector2<f32>;

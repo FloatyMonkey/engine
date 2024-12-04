@@ -85,7 +85,7 @@ pub fn show<Context>(
 
 	let mut rect = ui.max_rect();
 
-	ui.painter().rect_filled(rect, 0.0, Color32::from_gray(0));
+	ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(10, 10, 10));
 
 	if tree.is_empty() || tree[NodeIndex::root()].is_none() {
 		return;

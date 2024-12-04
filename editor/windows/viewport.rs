@@ -108,19 +108,19 @@ impl tabs::Tab<MyContext> for ViewportTab {
 			visuals.selection.stroke = egui::Stroke::NONE;
 			visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(4, 119, 213, 240);
 
-			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/select.svg")).selected(self.gizmo_mode == None).rounding(egui::Rounding{nw: 5.0, ne: 5.0, se: 0.0, sw: 0.0})).clicked() {
+			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/mouse-pointer.svg")).selected(self.gizmo_mode == None).rounding(egui::Rounding{nw: 5.0, ne: 5.0, se: 0.0, sw: 0.0})).clicked() {
 				self.gizmo_mode = None;
 			}
 
-			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/translate.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Translate))).clicked() {
+			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/move-3d.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Translate))).clicked() {
 				self.gizmo_mode = Some(egui_gizmo::GizmoMode::Translate);
 			}
 
-			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/rotate.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Rotate))).clicked() {
+			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/rotate-3d.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Rotate))).clicked() {
 				self.gizmo_mode = Some(egui_gizmo::GizmoMode::Rotate);
 			}
 
-			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/scale.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Scale)).rounding(egui::Rounding{nw: 0.0, ne: 0.0, se: 5.0, sw: 5.0})).clicked() {
+			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/scale-3d.svg")).selected(self.gizmo_mode == Some(egui_gizmo::GizmoMode::Scale)).rounding(egui::Rounding{nw: 0.0, ne: 0.0, se: 5.0, sw: 5.0})).clicked() {
 				self.gizmo_mode = Some(egui_gizmo::GizmoMode::Scale);
 			}
 		});

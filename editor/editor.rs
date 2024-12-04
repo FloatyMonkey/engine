@@ -67,8 +67,38 @@ impl Editor {
 		}
 
 		self.egui_ctx.clone().run(raw_input, |ctx| {
+			egui::TopBottomPanel::top("TopPanel")
+				.frame(egui::Frame::none()
+					.fill(egui::Color32::from_rgb(10, 10, 10))
+					.inner_margin(egui::Vec2::new(6.0, 3.0)))
+				.show_separator_line(false)
+				.show(&ctx, |ui| {
+					ui.horizontal(|ui| {
+						ui.spacing_mut().item_spacing = egui::vec2(15.0, 0.0);
+
+						ui.style_mut().visuals.button_frame = false;
+
+						ui.menu_button("File", |_ui| {});
+						ui.menu_button("Edit", |_ui| {});
+						ui.menu_button("Help", |_ui| {});
+					});
+				});
+
+			egui::TopBottomPanel::bottom("BottomPanel")
+				.frame(egui::Frame::none()
+					.fill(egui::Color32::from_rgb(10, 10, 10))
+					.inner_margin(egui::Vec2::new(6.0, 3.0)))
+				.show_separator_line(false)
+				.show(&ctx, |ui| {
+					ui.horizontal(|ui| {
+						ui.label("0.1.0");
+					});
+				});
+			
 			egui::CentralPanel::default().show(&ctx, |ui| {
-				let style = tabs::Style::from_egui(ui.style().as_ref());
+				let mut style = tabs::Style::from_egui(ui.style().as_ref());
+				style.padding.top = 0.0;
+				style.padding.bottom = 0.0;
 
 				let id = egui::Id::new("Tabs");
 				let layer_id = egui::LayerId::background();

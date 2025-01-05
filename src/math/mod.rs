@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+pub mod isometry;
 pub mod matrix;
 pub mod num;
-pub mod isometry;
+pub mod primitives;
 pub mod transform;
 
 mod complex;

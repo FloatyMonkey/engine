@@ -1,3 +1,5 @@
+mod cmd;
+
 use crate::os::NativeHandle;
 
 use std::ffi::CString;
@@ -11,10 +13,11 @@ use windows::{
 	Win32::System::{LibraryLoader::*, Threading::*},
 };
 
-#[no_mangle]
-pub static D3D12SDKVersion: u32 = 611;
-#[no_mangle]
-pub static D3D12SDKPath: &[u8; 9] = b".\\D3D12\\\0";
+#[unsafe(export_name = "D3D12SDKVersion")]
+pub static D3D12_SDK_VERSION: u32 = 611;
+
+#[unsafe(export_name = "D3D12SDKPath")]
+pub static D3D12_SDK_PATH: &[u8; 9] = b".\\D3D12\\\0";
 
 #[derive(Clone, Copy)]
 struct WinPixEventRuntime {
@@ -37,13 +40,13 @@ impl WinPixEventRuntime {
 	}
 
 	pub fn set_marker_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
-		let null_name = CString::new(name).unwrap();
-		(self.set_marker)(command_list.as_raw(), color, PSTR(null_name.as_ptr() as _));
+		let name = CString::new(name).unwrap();
+		(self.set_marker)(command_list.as_raw(), color, PSTR(name.as_ptr() as _));
 	}
 
 	pub fn begin_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
-		let null_name = CString::new(name).unwrap();
-		(self.begin_event)(command_list.as_raw(), color, PSTR(null_name.as_ptr() as _));
+		let name = CString::new(name).unwrap();
+		(self.begin_event)(command_list.as_raw(), color, PSTR(name.as_ptr() as _));
 	}
 
 	pub fn end_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7) {
@@ -82,6 +85,7 @@ pub struct Surface {
 pub struct AccelerationStructure {
 	resource: ID3D12Resource,
 	srv_index: Option<usize>,
+	gpu_ptr: u64,
 }
 
 pub struct GraphicsPipeline {
@@ -104,8 +108,8 @@ pub struct RaytracingPipeline {
 #[derive(Clone)]
 pub struct CmdList {
 	bb_index: usize,
-	command_allocator: Vec<ID3D12CommandAllocator>,
-	command_list: Vec<ID3D12GraphicsCommandList7>,
+	command_allocators: Vec<ID3D12CommandAllocator>,
+	command_lists: Vec<ID3D12GraphicsCommandList7>,
 	pix: Option<WinPixEventRuntime>,
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
@@ -508,10 +512,9 @@ fn get_adapter(factory: &IDXGIFactory6, gpu_preference: DXGI_GPU_PREFERENCE) -> 
 
 		let adapter_info = super::AdapterInfo {
 			name: adapter_names[adapter_index as usize].to_string(),
-			dedicated_video_memory: desc.DedicatedVideoMemory,
-			dedicated_system_memory: desc.DedicatedSystemMemory,
-			shared_system_memory: desc.SharedSystemMemory,
-			available: adapter_names,
+			vendor: desc.VendorId,
+			device: desc.DeviceId,
+			backend: super::Backend::D3D12,
 		};
 
 		Ok((adapter, adapter_info))
@@ -895,8 +898,8 @@ impl super::DeviceImpl for Device {
 
 			CmdList {
 				bb_index: 0,
-				command_allocator: command_allocators,
-				command_list: command_lists,
+				command_allocators,
+				command_lists,
 				pix: self.pix,
 				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
@@ -1136,9 +1139,12 @@ impl super::DeviceImpl for Device {
 			self.resource_heap.handle_to_index(&h)
 		});
 
+		let gpu_ptr = unsafe { desc.buffer.resource.GetGPUVirtualAddress() + (desc.offset as u64) };
+
 		Ok(AccelerationStructure {
 			resource: desc.buffer.resource.clone(),
 			srv_index,
+			gpu_ptr,
 		})
 	}
 
@@ -1389,7 +1395,7 @@ impl super::DeviceImpl for Device {
 
 	fn submit(&self, cmd: &CmdList) {
 		unsafe {
-			let command_list = &cmd.command_list[cmd.bb_index];
+			let command_list = &cmd.command_lists[cmd.bb_index];
 			command_list.Close().unwrap();
 			self.command_queue.ExecuteCommandLists(&[Some(command_list.cast().unwrap())]);
 		}
@@ -1422,8 +1428,8 @@ impl super::DeviceImpl for Device {
 
 		super::AccelerationStructureSizes {
 			acceleration_structure_size: prebuild_info.ResultDataMaxSizeInBytes as _,
-			build_scratch_buffer_size: prebuild_info.ScratchDataSizeInBytes as _,
-			update_scratch_buffer_size: prebuild_info.UpdateScratchDataSizeInBytes as _,
+			build_scratch_size: prebuild_info.ScratchDataSizeInBytes as _,
+			update_scratch_size: prebuild_info.UpdateScratchDataSizeInBytes as _,
 		}
 	}
 }
@@ -1498,528 +1504,6 @@ impl super::SurfaceImpl<Device> for Surface {
 	}
 }
 
-impl CmdList {
-	fn cmd(&self) -> &ID3D12GraphicsCommandList7 {
-		&self.command_list[self.bb_index]
-	}
-}
-
-impl super::CmdListImpl<Device> for CmdList {
-	fn reset(&mut self, device: &Device, surface: &Surface) {
-		let bb = unsafe { surface.swap_chain.GetCurrentBackBufferIndex() as usize };
-		self.bb_index = bb;
-		if surface.frame_fence_value[bb] != 0 {
-			unsafe {
-				self.command_allocator[bb].Reset().unwrap();
-				self.command_list[bb].Reset(&self.command_allocator[bb], None).unwrap();
-			}
-		}
-
-		unsafe {
-			self.cmd().SetDescriptorHeaps(&[
-				Some(device.resource_heap.heap.clone()),
-				Some(device.sampler_heap.heap.clone()),
-			]);
-		}
-	}
-
-	fn copy_buffer(
-		&self,
-		src: &Buffer,
-		src_offset: u64,
-		dst: &Buffer,
-		dst_offset: u64,
-		size: u64,
-	) {
-		unsafe {
-			self.cmd().CopyBufferRegion(&dst.resource, dst_offset, &src.resource, src_offset, size);
-		}
-	}
-
-	fn copy_texture(
-		&self,
-		src: &Texture,
-		src_mip_level: u32,
-		src_array_slice: u32,
-		src_offset: [u32; 3],
-		dst: &Texture,
-		dst_mip_level: u32,
-		dst_array_slice: u32,
-		dst_offset: [u32; 3],
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.cmd().CopyTextureRegion(
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&dst.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						// TODO: Account for plane slices (aspects): color = 0, depth = 0, stencil = 1
-						// https://learn.microsoft.com/en-us/windows/win32/direct3d12/subresources#plane-slice
-						// subresource_index = mip_level + (array_slice + plane * desc.array_size) * desc.mip_levels
-						// Also update the other copy_texture functions
-						SubresourceIndex: dst_mip_level + dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
-					},
-				},
-				dst_offset[0],
-				dst_offset[1],
-				dst_offset[2],
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&src.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: src_mip_level + src_array_slice * src.resource.GetDesc().MipLevels as u32,
-					},
-				},
-				Some(&map_box(&src_offset, &size)),
-			);
-		}
-	}
-
-	fn copy_buffer_to_texture(
-		&self,
-		src: &Buffer,
-		src_offset: u64,
-		src_bytes_per_row: u32,
-		dst: &Texture,
-		dst_mip_level: u32,
-		dst_array_slice: u32,
-		dst_offset: [u32; 3],
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.cmd().CopyTextureRegion(
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&dst.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: dst_mip_level + dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
-					},
-				},
-				dst_offset[0],
-				dst_offset[1],
-				dst_offset[2],
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&src.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-							Offset: src_offset,
-							Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
-								Format: dst.resource.GetDesc().Format,
-								Width: size[0],
-								Height: size[1],
-								Depth: size[2],
-								RowPitch: src_bytes_per_row,
-							},
-						},
-					},
-				},
-				None,
-			);
-		}
-	}
-
-	fn copy_texture_to_buffer(
-		&self,
-		src: &Texture,
-		src_mip_level: u32,
-		src_array_slice: u32,
-		src_offset: [u32; 3],
-		dst: &Buffer,
-		dst_offset: u64,
-		dst_bytes_per_row: u32,
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.cmd().CopyTextureRegion(
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&src.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
-							Offset: dst_offset,
-							Footprint: D3D12_SUBRESOURCE_FOOTPRINT {
-								Format: src.resource.GetDesc().Format,
-								Width: size[0],
-								Height: size[1],
-								Depth: size[2],
-								RowPitch: dst_bytes_per_row,
-							},
-						},
-					},
-				},
-				0,
-				0,
-				0,
-				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&dst.resource),
-					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: src_mip_level + src_array_slice * src.resource.GetDesc().MipLevels as u32,
-					},
-				},
-				Some(&map_box(&src_offset, &size)),
-			);
-		}
-	}
-
-	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
-		let rt = desc.colors.iter().map(|target| {
-			let (load_op, clear) = map_load_op(target.load_op);
-			let resource_desc = unsafe { target.texture.resource.GetDesc() };
-
-			let begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
-				Type: load_op,
-				Anonymous: D3D12_RENDER_PASS_BEGINNING_ACCESS_0 {
-					Clear: D3D12_RENDER_PASS_BEGINNING_ACCESS_CLEAR_PARAMETERS {
-						ClearValue: D3D12_CLEAR_VALUE {
-							Format: resource_desc.Format,
-							Anonymous: D3D12_CLEAR_VALUE_0 {
-								Color: clear.into(),
-							},
-						},
-					},
-				},
-			};
-
-			let end = D3D12_RENDER_PASS_ENDING_ACCESS {
-				Type: map_store_op(target.store_op),
-				Anonymous: D3D12_RENDER_PASS_ENDING_ACCESS_0 {
-					Resolve: Default::default(),
-				},
-			};
-
-			D3D12_RENDER_PASS_RENDER_TARGET_DESC {
-				cpuDescriptor: target.texture.rtv.unwrap(),
-				BeginningAccess: begin,
-				EndingAccess: end,
-			}
-		}).collect::<Vec<_>>();
-
-		let ds = desc.depth_stencil.as_ref().map(|target| {
-			let (load_op, clear) = map_load_op(target.load_op);
-			let resource_desc = unsafe { target.texture.resource.GetDesc() };
-
-			let depth_begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
-				Type: load_op,
-				Anonymous: D3D12_RENDER_PASS_BEGINNING_ACCESS_0 {
-					Clear: D3D12_RENDER_PASS_BEGINNING_ACCESS_CLEAR_PARAMETERS {
-						ClearValue: D3D12_CLEAR_VALUE {
-							Format: resource_desc.Format,
-							Anonymous: D3D12_CLEAR_VALUE_0 {
-								DepthStencil: D3D12_DEPTH_STENCIL_VALUE {
-									Depth: clear.0,
-									Stencil: clear.1,
-								},
-							},
-						},
-					},
-				},
-			};
-
-			let depth_end = D3D12_RENDER_PASS_ENDING_ACCESS {
-				Type: map_store_op(target.store_op),
-				Anonymous: D3D12_RENDER_PASS_ENDING_ACCESS_0 {
-					Resolve: Default::default(),
-				},
-			};
-
-			let stencil_begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
-				Type: load_op,
-				Anonymous: D3D12_RENDER_PASS_BEGINNING_ACCESS_0 {
-					Clear: D3D12_RENDER_PASS_BEGINNING_ACCESS_CLEAR_PARAMETERS {
-						ClearValue: D3D12_CLEAR_VALUE {
-							Format: resource_desc.Format,
-							Anonymous: D3D12_CLEAR_VALUE_0 {
-								DepthStencil: D3D12_DEPTH_STENCIL_VALUE {
-									Depth: clear.0,
-									Stencil: clear.1,
-								},
-							},
-						},
-					},
-				},
-			};
-
-			let stencil_end = D3D12_RENDER_PASS_ENDING_ACCESS {
-				Type: map_store_op(target.store_op),
-				Anonymous: D3D12_RENDER_PASS_ENDING_ACCESS_0 {
-					Resolve: Default::default(),
-				},
-			};
-
-			D3D12_RENDER_PASS_DEPTH_STENCIL_DESC {
-				cpuDescriptor: target.texture.dsv.unwrap(),
-				DepthBeginningAccess: depth_begin,
-				StencilBeginningAccess: stencil_begin,
-				DepthEndingAccess: depth_end,
-				StencilEndingAccess: stencil_end,
-			}
-		});
-
-		unsafe {
-			self.cmd().BeginRenderPass(Some(rt.as_slice()), ds.map_or(None, |ds| Some(&ds)), D3D12_RENDER_PASS_FLAG_NONE);
-		}
-	}
-
-	fn render_pass_end(&self) {
-		unsafe {
-			self.cmd().EndRenderPass();
-		}
-	}
-
-	fn barriers(&self, barriers: &super::Barriers<Device>) {
-		let global_barriers = barriers.global.iter().map(|_| D3D12_GLOBAL_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-			AccessAfter: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-		}).collect::<Vec<_>>();
-
-		let buffer_barriers = barriers.buffer.iter().map(|barrier| D3D12_BUFFER_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
-			AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
-			pResource: unsafe { std::mem::transmute_copy(&barrier.buffer.resource) },
-			Offset: 0,
-			Size: u64::MAX,
-		}).collect::<Vec<_>>();
-
-		let texture_barriers = barriers.texture.iter().map(|barrier| D3D12_TEXTURE_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
-			AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
-			LayoutBefore: map_texture_layout(barrier.old_layout),
-			LayoutAfter: map_texture_layout(barrier.new_layout),
-			pResource: unsafe { std::mem::transmute_copy(&barrier.texture.resource) },
-			Subresources: D3D12_BARRIER_SUBRESOURCE_RANGE {
-				IndexOrFirstMipLevel: 0xffffffff, // All subresources
-				NumMipLevels: 0,
-				FirstArraySlice: 0,
-				NumArraySlices: 0,
-				FirstPlane: 0,
-				NumPlanes: 0,
-			},
-			Flags: D3D12_TEXTURE_BARRIER_FLAG_NONE,
-		}).collect::<Vec<_>>();
-
-		let barrier_groups = [
-			D3D12_BARRIER_GROUP {
-				Type: D3D12_BARRIER_TYPE_GLOBAL,
-				NumBarriers: global_barriers.len() as u32,
-				Anonymous: D3D12_BARRIER_GROUP_0 {
-					pGlobalBarriers: global_barriers.as_ptr(),
-				},
-			},
-			D3D12_BARRIER_GROUP {
-				Type: D3D12_BARRIER_TYPE_BUFFER,
-				NumBarriers: buffer_barriers.len() as u32,
-				Anonymous: D3D12_BARRIER_GROUP_0 {
-					pBufferBarriers: buffer_barriers.as_ptr(),
-				},
-			},
-			D3D12_BARRIER_GROUP {
-				Type: D3D12_BARRIER_TYPE_TEXTURE,
-				NumBarriers: texture_barriers.len() as u32,
-				Anonymous: D3D12_BARRIER_GROUP_0 {
-					pTextureBarriers: texture_barriers.as_ptr(),
-				},
-			},
-		];
-
-		unsafe {
-			self.cmd().Barrier(&barrier_groups);
-		}
-	}
-
-	fn set_viewport(&self, rect: &super::Rect<f32>, depth: Range<f32>) {
-		let dx_viewport = D3D12_VIEWPORT {
-			TopLeftX: rect.left,
-			TopLeftY: rect.top,
-			Width: rect.right - rect.left,
-			Height: rect.bottom - rect.top,
-			MinDepth: depth.start,
-			MaxDepth: depth.end,
-		};
-
-		unsafe {
-			self.cmd().RSSetViewports(&[dx_viewport]);
-		}
-	}
-
-	fn set_scissor(&self, rect: &super::Rect<u32>) {
-		let dx_rect = RECT {
-			left: rect.left as i32,
-			top: rect.top as i32,
-			right: rect.right as i32,
-			bottom: rect.bottom as i32,
-		};
-		
-		unsafe {
-			self.cmd().RSSetScissorRects(&[dx_rect]);
-		}
-	}
-
-	fn set_blend_constant(&self, color: super::Color<f32>) {
-		unsafe {
-			self.cmd().OMSetBlendFactor(Some(&color.into()));
-		}
-	}
-
-	fn set_stencil_reference(&self, reference: u32) {
-		unsafe {
-			self.cmd().OMSetStencilRef(reference);
-		}
-	}
-
-	fn set_index_buffer(&self, buffer: &Buffer, offset: u64, format: super::Format) {
-		let ibv = D3D12_INDEX_BUFFER_VIEW {
-			BufferLocation: unsafe { buffer.resource.GetGPUVirtualAddress() },
-			SizeInBytes: (buffer.size - offset) as u32,
-			Format: map_format(format),
-		};
-
-		unsafe {
-			self.cmd().IASetIndexBuffer(Some(&ibv));
-		}
-	}
-
-	fn set_graphics_pipeline(&self, pipeline: &GraphicsPipeline) {
-		let cmd = self.cmd();
-		unsafe {
-			cmd.SetGraphicsRootSignature(&pipeline.root_signature);
-			cmd.SetPipelineState(&pipeline.pipeline_state);
-			cmd.IASetPrimitiveTopology(pipeline.topology);
-			cmd.SetGraphicsRootDescriptorTable(1, self.resource_heap_base);
-		}
-	}
-
-	fn set_compute_pipeline(&self, pipeline: &ComputePipeline) {
-		let cmd = self.cmd();
-		unsafe {
-			cmd.SetComputeRootSignature(&pipeline.root_signature);
-			cmd.SetPipelineState(&pipeline.pipeline_state);
-			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
-		}
-	}
-
-	fn set_raytracing_pipeline(&self, pipeline: &RaytracingPipeline) {
-		let cmd = self.cmd();
-		unsafe {
-			cmd.SetComputeRootSignature(&pipeline.root_signature);
-			cmd.SetPipelineState1(&pipeline.state_object);
-			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
-		}
-	}
-
-	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
-		assert_eq!(offset % 4, 0);
-		assert_eq!(data.len() % 4, 0);
-		
-		unsafe {
-			self.cmd().SetGraphicsRoot32BitConstants(0, data.len() as u32 / 4, data.as_ptr() as *const _, offset / 4);
-		}
-	}
-
-	fn compute_push_constants(&self, offset: u32, data: &[u8]) {
-		assert_eq!(offset % 4, 0);
-		assert_eq!(data.len() % 4, 0);
-
-		unsafe {
-			self.cmd().SetComputeRoot32BitConstants(0, data.len() as u32 / 4, data.as_ptr() as *const _, offset / 4);
-		}
-	}
-
-	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
-		unsafe {
-			self.cmd().DrawInstanced(vertices.len() as u32, instances.len() as u32, vertices.start, instances.start);
-		}
-	}
-
-	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
-		unsafe {
-			self.cmd().DrawIndexedInstanced(indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
-		}
-	}
-
-	fn dispatch(&self, groups: [u32; 3]) {
-		unsafe {
-			self.cmd().Dispatch(groups[0], groups[1], groups[2]);
-		}
-	}
-
-	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc) {
-		let dx_desc = D3D12_DISPATCH_RAYS_DESC {
-			RayGenerationShaderRecord: desc.raygen.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-			}),
-			MissShaderTable: desc.miss.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
-			}),
-			HitGroupTable: desc.hit_group.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
-			}),
-			CallableShaderTable: desc.callable.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
-			}),
-			Width: desc.size[0],
-			Height: desc.size[1],
-			Depth: desc.size[2],
-		};
-
-		unsafe {
-			self.cmd().DispatchRays(&dx_desc);
-		}
-	}
-
-	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
-		let info = AccelerationStructureInfo::build(desc.inputs);
-
-		// TODO: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE if desc.src.is_some()
-
-		let dx_desc = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC {
-			DestAccelerationStructureData: unsafe { desc.dst.resource.GetGPUVirtualAddress() },
-			Inputs: info.desc,
-			SourceAccelerationStructureData: desc.src.map_or(0, |b| unsafe { b.resource.GetGPUVirtualAddress() }),
-			ScratchAccelerationStructureData: desc.scratch_data.0,
-		};
-
-		unsafe {
-			self.cmd().BuildRaytracingAccelerationStructure(&dx_desc, None)
-		}
-	}
-
-	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
-		if let Some(pix) = &self.pix {
-			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
-			pix.set_marker_on_command_list(self.cmd(), color as u64, name);
-		}
-	}
-
-	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
-		if let Some(pix) = &self.pix {
-			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
-			pix.begin_event_on_command_list(self.cmd(), color as u64, name);
-		}
-	}
-
-	fn debug_event_pop(&self) {
-		if let Some(pix) = &self.pix {
-			pix.end_event_on_command_list(self.cmd());
-		}
-	}
-}
-
 impl super::BufferImpl<Device> for Buffer {
 	fn srv_index(&self) -> Option<u32> {
 		self.srv_index.map(|i| i as u32)
@@ -2053,6 +1537,10 @@ impl super::SamplerImpl<Device> for Sampler {}
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {
 		self.srv_index.map(|i| i as u32)
+	}
+
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		super::GpuPtr(self.gpu_ptr)
 	}
 
 	fn instance_descriptor_size() -> usize {
@@ -2100,45 +1588,53 @@ impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
 
 struct AccelerationStructureInfo {
 	desc: D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS,
-	_geometry_descs: Vec<D3D12_RAYTRACING_GEOMETRY_DESC>, // Here to keep the geometries alive
+	_geometry: Vec<D3D12_RAYTRACING_GEOMETRY_DESC>,
 }
 
-// TODO: Move into CmdList::build_acceleration_structure
 impl AccelerationStructureInfo {
-	fn build(inputs: &super::AccelerationStructureBuildInputs) -> Self {
-		let geometries: Vec<D3D12_RAYTRACING_GEOMETRY_DESC> = inputs.geometry.iter().map(|g| match &g.part {
-			super::GeometryPart::AABBs(aabbs) => D3D12_RAYTRACING_GEOMETRY_DESC {
-				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS,
-				Flags: map_acceleration_structure_geometry_flags(g.flags),
-				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
-					AABBs: D3D12_RAYTRACING_GEOMETRY_AABBS_DESC {
-						AABBCount: aabbs.count as _,
-						AABBs: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
-							StartAddress: aabbs.data.0,
-							StrideInBytes: aabbs.stride as _,
-						},
-					}
-				},
+	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> D3D12_RAYTRACING_GEOMETRY_DESC {
+		D3D12_RAYTRACING_GEOMETRY_DESC {
+			Type: D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS,
+			Flags: map_acceleration_structure_geometry_flags(aabbs.flags),
+			Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
+				AABBs: D3D12_RAYTRACING_GEOMETRY_AABBS_DESC {
+					AABBCount: aabbs.count as _,
+					AABBs: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
+						StartAddress: aabbs.data.0,
+						StrideInBytes: aabbs.stride as _,
+					},
+				}
 			},
-			super::GeometryPart::Triangles(triangles) => D3D12_RAYTRACING_GEOMETRY_DESC {
-				Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
-				Flags: map_acceleration_structure_geometry_flags(g.flags),
-				Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
-					Triangles: D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC {
-						Transform3x4: triangles.transform.0,
-						IndexFormat: map_format(triangles.index_format),
-						VertexFormat: map_format(triangles.vertex_format),
-						IndexCount: triangles.index_count as _,
-						VertexCount: triangles.vertex_count as _,
-						IndexBuffer: triangles.index_buffer.0,
-						VertexBuffer: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
-							StartAddress: triangles.vertex_buffer.0,
-							StrideInBytes: triangles.vertex_stride as _,
-						},
+		}
+	}
+
+	fn map_triangles(triangles: &super::AccelerationStructureTriangles) -> D3D12_RAYTRACING_GEOMETRY_DESC {
+		D3D12_RAYTRACING_GEOMETRY_DESC {
+			Type: D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
+			Flags: map_acceleration_structure_geometry_flags(triangles.flags),
+			Anonymous: D3D12_RAYTRACING_GEOMETRY_DESC_0 {
+				Triangles: D3D12_RAYTRACING_GEOMETRY_TRIANGLES_DESC {
+					Transform3x4: triangles.transform.0,
+					IndexFormat: map_format(triangles.index_format),
+					VertexFormat: map_format(triangles.vertex_format),
+					IndexCount: triangles.index_count as _,
+					VertexCount: triangles.vertex_count as _,
+					IndexBuffer: triangles.index_buffer.0,
+					VertexBuffer: D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE {
+						StartAddress: triangles.vertex_buffer.0,
+						StrideInBytes: triangles.vertex_stride as _,
 					},
 				},
 			},
-		}).collect();
+		}
+	}
+
+	fn build(inputs: &super::AccelerationStructureBuildInputs) -> Self {
+		let geometries: Vec<D3D12_RAYTRACING_GEOMETRY_DESC> = match &inputs.entries {
+			super::AccelerationStructureEntries::AABBs(aabbs) => aabbs.iter().map(Self::map_aabbs).collect(),
+			super::AccelerationStructureEntries::Triangles(triangles) => triangles.iter().map(Self::map_triangles).collect(),
+			super::AccelerationStructureEntries::Instances(_) => Vec::new(),
+		};
 
 		let mut dx_input = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS {
 			Flags: map_acceleration_structure_build_flags(inputs.flags),
@@ -2146,26 +1642,33 @@ impl AccelerationStructureInfo {
 			..Default::default()
 		};
 
-		match inputs.ty {
-			super::AccelerationStructureType::BottomLevel => {
+		match &inputs.entries {
+			super::AccelerationStructureEntries::AABBs(aabbs) => {
 				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-				dx_input.NumDescs = inputs.geometry.len() as _;
+				dx_input.NumDescs = aabbs.len() as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
 					pGeometryDescs: geometries.as_ptr(),
 				};
 			},
-			super::AccelerationStructureType::TopLevel => {
-				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-				dx_input.NumDescs = inputs.instances.count as _;
+			super::AccelerationStructureEntries::Triangles(triangles) => {
+				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+				dx_input.NumDescs = triangles.len() as _;
 				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
-					InstanceDescs: inputs.instances.data.0,
+					pGeometryDescs: geometries.as_ptr(),
+				};
+			}
+			super::AccelerationStructureEntries::Instances(instances) => {
+				dx_input.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+				dx_input.NumDescs = instances.count as _;
+				dx_input.Anonymous = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
+					InstanceDescs: instances.data.0,
 				};
 			},
 		};
 
 		Self {
 			desc: dx_input,
-			_geometry_descs: geometries,
+			_geometry: geometries,
 		}
 	}
 }

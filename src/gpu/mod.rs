@@ -6,9 +6,11 @@ use std::ops::Range;
 
 use crate::os::NativeHandle;
 
+pub use shader_compiler::ShaderCompiler;
+
 type Error = super::Error;
 
-pub use shader_compiler::ShaderCompiler;
+pub const BACKEND: Backend = Backend::D3D12;
 
 // TODO: This hardcodes the backend at compile time. Make it dynamic.
 pub type Device = d3d12::Device;
@@ -183,6 +185,11 @@ pub enum Format {
 	D32FloatS8UIntX24,
 }
 
+pub enum Backend {
+	D3D12,
+	Vulkan,
+}
+
 bitflags! {
 	pub struct Validation : u8 {
 		/// Enable cpu based command list validation.
@@ -216,11 +223,9 @@ pub struct Capabilities {
 
 pub struct AdapterInfo {
 	pub name: String,
-	pub dedicated_video_memory: usize,
-	pub dedicated_system_memory: usize,
-	pub shared_system_memory: usize,
-	/// List of all available adapters.
-	pub available: Vec<String>,
+	pub vendor: u32,
+	pub device: u32,
+	pub backend: Backend,
 }
 
 #[derive(Clone, Copy)]
@@ -732,6 +737,9 @@ pub trait AccelerationStructureImpl<D: DeviceImpl> {
 	/// Only valid for top-level acceleration structures.
 	fn srv_index(&self) -> Option<u32>;
 
+	/// Only valid for bottom-level acceleration structures.
+	fn gpu_ptr(&self) -> GpuPtr;
+
 	fn instance_descriptor_size() -> usize;
 	fn write_instance_descriptor(instance: &AccelerationStructureInstance, slice: &mut [u8]);
 }
@@ -872,17 +880,17 @@ pub fn slice_as_u8_slice<T: Sized>(p: &[T]) -> &[u8] {
 	}
 }
 
-/// Aligns value to the alignment specified by align, value must be a power of 2.
-pub fn align_pow2(value: u64, align: u64) -> u64 {
-	(value + (align - 1)) & !(align - 1)
+/// Aligns `value` to the specified by `alignment`, `value` must be a power of 2.
+pub fn align_pow2(value: u64, alignment: u64) -> u64 {
+	(value + alignment - 1) & !(alignment - 1)
 }
 
-/// Aligns value to the alignment specified by align, value can be non-power of 2.
-pub fn align(value: u64, align: u64) -> u64 {
-	let div = value / align;
-	let rem = value % align;
+/// Aligns `value` to the specified `alignment`, `value` can be a non-power of 2.
+pub fn align(value: u64, alignment: u64) -> u64 {
+	let div = value / alignment;
+	let rem = value % alignment;
 	if rem != 0 {
-		return (div + 1) * align;
+		return (div + 1) * alignment;
 	}
 	value
 }
@@ -1156,6 +1164,7 @@ pub struct AccelerationStructureInstance {
 	pub mask: u8,
 	pub contribution_to_hit_group_index: u32,
 	pub flags: AccelerationStructureInstanceFlags,
+	/// [`GpuPtr`] retrieved using [`AccelerationStructureImpl::gpu_ptr`].
 	pub bottom_level: GpuPtr, // TODO: Just use an index? MTL: accelerationStructureIndex
 }
 
@@ -1180,12 +1189,17 @@ impl GpuPtr {
 	pub fn offset(&self, offset: usize) -> Self {
 		Self(self.0 + offset as u64)
 	}
+
+	pub fn is_null(&self) -> bool {
+		self.0 == Self::NULL.0
+	}
 }
 
 pub struct AccelerationStructureAABBs {
 	pub data: GpuPtr,
 	pub count: usize,
 	pub stride: usize,
+	pub flags: AccelerationStructureGeometryFlags,
 }
 
 pub struct AccelerationStructureTriangles {
@@ -1199,6 +1213,8 @@ pub struct AccelerationStructureTriangles {
 	pub index_count: usize,
 
 	pub transform: GpuPtr,
+
+	pub flags: AccelerationStructureGeometryFlags,
 }
 
 pub struct AccelerationStructureInstances {
@@ -1206,14 +1222,10 @@ pub struct AccelerationStructureInstances {
 	pub count: usize,
 }
 
-pub enum GeometryPart {
-	AABBs(AccelerationStructureAABBs),
-	Triangles(AccelerationStructureTriangles),
-}
-
-pub struct GeometryDesc {
-	pub flags: AccelerationStructureGeometryFlags,
-	pub part: GeometryPart,
+pub enum AccelerationStructureEntries {
+	AABBs(Vec<AccelerationStructureAABBs>), // TODO: Use slices here?
+	Triangles(Vec<AccelerationStructureTriangles>),
+	Instances(AccelerationStructureInstances),
 }
 
 pub enum AccelerationStructureType {
@@ -1222,11 +1234,8 @@ pub enum AccelerationStructureType {
 }
 
 pub struct AccelerationStructureBuildInputs {
-	pub ty: AccelerationStructureType,
 	pub flags: AccelerationStructureBuildFlags,
-
-	pub instances: AccelerationStructureInstances,
-	pub geometry: Vec<GeometryDesc>,
+	pub entries: AccelerationStructureEntries,
 }
 
 pub struct AccelerationStructureDesc<'a, D: DeviceImpl> {
@@ -1250,8 +1259,8 @@ pub struct AccelerationStructureBuildDesc<'a, D: DeviceImpl> {
 
 pub struct AccelerationStructureSizes {
 	pub acceleration_structure_size: usize,
-	pub build_scratch_buffer_size: usize,
-	pub update_scratch_buffer_size: usize,
+	pub build_scratch_size: usize,
+	pub update_scratch_size: usize,
 }
 
 impl ShaderGroup {

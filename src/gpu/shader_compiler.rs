@@ -1,14 +1,16 @@
 use slang::{self, Downcast};
-
+use crate::gpu;
 
 pub struct ShaderCompiler {
 	global_session: slang::GlobalSession,
+	backend: gpu::Backend,
 }
 
 impl ShaderCompiler {
-	pub fn new() -> Self {
+	pub fn new(backend: gpu::Backend) -> Self {
 		Self {
 			global_session: slang::GlobalSession::new().unwrap(),
+			backend,
 		}
 	}
 
@@ -20,8 +22,14 @@ impl ShaderCompiler {
 			.matrix_layout_row(true);
 
 		let target_desc = slang::TargetDescBuilder::new()
-			.format(slang::CompileTarget::Dxil)
-			.profile(self.global_session.find_profile("sm_6_5"));
+			.format(match self.backend {
+				gpu::Backend::D3D12 => slang::CompileTarget::Dxil,
+				gpu::Backend::Vulkan => slang::CompileTarget::Spirv,
+			})
+			.profile(self.global_session.find_profile(match self.backend {
+				gpu::Backend::D3D12 => "sm_6_5",
+				gpu::Backend::Vulkan => "glsl_450",
+			}));
 
 		let session_desc = slang::SessionDescBuilder::new()
 			.targets(&[*target_desc])
@@ -39,6 +47,8 @@ impl ShaderCompiler {
 
 		let linked_program = program.link().unwrap();
 
-		linked_program.get_entry_point_code(0, 0).unwrap().as_slice().to_vec()
+		let code = linked_program.entry_point_code(0, 0).unwrap().as_slice().to_vec();
+
+		code
 	}
 }

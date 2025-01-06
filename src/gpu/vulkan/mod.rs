@@ -1,14 +1,16 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+mod cmd;
+
 use crate::os::NativeHandle;
+
+use std::{ffi::CString, ops::Range};
+use std::{ffi::{c_void, CStr, c_char}, collections::HashSet};
 
 use ash::{vk, prelude::VkResult};
 use gpu_allocator::vulkan as allocator;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-
-use std::{ffi::CString, ops::Range};
-use std::{ffi::{c_void, CStr, c_char}, collections::HashSet};
 
 fn map_offset(offset: &[u32; 3]) -> vk::Offset3D {
 	vk::Offset3D {
@@ -91,7 +93,7 @@ fn map_format(format: super::Format) -> vk::Format {
 fn map_index_format(format: super::Format) -> vk::IndexType {
 	match format {
 		super::Format::Unknown => vk::IndexType::NONE_KHR,
-		super::Format::R8UInt  => vk::IndexType::UINT8_EXT,
+		super::Format::R8UInt  => vk::IndexType::UINT8_KHR,
 		super::Format::R16UInt => vk::IndexType::UINT16,
 		super::Format::R32UInt => vk::IndexType::UINT32,
 		_ => panic!(),
@@ -407,11 +409,19 @@ pub struct Sampler {
 
 impl super::SamplerImpl<Device> for Sampler {}
 
-pub struct AccelerationStructure {}
+pub struct AccelerationStructure {
+	acceleration_structure: vk::AccelerationStructureKHR,
+	srv_index: Option<usize>,
+	gpu_ptr: u64,
+}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {
-		todo!()
+		self.srv_index.map(|i| i as u32)
+	}
+
+	fn gpu_ptr(&self) -> super::GpuPtr {
+		super::GpuPtr(self.gpu_ptr)
 	}
 
 	fn instance_descriptor_size() -> usize {
@@ -536,6 +546,9 @@ fn pick_physical_device_and_queue_family_indices(
 }
 
 pub struct Device {
+	adapter_info: super::AdapterInfo,
+	capabilities: super::Capabilities,
+
 	entry: ash::Entry,
 	device: ash::Device,
 	instance: ash::Instance,
@@ -576,11 +589,6 @@ impl super::DeviceImpl for Device {
 				layers.push(VK_LAYER_KHRONOS_VALIDATION);
 			}
 
-			let layers_ptrs: Vec<*const i8> = layers
-				.iter()
-				.map(|c_str| c_str.as_ptr())
-				.collect();
-
 			let supported_layer_names = unsafe { entry
 				.enumerate_instance_layer_properties()
 				.unwrap()
@@ -604,9 +612,14 @@ impl super::DeviceImpl for Device {
 				instance_extension_names.push(vk::KHR_WIN32_SURFACE_NAME);
 			}
 
-			let instance_ptrs = instance_extension_names
+			let layer_ptrs = layers
 				.iter()
-				.map(|n| n.as_ptr())
+				.map(|s| s.as_ptr())
+				.collect::<Vec<_>>();
+
+			let extension_ptrs = instance_extension_names
+				.iter()
+				.map(|s| s.as_ptr())
 				.collect::<Vec<_>>();
 
 			let application_name = CString::new("App").unwrap(); // TODO: Hardcoded
@@ -614,15 +627,15 @@ impl super::DeviceImpl for Device {
 
 			let application_info = vk::ApplicationInfo::default()
 				.application_name(application_name.as_c_str())
-				.application_version(vk::make_api_version(0, 1, 0, 0))
+				.application_version(vk::make_api_version(0, 0, 1, 0)) // TODO: Hardcoded
 				.engine_name(engine_name.as_c_str())
-				.engine_version(vk::make_api_version(0, 1, 0, 0))
+				.engine_version(vk::make_api_version(0, 0, 1, 0)) // TODO: Hardcoded
 				.api_version(vk::API_VERSION_1_3);
 
 			let instance_create_info = vk::InstanceCreateInfo::default()
 				.application_info(&application_info)
-				.enabled_layer_names(&layers_ptrs)
-				.enabled_extension_names(&instance_ptrs);
+				.enabled_layer_names(&layer_ptrs)
+				.enabled_extension_names(&extension_ptrs);
 
 			unsafe { entry.create_instance(&instance_create_info, None) }.unwrap()
 		};
@@ -736,16 +749,32 @@ impl super::DeviceImpl for Device {
 
 		let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
-		{
-			let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
-				.push_next(&mut rt_pipeline_properties);
+		let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
+			.push_next(&mut rt_pipeline_properties);
 
-			unsafe {
-				instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
-			}
+		unsafe {
+			instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
 		}
 
+		let adapter_info = super::AdapterInfo {
+			name: physical_device_properties2
+				.properties
+				.device_name_as_c_str()
+				.unwrap_or_default()
+				.to_string_lossy()
+				.into_owned(),
+			vendor: physical_device_properties2.properties.vendor_id,
+			device: physical_device_properties2.properties.device_id,
+			backend: super::Backend::Vulkan,
+		};
+
+		let capabilities = super::Capabilities {
+			raytracing: true, // TODO: Hardcoded
+		};
+
 		Self {
+			adapter_info,
+			capabilities,
 			entry,
 			instance,
 			device,
@@ -800,7 +829,7 @@ impl super::DeviceImpl for Device {
 		let swapchain_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
 
 		let textures = swapchain_images.iter().map(|image| {
-			todo!("Image views");
+			// TODO: todo!("Image views");
 
 			Texture {
 				image: *image,
@@ -833,13 +862,29 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_cmd_list(&mut self, num_buffers: u32) -> Self::CmdList {
-		todo!()
+		let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
+			.command_pool(self.command_pool)
+			.level(vk::CommandBufferLevel::PRIMARY)
+			.command_buffer_count(num_buffers);
+
+		let command_buffers = unsafe { self.device.allocate_command_buffers(&command_buffer_allocate_info) }.unwrap();
+
+		CmdList {
+			bb_index: 0,
+			command_buffers,
+			device: self.device.clone(),
+			acceleration_structure_ext: self.acceleration_structure_ext.clone(),
+			ray_tracing_pipeline_ext: self.ray_tracing_pipeline_ext.clone(),
+			debug_utils_ext: None, // TODO: pass this in
+		}
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
+		let default_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS; // TODO: Hardcoded default flags
+
 		let buffer_info = vk::BufferCreateInfo::default()
 			.size(desc.size as _)
-			.usage(map_buffer_usage_flags(desc.usage))
+			.usage(map_buffer_usage_flags(desc.usage) | default_flags) 
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
 
 		let buffer = unsafe { self.device.create_buffer(&buffer_info, None) }.unwrap();
@@ -865,8 +910,8 @@ impl super::DeviceImpl for Device {
 		Ok(Buffer {
 			buffer,
 			allocation,
-			srv_index: todo!(),
-			uav_index: todo!(),
+			srv_index: None, // TODO
+			uav_index: None,
 			cpu_ptr: mapped_ptr,
 			gpu_ptr: device_address,
 		})
@@ -965,12 +1010,67 @@ impl super::DeviceImpl for Device {
 
 		let acceleration_structure = unsafe { self.acceleration_structure_ext.create_acceleration_structure(&create_info, None) }.unwrap();
 
-		// TODO: srv for top level
+		let srv_index = todo!();
 
-		todo!()
+		let gpu_ptr = unsafe { self
+			.acceleration_structure_ext
+			.get_acceleration_structure_device_address(
+				&vk::AccelerationStructureDeviceAddressInfoKHR::default()
+					.acceleration_structure(acceleration_structure)
+			)
+		};
+
+		Ok(AccelerationStructure {
+			acceleration_structure,
+			srv_index,
+			gpu_ptr,
+		})
 	}
 
 	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
+		let mut shader_modules = Vec::new();
+		let mut shader_stages = Vec::new();
+
+		if let Some(shader) = desc.vs {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: shader.len(),
+				p_code: shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
+
+			shader_modules.push(module);
+
+			let stage = vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlags::VERTEX)
+				.module(module)
+				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+
+			shader_stages.push(stage);
+		}
+
+		if let Some(shader) = desc.ps {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: shader.len(),
+				p_code: shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
+
+			shader_modules.push(module);
+
+			let stage = vk::PipelineShaderStageCreateInfo::default()
+				.stage(vk::ShaderStageFlags::FRAGMENT)
+				.module(module)
+				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+
+			shader_stages.push(stage);
+		}
+
+		let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
+
 		let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
 			.topology(map_topology(desc.topology));
 
@@ -1063,8 +1163,9 @@ impl super::DeviceImpl for Device {
 			.stencil_attachment_format(depth_stencil_format);
 
 		let create_info = vk::GraphicsPipelineCreateInfo::default()
-			// stages
-			// layout
+			.stages(&shader_stages)
+			// TODO: layout
+			.vertex_input_state(&vertex_input_state)
 			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
 			.rasterization_state(&rasterization_state)
@@ -1076,40 +1177,79 @@ impl super::DeviceImpl for Device {
 
 		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
 
+		for module in shader_modules {
+			unsafe { self.device.destroy_shader_module(module, None) };
+		}
+
 		Ok(GraphicsPipeline { pipeline })
 	}
 
 	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
-		let name = CString::new("main").unwrap(); // TODO: Hardcoded
-
-		let mut compute_shader_module = vk::ShaderModuleCreateInfo {
+		let shader_module_create_info = vk::ShaderModuleCreateInfo {
 			p_code: desc.cs.as_ptr() as _,
 			code_size: desc.cs.len(),
 			..Default::default()
 		};
 
-		let compute_shader_stage = vk::PipelineShaderStageCreateInfo::default()
-			.push_next(&mut compute_shader_module)
+		let shader_module = unsafe { self.device.create_shader_module(&shader_module_create_info, None) }.unwrap();
+
+		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
-			.name(&name);
+			.module(shader_module)
+			.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
 		
 		let create_info = vk::ComputePipelineCreateInfo::default()
-			.stage(compute_shader_stage)
+			.stage(shader_stage)
 			.layout(todo!());
 
 		let pipeline = unsafe { self.device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+
+		unsafe { self.device.destroy_shader_module(shader_module, None) };
 
 		Ok(ComputePipeline { pipeline })
 	}
 
 	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
+		let modules = desc.libraries.iter().map(|library| {
+			let create_info = vk::ShaderModuleCreateInfo {
+				code_size: library.shader.len(),
+				p_code: library.shader.as_ptr() as *const u32,
+				..Default::default()
+			};
+
+			unsafe { self.device.create_shader_module(&create_info, None) }.unwrap()
+		}).collect::<Vec<_>>();
+
+		let names = desc.libraries.iter().map(|library| {
+			CString::new(library.entry.clone()).unwrap()
+		}).collect::<Vec<_>>();
+
+		let stages = desc.libraries.iter().enumerate().map(|(i, library)| {
+			let stage = match library.ty {
+				super::ShaderType::Raygen       => vk::ShaderStageFlags::RAYGEN_KHR,
+				super::ShaderType::Miss         => vk::ShaderStageFlags::MISS_KHR,
+				super::ShaderType::Intersection => vk::ShaderStageFlags::INTERSECTION_KHR,
+				super::ShaderType::ClosestHit   => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+				super::ShaderType::AnyHit       => vk::ShaderStageFlags::ANY_HIT_KHR,
+				super::ShaderType::Callable     => vk::ShaderStageFlags::CALLABLE_KHR,
+				_ => panic!(),
+			};
+
+			vk::PipelineShaderStageCreateInfo::default()
+				.stage(stage)
+				.module(modules[i])
+				.name(names[i].as_c_str())
+		}).collect::<Vec<_>>();
+
 		let groups = desc.groups.iter().map(|group| {
+			let ty = match group.ty {
+				super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
+				super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
+				super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
+			};
+
 			vk::RayTracingShaderGroupCreateInfoKHR::default()
-				.ty(match group.ty {
-					super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
-					super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
-					super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
-				})
+				.ty(ty)
 				.general_shader(group.general.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
 				.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
@@ -1117,14 +1257,25 @@ impl super::DeviceImpl for Device {
 		}).collect::<Vec<_>>();
 
 		let create_info = vk::RayTracingPipelineCreateInfoKHR::default()
-			.stages(todo!())
+			.stages(&stages)
 			.groups(&groups)
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
 			.layout(todo!());
 
-		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(vk::DeferredOperationKHR::null(), vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
+			vk::DeferredOperationKHR::null(),
+			vk::PipelineCache::null(),
+			&[create_info],
+			None
+		) }.unwrap()[0];
 
-		Ok(RaytracingPipeline { pipeline })
+		for module in modules {
+			unsafe { self.device.destroy_shader_module(module, None) };
+		}
+
+		Ok(RaytracingPipeline {
+			pipeline
+		})
 	}
 
 	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
@@ -1132,9 +1283,11 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn submit(&self, cmd: &Self::CmdList) {
-		unsafe { self.device.end_command_buffer(cmd.command_buffer) }.unwrap();
+		let command_buffer = cmd.command_buffers[cmd.bb_index];
 
-		let command_buffers = [cmd.command_buffer];
+		unsafe { self.device.end_command_buffer(command_buffer) }.unwrap();
+
+		let command_buffers = [command_buffer];
 
 		let submit_infos = vk::SubmitInfo::default()
 			.command_buffers(&command_buffers);
@@ -1143,24 +1296,41 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn queue_wait(&self) {
-		todo!()
+		unsafe { self.device.queue_wait_idle(self.graphics_queue) }.unwrap();
 	}
 
 	fn adapter_info(&self) -> &super::AdapterInfo {
-		todo!()
+		&self.adapter_info
 	}
 
 	fn capabilities(&self) -> &super::Capabilities {
-		todo!()
+		&self.capabilities
 	}
 
 	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
-		todo!()
+		let info = AccelerationStructureInfo::build(desc);
+
+		let mut size_info = vk::AccelerationStructureBuildSizesInfoKHR::default();
+		unsafe {
+			self.acceleration_structure_ext.get_acceleration_structure_build_sizes(
+				vk::AccelerationStructureBuildTypeKHR::DEVICE,
+				&info.build_info,
+				&info.max_primitve_counts,
+				&mut size_info,
+			)
+		}
+
+		super::AccelerationStructureSizes {
+			acceleration_structure_size: size_info.acceleration_structure_size as _,
+			update_scratch_size: size_info.update_scratch_size as _,
+			build_scratch_size: size_info.build_scratch_size as _,
+		}
 	}
 }
 
 pub struct CmdList {
-	command_buffer: vk::CommandBuffer,
+	bb_index: usize,
+	command_buffers: Vec<vk::CommandBuffer>,
 	device: ash::Device,
 
 	// TODO: Initialize variables, move to Device
@@ -1169,425 +1339,129 @@ pub struct CmdList {
 	debug_utils_ext: Option<ash::ext::debug_utils::Device>,
 }
 
-impl CmdList {
-	fn cmd(&self) -> vk::CommandBuffer {
-		self.command_buffer
-	}
+struct AccelerationStructureInfo<'a> {
+	build_info: vk::AccelerationStructureBuildGeometryInfoKHR<'a>,
+	_geometry: Box<[vk::AccelerationStructureGeometryKHR<'a>]>,
+	build_range_infos: Box<[vk::AccelerationStructureBuildRangeInfoKHR]>,
+	max_primitve_counts: Box<[u32]>,
 }
 
-impl super::CmdListImpl<Device> for CmdList {
-	fn reset(&mut self, device: &Device, surface: &Surface) {
-		todo!()
+impl<'a> AccelerationStructureInfo<'a> {
+	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> vk::AccelerationStructureGeometryKHR {
+		let aabbs_data = vk::AccelerationStructureGeometryAabbsDataKHR::default()
+			.data(vk::DeviceOrHostAddressConstKHR {
+				device_address: aabbs.data.0,
+			})
+			.stride(aabbs.stride as _);
+
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::AABBS)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs: aabbs_data })
+			.flags(map_acceleration_structure_geometry_flags(aabbs.flags))
 	}
 
-	fn copy_buffer(
-		&self,
-		src: &Buffer,
-		src_offset: u64,
-		dst: &Buffer,
-		dst_offset: u64,
-		size: u64,
-	) {
-		unsafe {
-			self.device.cmd_copy_buffer(self.command_buffer, src.buffer, dst.buffer, &[vk::BufferCopy {
-				src_offset,
-				dst_offset,
-				size,
-			}]);
-		}
+	fn map_triangles(triangles: &super::AccelerationStructureTriangles) -> vk::AccelerationStructureGeometryKHR {
+		let triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
+			.vertex_format(map_format(triangles.vertex_format))
+			.vertex_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.vertex_buffer.0,
+			})
+			.vertex_stride(triangles.vertex_stride as _)
+			.max_vertex(triangles.vertex_count as _)
+			.index_type(map_index_format(triangles.index_format))
+			.index_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.index_buffer.0,
+			})
+			.transform_data(vk::DeviceOrHostAddressConstKHR {
+				device_address: triangles.transform.0,
+			});
+
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { triangles: triangles_data })
+			.flags(map_acceleration_structure_geometry_flags(triangles.flags))
 	}
 
-	fn copy_texture(
-		&self,
-		src: &Texture,
-		src_mip_level: u32,
-		src_array_slice: u32,
-		src_offset: [u32; 3],
-		dst: &Texture,
-		dst_mip_level: u32,
-		dst_array_slice: u32,
-		dst_offset: [u32; 3],
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.device.cmd_copy_image(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::ImageCopy {
-				src_subresource: vk::ImageSubresourceLayers {
-					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
-					mip_level: src_mip_level,
-					base_array_layer: src_array_slice,
-					layer_count: 1,
-				},
-				src_offset: map_offset(&src_offset),
-				dst_subresource: vk::ImageSubresourceLayers {
-					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
-					mip_level: dst_mip_level,
-					base_array_layer: dst_array_slice,
-					layer_count: 1,
-				},
-				dst_offset: map_offset(&dst_offset),
-				extent: map_extent(&size),
-			}]);
-		}
+	fn map_instances(instances: &super::AccelerationStructureInstances) -> vk::AccelerationStructureGeometryKHR {
+		let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default()
+			.data(vk::DeviceOrHostAddressConstKHR {
+				device_address: instances.data.0,
+			});
+
+		vk::AccelerationStructureGeometryKHR::default()
+			.geometry_type(vk::GeometryTypeKHR::INSTANCES)
+			.geometry(vk::AccelerationStructureGeometryDataKHR { instances: instances_data })
 	}
 
-	fn copy_buffer_to_texture(
-		&self,
-		src: &Buffer,
-		src_offset: u64,
-		src_bytes_per_row: u32,
-		dst: &Texture,
-		dst_mip_level: u32,
-		dst_array_slice: u32,
-		dst_offset: [u32; 3],
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.device.cmd_copy_buffer_to_image(self.command_buffer, src.buffer, dst.image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[vk::BufferImageCopy {
-				buffer_offset: src_offset,
-				buffer_row_length: src_bytes_per_row,
-				buffer_image_height: 0,
-				image_subresource: vk::ImageSubresourceLayers {
-					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
-					mip_level: dst_mip_level,
-					base_array_layer: dst_array_slice,
-					layer_count: 1,
-				},
-				image_offset: map_offset(&dst_offset),
-				image_extent: map_extent(&size),
-			}]);
-		}
-	}
+	fn build(desc: &'a super::AccelerationStructureBuildInputs) -> Self {
+		let (geometries, max_primitve_counts, ranges) = match &desc.entries {
+			super::AccelerationStructureEntries::Instances(instances) => {
+				let ranges = vk::AccelerationStructureBuildRangeInfoKHR::default()
+					.primitive_count(instances.count as u32);
 
-	fn copy_texture_to_buffer(
-		&self,
-		src: &Texture,
-		src_mip_level: u32,
-		src_array_slice: u32,
-		src_offset: [u32; 3],
-		dst: &Buffer,
-		dst_offset: u64,
-		dst_bytes_per_row: u32,
-		size: [u32; 3],
-	) {
-		unsafe {
-			self.device.cmd_copy_image_to_buffer(self.command_buffer, src.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst.buffer, &[vk::BufferImageCopy {
-				buffer_offset: dst_offset,
-				buffer_row_length: dst_bytes_per_row,
-				buffer_image_height: 0,
-				image_subresource: vk::ImageSubresourceLayers {
-					aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
-					mip_level: src_mip_level,
-					base_array_layer: src_array_slice,
-					layer_count: 1,
-				},
-				image_offset: map_offset(&src_offset),
-				image_extent: map_extent(&size),
-			}]);
-		}
-	}
-
-	fn render_pass_begin(&self, desc: &super::RenderPassDesc<Device>) {
-		let color_attachments = desc.colors.iter().map(|target| {
-			let (load_op, clear) = map_load_op(target.load_op);
-			vk::RenderingAttachmentInfo::default()
-				.image_view(target.texture.rtv.unwrap())
-				.image_layout(vk::ImageLayout::GENERAL) // TODO: COLOR_ATTACHMENT_OPTIMAL or others
-				.load_op(load_op)
-				.store_op(map_store_op(target.store_op))
-				.clear_value(vk::ClearValue {
-					color: vk::ClearColorValue {
-						float32: clear.into(),
-					},
-				})
-		}).collect::<Vec<_>>();
-
-		let depth_stencil = desc.depth_stencil.as_ref().map(|target| {
-			let (load_op, clear) = map_load_op(target.load_op);
-			vk::RenderingAttachmentInfo::default()
-				.image_view(target.texture.dsv.unwrap())
-				.image_layout(vk::ImageLayout::GENERAL) // TODO: DEPTH_STENCIL_ATTACHMENT_OPTIMAL or others
-				.load_op(load_op)
-				.store_op(map_store_op(target.store_op))
-				.clear_value(vk::ClearValue {
-					depth_stencil: vk::ClearDepthStencilValue {
-						depth: clear.0,
-						stencil: clear.1 as u32,
-					},
-				})
-		});
-
-		let mut vk_info = vk::RenderingInfo::default()
-			.layer_count(1)
-			.color_attachments(&color_attachments);
-
-		if let Some(ref depth_stencil) = depth_stencil {
-			vk_info = vk_info.depth_attachment(depth_stencil);
-			vk_info = vk_info.stencil_attachment(depth_stencil); // TODO: Conditionally enable
-		}
-
-		unsafe {
-			self.device.cmd_begin_rendering(self.command_buffer, &vk_info);
-		}
-	}
-
-	fn render_pass_end(&self) {
-		unsafe {
-			self.device.cmd_end_rendering(self.command_buffer);
-		}
-	}
-
-	fn barriers(&self, barriers: &super::Barriers<Device>) {
-		let memory_barriers = barriers.global.iter().map(|barrier| {
-			vk::MemoryBarrier2::default()
-		}).collect::<Vec<_>>();
-
-		let buffer_memory_barriers = barriers.buffer.iter().map(|barrier| {
-			vk::BufferMemoryBarrier2::default()
-				.buffer(barrier.buffer.buffer)
-		}).collect::<Vec<_>>();
-
-		let image_memory_barriers = barriers.texture.iter().map(|barrier| {
-			vk::ImageMemoryBarrier2::default()
-				.old_layout(map_image_layout(barrier.old_layout))
-				.new_layout(map_image_layout(barrier.new_layout))
-				.image(barrier.texture.image)
-		}).collect::<Vec<_>>();
-
-		let dependency_info = vk::DependencyInfo::default()
-			.memory_barriers(&memory_barriers)
-			.buffer_memory_barriers(&buffer_memory_barriers)
-			.image_memory_barriers(&image_memory_barriers);
-
-		unsafe {
-			self.device.cmd_pipeline_barrier2(self.command_buffer, &dependency_info);
-		}
-
-		panic!("Not fully implemented");
-	}
-
-	fn set_viewport(&self, rect: &super::Rect<f32>, depth: Range<f32>) {
-		let vk_viewport = vk::Viewport {
-			x: rect.left,
-			y: rect.bottom,
-			width: rect.right - rect.left,
-			height: rect.top - rect.bottom,
-			min_depth: depth.start,
-			max_depth: depth.end,
-		};
-
-		unsafe {
-			self.device.cmd_set_viewport(self.command_buffer, 0, &[vk_viewport]);
-		}
-	}
-
-	fn set_scissor(&self, rect: &super::Rect<u32>) {
-		let vk_rect = vk::Rect2D {
-			offset: vk::Offset2D {
-				x: rect.left as _,
-				y: rect.top as _,
-			},
-			extent: vk::Extent2D {
-				width: (rect.right - rect.left),
-				height: (rect.top - rect.bottom),
-			},
-		};
-
-		unsafe {
-			self.device.cmd_set_scissor(self.command_buffer, 0, &[vk_rect]);
-		}
-	}
-
-	fn set_blend_constant(&self, color: super::Color<f32>) {
-		unsafe {
-			self.device.cmd_set_blend_constants(self.command_buffer, &[color.r, color.g, color.b, color.a]);
-		}
-	}
-
-	fn set_stencil_reference(&self, reference: u32) {
-		unsafe {
-			self.device.cmd_set_stencil_reference(self.command_buffer, vk::StencilFaceFlags::FRONT_AND_BACK, reference);
-		}
-	}
-
-	fn set_index_buffer(&self, buffer: &Buffer, offset: u64, format: super::Format) {
-		let vk_format = map_index_format(format);
-
-		unsafe {
-			self.device.cmd_bind_index_buffer(self.command_buffer, buffer.buffer, offset, vk_format);
-		}
-	}
-
-	fn set_graphics_pipeline(&self, pipeline: &GraphicsPipeline) {
-		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
-		}
-	}
-
-	fn set_compute_pipeline(&self, pipeline: &ComputePipeline) {
-		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::COMPUTE, pipeline.pipeline);
-		}
-	}
-
-	fn set_raytracing_pipeline(&self, pipeline: &RaytracingPipeline) {
-		unsafe {
-			self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::RAY_TRACING_KHR, pipeline.pipeline);
-		}
-	}
-
-	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
-		/*unsafe {
-			self.device.cmd_push_constants(
-				self.command_buffer,
-				self.pipeline_layout,
-				vk::ShaderStageFlags::ALL_GRAPHICS,
-				0,
-				data,
-			);
-		}*/
-		todo!()
-	}
-
-	fn compute_push_constants(&self, offset: u32, data: &[u8]) {
-		/*unsafe {
-			self.device.cmd_push_constants(
-				self.command_buffer,
-				self.pipeline_layout,
-				vk::ShaderStageFlags::COMPUTE,
-				0,
-				data,
-			);
-		}*/
-		todo!()
-	}
-
-	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
-		unsafe {
-			self.device.cmd_draw(self.command_buffer, vertices.len() as u32, instances.len() as u32, vertices.start, vertices.start);
-		}
-	}
-
-	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
-		unsafe {
-			self.device.cmd_draw_indexed(self.command_buffer, indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
-		}
-	}
-
-	fn dispatch(&self, groups: [u32; 3]) {
-		unsafe {
-			self.device.cmd_dispatch(self.command_buffer, groups[0], groups[1], groups[2]);
-		}
-	}
-
-	fn dispatch_rays(&self, desc: &super::DispatchRaysDesc) {
-		unsafe {
-			self.ray_tracing_pipeline_ext.cmd_trace_rays(
-				self.command_buffer,
-				&desc.raygen.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
-					device_address: t.ptr.0,
-					stride: t.stride as _,
-					size: t.size as _,
-				}),
-				&desc.miss.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
-					device_address: t.ptr.0,
-					stride: t.stride as _,
-					size: t.size as _,
-				}),
-				&desc.hit_group.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
-					device_address: t.ptr.0,
-					stride: t.stride as _,
-					size: t.size as _,
-				}),
-				&desc.callable.as_ref().map_or(Default::default(), |t| vk::StridedDeviceAddressRegionKHR {
-					device_address: t.ptr.0,
-					stride: t.stride as _,
-					size: t.size as _,
-				}),
-				desc.size[0],
-				desc.size[1],
-				desc.size[2],
-			);
-		}
-	}
-
-	fn build_acceleration_structure(&self, desc: &super::AccelerationStructureBuildDesc<Device>) {
-		todo!()
-	}
-
-	fn debug_marker(&self, name: &str, color: super::Color<u8>) {
-		if let Some(ext) = &self.debug_utils_ext {
-			let name = CString::new(name).unwrap();
-			let label = vk::DebugUtilsLabelEXT::default()
-				.label_name(&name)
-				.color(color.to_f32().into());
-
-			unsafe { ext.cmd_insert_debug_utils_label(self.command_buffer, &label) };
-		}
-	}
-
-	fn debug_event_push(&self, name: &str, color: super::Color<u8>) {
-		if let Some(ext) = &self.debug_utils_ext {
-			let name = CString::new(name).unwrap();
-			let label = vk::DebugUtilsLabelEXT::default()
-				.label_name(&name)
-				.color(color.to_f32().into());
-
-			unsafe { ext.cmd_begin_debug_utils_label(self.command_buffer, &label) };
-		}
-	}
-
-	fn debug_event_pop(&self) {
-		if let Some(ext) = &self.debug_utils_ext {
-			unsafe { ext.cmd_end_debug_utils_label(self.command_buffer) };
-		}
-	}
-}
-
-fn build_acceleration_structure_input(inputs: super::AccelerationStructureBuildInputs) {
-
-	let geometries: Vec<vk::AccelerationStructureGeometryKHR> = Vec::new();
-	let primitive_counts: Vec<usize> = Vec::new();
-	//let range_infos: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = Vec::new();
-
-	for geo in inputs.geometry {
-		let vk_geo = match geo.part {
-
-			// TODO: pass count to next struct
-			super::GeometryPart::AABBs(aabbs) => {
-				let aabbs = vk::AccelerationStructureGeometryAabbsDataKHR::default()
-					.data(vk::DeviceOrHostAddressConstKHR {
-						device_address: aabbs.data.0,
-					})
-					.stride(aabbs.stride as _);
-
-				vk::AccelerationStructureGeometryKHR::default()
-					.geometry_type(vk::GeometryTypeKHR::AABBS)
-					.geometry(vk::AccelerationStructureGeometryDataKHR { aabbs })
-					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+				(vec![Self::map_instances(instances)], vec![instances.count as u32], vec![ranges])
 			}
+			super::AccelerationStructureEntries::Triangles(in_geometries) => {
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = in_geometries.iter().map(|triangles| {
+					Self::map_triangles(triangles)
+				}).collect();
 
-			// TODO: pass index_count / 3 to next struct
-			super::GeometryPart::Triangles(triangles) => {
-				let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
-					.vertex_format(map_format(triangles.vertex_format))
-					.vertex_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.vertex_buffer.0,
-					})
-					.vertex_stride(triangles.vertex_stride as _)
-					.max_vertex(triangles.vertex_count as _)
-					.index_type(map_index_format(triangles.index_format))
-					.index_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.index_buffer.0,
-					})
-					.transform_data(vk::DeviceOrHostAddressConstKHR {
-						device_address: triangles.transform.0,
-					});
+				let primitive_counts: Vec<u32> = in_geometries.iter().map(|triangles| {
+					if triangles.index_buffer.is_null() {
+						triangles.vertex_count as u32
+					} else {
+						triangles.index_count as u32 / 3
+					}
+				}).collect();
 
-				vk::AccelerationStructureGeometryKHR::default()
-					.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-					.geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
-					.flags(map_acceleration_structure_geometry_flags(geo.flags))
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = in_geometries.iter().map(|triangles| {
+					vk::AccelerationStructureBuildRangeInfoKHR::default()
+						.primitive_count(if triangles.index_buffer.is_null() {
+							triangles.vertex_count as u32
+						} else {
+							triangles.index_count as u32 / 3
+						})
+				}).collect();
+
+				(geometries, primitive_counts, ranges)
+			}
+			super::AccelerationStructureEntries::AABBs(aabbs) => {
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = aabbs.iter().map(|aabb| {
+					Self::map_aabbs(aabb)
+				}).collect();
+
+				let primitive_counts: Vec<u32> = aabbs.iter().map(|aabb| {
+					aabb.count as u32
+				}).collect();
+
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = aabbs.iter().map(|aabb| {
+					vk::AccelerationStructureBuildRangeInfoKHR::default()
+						.primitive_count(aabb.count as u32)
+				}).collect();
+
+				(geometries, primitive_counts, ranges)
 			}
 		};
+
+		let ty = match &desc.entries {
+			super::AccelerationStructureEntries::Instances(_) => {
+				vk::AccelerationStructureTypeKHR::TOP_LEVEL
+			}
+			_ => vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+		};
+
+		let mut build_info = vk::AccelerationStructureBuildGeometryInfoKHR::default()
+			.ty(ty)
+			.flags(map_acceleration_structure_flags(desc.flags));
+
+		build_info.geometry_count = geometries.len() as _;
+		build_info.p_geometries = geometries.as_ptr();
+
+		Self {
+			build_info,
+			max_primitve_counts: max_primitve_counts.into_boxed_slice(),
+			build_range_infos: ranges.into_boxed_slice(),
+			_geometry: geometries.into_boxed_slice(),
+		}
 	}
 }

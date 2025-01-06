@@ -256,7 +256,7 @@ impl Scene {
 				mask: 0xff,
 				contribution_to_hit_group_index: 0,
 				flags: gpu::AccelerationStructureInstanceFlags::empty(),
-				bottom_level: mesh_data.blas.buffer.gpu_ptr(),
+				bottom_level: mesh_data.blas.accel.gpu_ptr(),
 			};
 
 			gpu::AccelerationStructure::write_instance_descriptor(&instance_desc, &mut instance_descriptors[instance_index * instance_descriptor_size..]);
@@ -264,7 +264,9 @@ impl Scene {
 			instance_index += 1;
 		}
 
-		self.tlas.build_inputs.instances.count = instance_index;
+		self.tlas.build_inputs.entries = gpu::AccelerationStructureEntries::Instances(
+			gpu::AccelerationStructureInstances { data: self.tlas.instance_buffer.gpu_ptr(), count: instance_index }
+		);
 
 		// ACCELERATION STRUCTURES
 

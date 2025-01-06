@@ -26,7 +26,7 @@ fn main() {
 		power_preference: gpu::PowerPreference::HighPerformance,
 	});
 
-	let shader_compiler = gpu::ShaderCompiler::new();
+	let shader_compiler = gpu::ShaderCompiler::new(gpu::BACKEND);
 
 	let monitor = &os::platform::App::enumerate_monitors()[0];
 	let mut window = app.create_window(&os::WindowDesc {

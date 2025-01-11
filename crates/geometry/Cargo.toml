@@ -1,0 +1,11 @@
+[package]
+name = "geometry"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+asset = { path = "../asset" }
+gpu = { path = "../gpu" }
+math = { path = "../math" }
+
+byteorder = "1"

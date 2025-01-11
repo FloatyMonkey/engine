@@ -5,41 +5,22 @@ edition = "2021"
 publish = false
 license = "MIT OR Apache-2.0"
 
+[workspace]
+members = ["crates/*"]
+
 [dependencies]
-ash = "0.38.0"
-bitflags = "2.4.1"
-byteorder = "1"
+asset = { path = "crates/asset" }
+ecs = { path = "crates/ecs" }
+geometry = { path = "crates/geometry" }
+gpu = { path = "crates/gpu" }
+graphics = { path = "crates/graphics" }
+math = { path = "crates/math" }
+os = { path = "crates/os" }
+
 egui = "0.26.2"
 egui_extras = { version = "0.26.2", features = ["svg"] }
 egui-gizmo = "0.16.1"
-exr = "1.71.0"
-gpu-allocator = "0.27.0"
 log = "0.4.21"
-rand = "0.8.5"
-slang = { git = "https://github.com/FloatyMonkey/slang-rs.git" }
-
-[dependencies.windows]
-version = "0.58.0"
-features = [
-	"Win32_Foundation",
-	"Win32_Graphics_Direct3D",
-	"Win32_Graphics_Direct3D12",
-	"Win32_Graphics_Dwm",
-	"Win32_Graphics_Dxgi_Common",
-	"Win32_Graphics_Gdi",
-	"Win32_Security",
-	"Win32_System_Com",
-	"Win32_System_LibraryLoader",
-	"Win32_System_SystemServices",
-	"Win32_System_Threading",
-	"Win32_System_WindowsProgramming",
-	"Win32_UI_Controls",
-	"Win32_UI_HiDpi",
-	"Win32_UI_Input_KeyboardAndMouse",
-	"Win32_UI_Shell_Common",
-	"Win32_UI_Shell",
-	"Win32_UI_WindowsAndMessaging",
-]
 
 [[bin]]
 name = "editor"

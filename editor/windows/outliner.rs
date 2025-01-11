@@ -1,4 +1,4 @@
-use crate::ecs::{self, Entity, World};
+use ecs::{self, Entity, World};
 use crate::icons;
 use crate::tabs;
 use crate::editor::MyContext;
@@ -16,13 +16,13 @@ impl OutlinerTab {
 fn icon_for_entity(world: &World, entity: Entity) -> char {
 	let e = world.entity(entity);
 
-	if e.contains::<crate::graphics::camera::Camera> () {
+	if e.contains::<graphics::camera::Camera> () {
 		icons::OUTLINER_DATA_CAMERA
-	} else if e.contains::<crate::scene::DomeLight>() {
+	} else if e.contains::<graphics::scene::DomeLight>() {
 		icons::LIGHT_HEMI
-	} else if e.contains::<crate::scene::RectLight>() {
+	} else if e.contains::<graphics::scene::RectLight>() {
 		icons::LIGHT_AREA
-	} else if e.contains::<crate::scene::SphereLight>() {
+	} else if e.contains::<graphics::scene::SphereLight>() {
 		icons::LIGHT_POINT
 	} else {
 		icons::DOT

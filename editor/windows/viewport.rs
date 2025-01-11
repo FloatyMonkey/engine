@@ -1,8 +1,7 @@
-use engine::graphics::camera::Camera;
+use graphics::camera::Camera;
+use math::{Mat4, Vec3, transform::Transform3, Unit, UnitQuaternion, Quaternion};
 
-use crate::math::{Mat4, Vec3, transform::Transform3, Unit, UnitQuaternion, Quaternion};
 use crate::time::Time;
-
 use crate::icons;
 use crate::tabs;
 use crate::editor::MyContext;

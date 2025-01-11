@@ -1,0 +1,30 @@
+[package]
+name = "gpu"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["d3d12", "vulkan"]
+d3d12 = [
+	"gpu-allocator/d3d12",
+]
+vulkan = [
+	"dep:ash",
+	"gpu-allocator/vulkan"
+]
+
+[dependencies]
+ash = { version = "0.38.0", optional = true }
+bitflags = "2.4.1"
+gpu-allocator = { version = "0.27.0", default-features = false }
+log = "0.4.21"
+slang = { git = "https://github.com/FloatyMonkey/slang-rs.git" }
+windows = { version = "0.58.0", features = [
+	"Win32_Foundation",
+	"Win32_Graphics_Direct3D",
+	"Win32_Graphics_Direct3D12",
+	"Win32_Graphics_Dxgi_Common",
+	"Win32_Security",
+	"Win32_System_LibraryLoader",
+	"Win32_System_Threading",
+] }

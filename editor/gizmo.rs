@@ -1,5 +1,5 @@
-use engine::math::{Vec2, Vec3, UnitQuaternion, Unit};
-use engine::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
+use math::{Vec2, Vec3, UnitQuaternion, Unit};
+use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
 
 #[repr(C)]
 struct Vertex {

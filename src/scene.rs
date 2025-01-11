@@ -1,10 +1,7 @@
-use crate::{
-	asset::{AssetId, AssetServer},
-	ecs::World,
-	geometry::{self, mesh::Mesh},
-	graphics::{camera::Camera, scene::Image},
-	math::{transform::Transform3, Vec3, UnitQuaternion, PI},
-};
+use asset::AssetServer;
+use ecs::World;
+use math::{transform::Transform3, Vec3, UnitQuaternion, PI};
+use graphics::{camera::Camera, scene::{Renderable, DomeLight, RectLight, SphereLight}};
 
 pub struct Name {
 	pub name: String,
@@ -16,25 +13,6 @@ impl Name {
 			name: name.into(),
 		}
 	}
-}
-
-pub struct Renderable {
-	pub mesh: AssetId<Mesh>,
-}
-
-pub struct DomeLight {
-	pub image: AssetId<Image>,
-}
-
-pub struct SphereLight {
-	pub emission: [f32; 3],
-	pub radius: f32,
-}
-
-pub struct RectLight {
-	pub emission: [f32; 3],
-	pub width: f32,
-	pub height: f32,
 }
 
 pub fn setup_scene(world: &mut World, assets: &mut AssetServer) {

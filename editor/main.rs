@@ -8,12 +8,12 @@ mod windows;
 
 use engine::*;
 
-use crate::asset::AssetServer;
+use asset::AssetServer;
+use gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
+use graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
+use math::{Mat4, transform::Transform3};
+use os::{self, App, Window};
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
-use crate::gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
-use crate::graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
-use crate::math::{Mat4, transform::Transform3};
-use crate::os::{self, App, Window};
 use crate::scene::setup_scene;
 
 fn main() {
@@ -48,7 +48,7 @@ fn main() {
 		format: gpu::Format::RGBA8UNorm,
 	};
 
-	let mut surface = device.create_surface(&surface_info, &window.native_handle()).unwrap();
+	let mut surface = device.create_surface(&surface_info, gpu::WindowHandle(window.native_handle().0)).unwrap();
 	let mut cmd = device.create_cmd_list(2);
 
 	let mut egui_renderer = EguiRenderer::new(&mut device, &shader_compiler);

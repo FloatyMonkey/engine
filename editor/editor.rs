@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::ecs::{Entity, World};
+use ecs::{Entity, World};
 use crate::time::Time;
 
 use super::tabs;

@@ -1,0 +1,14 @@
+[package]
+name = "graphics"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+asset = { path = "../asset" }
+ecs = { path = "../ecs" }
+geometry = { path = "../geometry" }
+gpu = { path = "../gpu" }
+math = { path = "../math" }
+
+exr = "1.71.0"
+rand = "0.8.5"

@@ -999,10 +999,13 @@ impl super::DeviceImpl for Device {
 
 			let cpu_ptr = {
 				let mut ptr = std::ptr::null_mut();
-				if !matches!(desc.memory, super::Memory::GpuOnly) {
-					let read_range = matches!(desc.memory, super::Memory::CpuToGpu).then_some(&D3D12_RANGE::default() as *const _);
-					resource.Map(0, read_range, Some(&mut ptr))?;
-				}
+
+				match desc.memory {
+					super::Memory::GpuOnly => (),
+					super::Memory::CpuToGpu => resource.Map(0, Some(&D3D12_RANGE::default()), Some(&mut ptr)).unwrap(),
+					super::Memory::GpuToCpu => resource.Map(0, None, Some(&mut ptr)).unwrap(),
+				};
+
 				ptr as *mut u8
 			};
 

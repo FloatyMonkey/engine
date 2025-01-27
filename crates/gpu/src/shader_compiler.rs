@@ -16,11 +16,11 @@ impl ShaderCompiler {
 	pub fn compile(&self, file: &str, entry_point_name: &str) -> Vec<u8> {
 		let search_path = std::ffi::CString::new("shaders").unwrap();
 
-		let session_options = slang::OptionsBuilder::new()
+		let session_options = slang::CompilerOptions::default()
 			.optimization(slang::OptimizationLevel::High)
 			.matrix_layout_row(true);
 
-		let target_desc = slang::TargetDescBuilder::new()
+		let target_desc = slang::TargetDesc::default()
 			.format(match self.backend {
 				super::Backend::D3D12 => slang::CompileTarget::Dxil,
 				super::Backend::Vulkan => slang::CompileTarget::Spirv,
@@ -30,9 +30,12 @@ impl ShaderCompiler {
 				super::Backend::Vulkan => "glsl_450",
 			}));
 
-		let session_desc = slang::SessionDescBuilder::new()
-			.targets(&[*target_desc])
-			.search_paths(&[search_path.as_ptr()])
+		let targets = [target_desc];
+		let search_paths = [search_path.as_ptr()];
+
+		let session_desc = slang::SessionDesc::default()
+			.targets(&targets)
+			.search_paths(&search_paths)
 			.options(&session_options);
 
 		let session = self.global_session.create_session(&session_desc).unwrap();

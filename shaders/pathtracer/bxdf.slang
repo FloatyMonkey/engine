@@ -1,3 +1,8 @@
+module bxdf;
+
+__include bxdfs.diffuse;
+__include bxdfs.conductor;
+
 import onb;
 import sample_generator;
 import spectrum;

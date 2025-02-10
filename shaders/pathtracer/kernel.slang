@@ -6,9 +6,6 @@ import math;
 import sampling;
 import spectrum;
 
-import bxdfs.diffuse;
-import bxdfs.conductor;
-
 ByteAddressBuffer buffers[] : register(t0, space1);
 RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2);
 Texture2D<float4> textures_2d_float4[] : register(t0, space3);

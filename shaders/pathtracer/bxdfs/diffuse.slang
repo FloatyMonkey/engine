@@ -1,14 +1,15 @@
-import bxdf;
+implementing bxdf;
+
 import math;
 import onb;
 import spectrum;
 import sample_generator;
 import pathtracer.sampling;
 
-struct DiffuseBxdf: Bxdf {
-	SampledSpectrum albedo;
+public struct DiffuseBxdf : Bxdf {
+    public SampledSpectrum albedo;
 
-	func eval(wi: float3, wo: float3) -> BxdfEval {
+    public func eval(wi: float3, wo: float3) -> BxdfEval {
 		if (!onb::same_hemisphere(wi, wo)) {
 			return {};
 		}
@@ -18,7 +19,7 @@ struct DiffuseBxdf: Bxdf {
 		return { albedo / PI, pdf };
 	}
 
-	func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
+    public func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
 		var wo = sample_cosine_hemisphere(sample_next_2d(sg));
 
 		if (wi.z < 0.0) {

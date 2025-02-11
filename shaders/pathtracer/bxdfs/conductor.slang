@@ -9,11 +9,11 @@ import pathtracer.microfacet;
 import pathtracer.fresnel;
 
 public struct ConductorBxdf: Bxdf {
-    public TrowbridgeReitzDistribution distribution;
-    public SampledSpectrum eta;
-    public SampledSpectrum k;
+	public TrowbridgeReitzDistribution distribution;
+	public SampledSpectrum eta;
+	public SampledSpectrum k;
 
-    public func eval(wi: float3, wo: float3) -> BxdfEval {
+	public func eval(wi: float3, wo: float3) -> BxdfEval {
 		if (!onb::same_hemisphere(wi, wo)) {
 			return {};
 		}
@@ -39,7 +39,7 @@ public struct ConductorBxdf: Bxdf {
 		return { f, pdf };
 	}
 
-    public func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
+	public func sample<S: SampleGenerator>(wi: float3, inout sg: S) -> BxdfSample {
 		if (distribution.is_singular()) {
 			let wo = float3(-wi.x, -wi.y, wi.z);
 			let f = fr_conductor(onb::abs_cos_theta(wo), eta, k) / onb::abs_cos_theta(wo);

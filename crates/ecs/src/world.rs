@@ -114,7 +114,7 @@ impl Archetype {
 			.downcast_ref::<Vec<C>>()
 			.unwrap();
 
-		std::mem::transmute(data.as_slice())
+		unsafe { std::mem::transmute(data.as_slice()) }
 	}
 
 	pub fn contains(&self, component_id: ComponentId) -> bool {

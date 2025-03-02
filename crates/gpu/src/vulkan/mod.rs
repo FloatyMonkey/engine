@@ -500,7 +500,7 @@ unsafe extern "system" fn debug_callback(
 		_ => unreachable!(),
 	};
 
-	let message = CStr::from_ptr((*callback_data).p_message);
+	let message = unsafe { CStr::from_ptr((*callback_data).p_message) };
 
 	log::log!(target: "gpu::vulkan", log_level, "{}", message.to_str().unwrap());
 	println!("{}", message.to_str().unwrap()); // TODO: Remove

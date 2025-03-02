@@ -1,6 +1,7 @@
 use windows::{
 	core::*,
 	Win32::Foundation::*,
+	Win32::Foundation::BOOL,
 	Win32::Graphics::Gdi::{
 		ClientToScreen, EnumDisplayMonitors, GetMonitorInfoW, MonitorFromWindow, ScreenToClient, ValidateRect,
 		HDC, HMONITOR, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST
@@ -51,7 +52,7 @@ impl Drop for Window {
 impl Drop for App {
 	fn drop(&mut self) {
 		unsafe {
-			UnregisterClassW(PCWSTR(self.window_class_wide.as_ptr()), self.hinstance).unwrap();
+			UnregisterClassW(PCWSTR(self.window_class_wide.as_ptr()), Some(self.hinstance)).unwrap();
 		}
 	}
 }
@@ -166,9 +167,9 @@ impl super::App for App {
 				rect.y,
 				rect.width,
 				rect.height,
-				HWND::default(),
+				Some(HWND::default()),
 				None,
-				self.hinstance,
+				Some(self.hinstance),
 				Some(self as *const _ as _), // TODO: Ptr might break
 			).unwrap();
 
@@ -231,8 +232,8 @@ impl super::App for App {
 		}
 		self.cursor = *cursor;
 		unsafe {
-			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(HINSTANCE::default(), c)) {
-				SetCursor(cursor);
+			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(Some(HINSTANCE::default()), c)) {
+				SetCursor(Some(cursor));
 			}
 		}
 	}
@@ -319,7 +320,7 @@ impl super::Window for Window {
 			SetActiveWindow(self.hwnd).unwrap();
 			BringWindowToTop(self.hwnd).unwrap();
 			let _ = SetForegroundWindow(self.hwnd);
-			SetFocus(self.hwnd).unwrap();
+			SetFocus(Some(self.hwnd)).unwrap();
 		}
 	}
 
@@ -350,29 +351,29 @@ impl super::Window for Window {
 }
 
 unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-	let app = &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut App);
+	let app = unsafe { &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut App) };
 	let proc_data = &mut app.proc_data;
 
 	match message {
 		WM_CREATE => {
-			let create_struct = &*(lparam.0 as *const CREATESTRUCTW);
-			SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _);
+			let create_struct = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
+			unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _) };
 			LRESULT(0)
 		}
 		WM_DESTROY => {
-			PostQuitMessage(0);
+			unsafe { PostQuitMessage(0) };
 			LRESULT(0)
 		}
 		WM_MOUSEMOVE => {
 			proc_data.mouse_hwnd = window;
 			if !proc_data.mouse_tracked {
 				// Call TrackMouseEvent to receive WM_MOUSELEAVE events
-				TrackMouseEvent(&mut TRACKMOUSEEVENT {
+				unsafe { TrackMouseEvent(&mut TRACKMOUSEEVENT {
 					cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
 					dwFlags: TME_LEAVE,
 					hwndTrack: window,
 					dwHoverTime: HOVER_DEFAULT,
-				}).unwrap();
+				}).unwrap() };
 				proc_data.mouse_tracked = true;
 			}
 			LRESULT(0)
@@ -431,7 +432,7 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			LRESULT(0)
 		}
 		WM_PAINT => {
-			let _ = ValidateRect(window, None);
+			let _ = unsafe { ValidateRect(Some(window), None) };
 			LRESULT(0)
 		}
 		WM_CHAR => {
@@ -453,31 +454,31 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 		}
 		WM_SETCURSOR => {
 			if (lparam.0 & 0xffff) as u32 == HTCLIENT {
-				if let Ok(cursor) = map_cursor(&app.cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(HINSTANCE::default(), c)) {
-					SetCursor(cursor);
+				if let Ok(cursor) = map_cursor(&app.cursor).map_or(Ok(HCURSOR::default()), |c| unsafe { LoadCursorW(Some(HINSTANCE::default()), c) }) {
+					unsafe { SetCursor(Some(cursor)) };
 				}
 				LRESULT(1)
 			} else {
-				DefWindowProcW(window, message, wparam, lparam)
+				unsafe { DefWindowProcW(window, message, wparam, lparam) }
 			}
 		}
-		_ => DefWindowProcW(window, message, wparam, lparam),
+		_ => unsafe { DefWindowProcW(window, message, wparam, lparam) },
 	}
 }
 
 unsafe extern "system" fn monitor_enum_proc(monitor: HMONITOR, _hdc: HDC, _lprect: *mut RECT, lparam: LPARAM) -> BOOL {
-	let monitors = &mut *(lparam.0 as *mut Vec<super::MonitorInfo>);
+	let monitors = unsafe { &mut *(lparam.0 as *mut Vec<super::MonitorInfo>) };
 
 	let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
 	info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
 
-	if GetMonitorInfoW(monitor, &mut info as *mut _ as *mut _) == false {
+	if unsafe { GetMonitorInfoW(monitor, &mut info as *mut _ as *mut _) } == false {
 		return false.into();
 	}
 
 	let mut x_dpi: u32 = 0;
 	let mut y_dpi: u32 = 0;
-	let dpi_scale = if GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi).is_ok() {
+	let dpi_scale = if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi) }.is_ok() {
 		(x_dpi as f32) / 96.0
 	} else {
 		1.0

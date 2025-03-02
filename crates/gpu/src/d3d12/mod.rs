@@ -634,7 +634,7 @@ unsafe extern "system" fn debug_callback(
 		_ => unreachable!(),
 	};
 
-	log::log!(target: "gpu::d3d12", log_level, "{}", description.display());
+	log::log!(target: "gpu::d3d12", log_level, "{}", unsafe { description.display() });
 }
 
 impl Device {

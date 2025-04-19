@@ -137,7 +137,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		unsafe {
 			self.cmd().CopyTextureRegion(
 				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&src.resource),
+					pResource: std::mem::transmute_copy(&dst.resource),
 					Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
 					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
 						PlacedFootprint: D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
@@ -156,7 +156,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				0,
 				0,
 				&D3D12_TEXTURE_COPY_LOCATION {
-					pResource: std::mem::transmute_copy(&dst.resource),
+					pResource: std::mem::transmute_copy(&src.resource),
 					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
 						SubresourceIndex: src_mip_level + src_array_slice * src.resource.GetDesc().MipLevels as u32,

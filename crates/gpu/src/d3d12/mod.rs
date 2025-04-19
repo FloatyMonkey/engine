@@ -917,10 +917,10 @@ impl super::DeviceImpl for Device {
 			let mut resource: Option<ID3D12Resource> = None;
 			self.device.CreateCommittedResource3(
 				&D3D12_HEAP_PROPERTIES {
-					Type: if matches!(desc.memory, super::Memory::CpuToGpu) {
-						D3D12_HEAP_TYPE_UPLOAD
-					} else {
-						D3D12_HEAP_TYPE_DEFAULT
+					Type: match desc.memory {
+						super::Memory::GpuOnly => D3D12_HEAP_TYPE_DEFAULT,
+						super::Memory::CpuToGpu => D3D12_HEAP_TYPE_UPLOAD,
+						super::Memory::GpuToCpu => D3D12_HEAP_TYPE_READBACK,
 					},
 					..Default::default()
 				},

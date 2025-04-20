@@ -358,19 +358,19 @@ impl super::SurfaceImpl<Device> for Surface {
 pub struct Buffer {
 	buffer: vk::Buffer,
 	allocation: allocator::Allocation,
-	srv_index: Option<usize>,
-	uav_index: Option<usize>,
+	srv_index: Option<u32>,
+	uav_index: Option<u32>,
 	cpu_ptr: *mut u8,
 	gpu_ptr: u64,
 }
 
 impl super::BufferImpl<Device> for Buffer {
 	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+		self.srv_index
 	}
 
 	fn uav_index(&self) -> Option<u32> {
-		self.uav_index.map(|i| i as u32)
+		self.uav_index
 	}
 
 	fn cpu_ptr(&self) -> *mut u8 {
@@ -919,11 +919,23 @@ impl super::DeviceImpl for Device {
 
 		let gpu_ptr = unsafe { self.device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer)) };
 
+		let srv_uav_index = desc.usage.intersects(super::BufferUsage::SHADER_RESOURCE | super::BufferUsage::UNORDERED_ACCESS).then(|| {
+			self.bindless_manager.register_buffer_uav(&self.device, buffer)
+		});
+
+		let srv_index = desc.usage.contains(super::BufferUsage::SHADER_RESOURCE).then(|| {
+			srv_uav_index
+		}).flatten();
+
+		let uav_index = desc.usage.intersects(super::BufferUsage::UNORDERED_ACCESS).then(|| {
+			srv_uav_index
+		}).flatten();
+
 		Ok(Buffer {
 			buffer,
 			allocation,
-			srv_index: None, // TODO
-			uav_index: None,
+			srv_index,
+			uav_index,
 			cpu_ptr,
 			gpu_ptr,
 		})
@@ -1490,6 +1502,12 @@ struct BindlessManager {
 	descriptor_pool: vk::DescriptorPool,
 	descriptor_set_layouts: [vk::DescriptorSetLayout; 5],
 	descriptor_sets: [vk::DescriptorSet; 5],
+
+	storage_buffer_index: u32,
+	sampled_image_index: u32,
+	storage_image_index: u32,
+	acceleration_structure_index: u32,
+	sampler_index: u32,
 }
 
 impl BindlessManager {
@@ -1567,13 +1585,18 @@ impl BindlessManager {
 			descriptor_pool,
 			descriptor_set_layouts: descriptor_layouts.try_into().unwrap(),
 			descriptor_sets: descriptor_sets.try_into().unwrap(),
+
+			storage_buffer_index: 0,
+			sampled_image_index: 0,
+			storage_image_index: 0,
+			acceleration_structure_index: 0,
+			sampler_index: 0,
 		}
 	}
 
-	fn register_buffer_uav(&self, device: &ash::Device, buffer: vk::Buffer, current_index: &mut u32) -> Option<u32> {
-		if *current_index >= MAX_BINDLESS_RESOURCES {
-			log::error!("Exceeded MAX_BINDLESS_RESOURCES for Storage Buffers");
-			return None;
+	fn register_buffer_uav(&mut self, device: &ash::Device, buffer: vk::Buffer) -> u32 {
+		if self.storage_buffer_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Storage Buffers");
 		}
 
 		let buffer_info = vk::DescriptorBufferInfo::default()
@@ -1585,14 +1608,14 @@ impl BindlessManager {
 			.dst_set(self.descriptor_sets[0])
 			.dst_binding(0)
 			.descriptor_count(1)
-			.dst_array_element(*current_index)
+			.dst_array_element(self.storage_buffer_index)
 			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 			.buffer_info(std::slice::from_ref(&buffer_info));
 
 		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
-		let assigned_index = *current_index;
-		*current_index += 1;
-		Some(assigned_index)
+		let assigned_index = self.storage_buffer_index;
+		self.storage_buffer_index += 1;
+		assigned_index
 	}
 
 	fn register_texture_srv(&self, device: &ash::Device, image_view: vk::ImageView, current_index: &mut u32) -> Option<u32> {

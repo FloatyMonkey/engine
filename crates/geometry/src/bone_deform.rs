@@ -56,7 +56,7 @@ impl BoneDeform {
 		};
 
 		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs: &shader,
+			cs: ("main", &shader),
 			descriptor_layout: &descriptor_layout,
 		}).unwrap();
 

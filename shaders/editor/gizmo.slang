@@ -1,16 +1,16 @@
 import util;
 
-cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	float4x4 view_projection;
 	float2 screen_size;
 	uint vb_index;
 	uint depth_texture_id;
 }
 
-ByteAddressBuffer buffers[] : register(t0, space1);
-Texture2D<float> textures_2d_float[] : register(t0, space2);
+[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
+[[vk::binding(0, 1)]] Texture2D<float> textures_2d_float[] : register(t0, space2);
 
-SamplerState linear_sampler : register(s0, space0);
+[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
 
 static const float ANTIALIASING = 1.0;
 

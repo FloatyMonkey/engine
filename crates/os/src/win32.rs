@@ -39,6 +39,35 @@ struct ProcData {
 	events: Vec<super::Event>,
 }
 
+impl ProcData {
+	fn new() -> Self {
+		ProcData {
+			mouse_hwnd: HWND::default(),
+			mouse_tracked: false,
+			mouse_down: [false; 3],
+			events: Vec::new(),
+		}
+	}
+
+	fn set_capture(&mut self, window: HWND) {
+		unsafe {
+			let any_down = self.mouse_down.iter().any(|v| *v);
+			if !any_down && GetCapture() == HWND::default() {
+				SetCapture(window);
+			}
+		}
+	}
+
+	fn release_capture(&mut self, window: HWND) {
+		unsafe {
+			let any_down = self.mouse_down.iter().any(|v| *v);
+			if !any_down && GetCapture() == window {
+				ReleaseCapture().unwrap();
+			}
+		}
+	}
+}
+
 impl Drop for Window {
 	fn drop(&mut self) {
 		unsafe {
@@ -87,26 +116,6 @@ pub fn decode_wide(mut wide_c_string: &[u16]) -> OsString {
 	OsString::from_wide(wide_c_string)
 }
 
-impl App {
-	fn set_capture(&mut self, window: HWND) {
-		unsafe {
-			let any_down = self.proc_data.mouse_down.iter().any(|v| *v);
-			if !any_down && GetCapture() == HWND::default() {
-				SetCapture(window);
-			}
-		}
-	}
-
-	fn release_capture(&mut self, window: HWND) {
-		unsafe {
-			let any_down = self.proc_data.mouse_down.iter().any(|v| *v);
-			if !any_down && GetCapture() == window {
-				ReleaseCapture().unwrap();
-			}
-		}
-	}
-}
-
 impl super::App for App {
 	type Window = Window;
 
@@ -140,12 +149,7 @@ impl super::App for App {
 				hinstance: instance.into(),
 				mouse_pos: super::Point{ x: 0, y: 0 },
 				cursor: super::Cursor::Arrow,
-				proc_data: ProcData {
-					mouse_hwnd: HWND::default(),
-					mouse_tracked: false,
-					mouse_down: [false; 3],
-					events: Vec::new(),
-				},
+				proc_data: ProcData::new(),
 			}
 		}
 	}
@@ -351,15 +355,21 @@ impl super::Window for Window {
 }
 
 unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-	let app = unsafe { &mut *(GetWindowLongPtrW(window, GWLP_USERDATA) as *mut App) };
+	if message == WM_CREATE {
+		let create_struct = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
+		unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _) };
+		return LRESULT(0);
+	}
+
+	let ptr = unsafe { GetWindowLongPtrW(window, GWLP_USERDATA) };
+	if ptr == 0 {
+		return unsafe { DefWindowProcW(window, message, wparam, lparam) };
+	}
+
+	let app = unsafe { &mut *(ptr as *mut App) };
 	let proc_data = &mut app.proc_data;
 
 	match message {
-		WM_CREATE => {
-			let create_struct = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
-			unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _) };
-			LRESULT(0)
-		}
 		WM_DESTROY => {
 			unsafe { PostQuitMessage(0) };
 			LRESULT(0)
@@ -386,37 +396,37 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 		WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => {
 			proc_data.mouse_down[0] = true;
 			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Left, pressed: true });
-			app.set_capture(window);
+			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_RBUTTONDOWN | WM_RBUTTONDBLCLK => {
 			proc_data.mouse_down[1] = true;
 			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Right, pressed: true });
-			app.set_capture(window);
+			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_MBUTTONDOWN | WM_MBUTTONDBLCLK => {
 			proc_data.mouse_down[2] = true;
 			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Middle, pressed: true });
-			app.set_capture(window);
+			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_LBUTTONUP => {
 			proc_data.mouse_down[0] = false;
 			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Left, pressed: false });
-			app.release_capture(window);
+			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_RBUTTONUP => {
 			proc_data.mouse_down[1] = false;
 			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Right, pressed: false });
-			app.release_capture(window);
+			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_MBUTTONUP => {
 			proc_data.mouse_down[2] = false;
 			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Middle, pressed: false });
-			app.release_capture(window);
+			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_MOUSEWHEEL => {

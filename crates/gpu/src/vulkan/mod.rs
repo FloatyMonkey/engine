@@ -154,8 +154,8 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 	let mut vk_flags = vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
 
 	if usage.contains(super::BufferUsage::INDEX)                  { vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER; }
-	if usage.contains(super::BufferUsage::SHADER_RESOURCE)        { vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER; }
-	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER; }
+	if usage.contains(super::BufferUsage::SHADER_RESOURCE)        { vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER; }
+	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER; }
 	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
@@ -942,6 +942,8 @@ impl super::DeviceImpl for Device {
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
+		// TODO: Try to also set Initial Layout to UNDEFINED in D3D12 -> create_texture -> CreateCommittedResource3
+		// This way we can maybe remove the TextureLayout from the TextureDesc struct
 		let create_info = vk::ImageCreateInfo::default()
 			.image_type(map_image_type(desc))
 			.format(map_format(desc.format))
@@ -956,7 +958,7 @@ impl super::DeviceImpl for Device {
 			.tiling(vk::ImageTiling::OPTIMAL)
 			.usage(map_image_usage_flags(desc.usage))
 			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.initial_layout(map_image_layout(desc.layout));
+			.initial_layout(vk::ImageLayout::UNDEFINED);
 
 		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
 

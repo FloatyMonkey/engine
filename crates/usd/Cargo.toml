@@ -1,0 +1,13 @@
+[package]
+name = "usd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+asset = { path = "../asset" }
+ecs = { path = "../ecs" }
+geometry = { path = "../geometry" }
+graphics = { path = "../graphics" }
+math = { path = "../math" }
+
+openusd = { git = "https://github.com/FloatyMonkey/openusd-rs.git" }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 pub struct AssetServer {
 	id: u64,
@@ -11,17 +11,6 @@ impl AssetServer {
 			id: 0,
 			assets: HashMap::new(),
 		}
-	}
-
-	pub fn load<T: Asset>(&mut self, path: impl AsRef<Path>) -> AssetId<T> {
-		let asset = T::load(path);
-		let handle = AssetId {
-			id: self.id,
-			phantom: std::marker::PhantomData,
-		};
-		self.assets.insert(handle.id, Box::new(asset));
-		self.id += 1;
-		handle
 	}
 
 	pub fn insert<T: Asset>(&mut self, asset: T) -> AssetId<T> {
@@ -43,11 +32,7 @@ impl AssetServer {
 	}
 }
 
-pub trait Asset: std::any::Any {
-	fn load(path: impl AsRef<Path>) -> Self
-	where
-		Self: Sized;
-}
+pub trait Asset: std::any::Any {}
 
 pub struct AssetId<T> {
 	id: u64,

@@ -1,7 +1,7 @@
 use crate::icons;
 use crate::tabs;
 use crate::editor::MyContext;
-use crate::scene::Name;
+use ecs::Name;
 
 use egui::DragValue;
 

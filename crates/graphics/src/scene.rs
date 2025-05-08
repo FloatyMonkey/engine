@@ -97,7 +97,25 @@ impl Image {
 		assert_eq!((width * height) as usize, data.len());
 		Self { width, height, data }
 	}
+
+	pub fn from_file(path: impl AsRef<std::path::Path>) -> Self
+		where
+			Self: Sized {
+		exr::prelude::read_first_rgba_layer_from_file(
+				path,
+				|resolution, _| Image::new(
+					resolution.width() as u32,
+					resolution.height() as u32,
+					vec![[0.0, 0.0, 0.0, 0.0]; resolution.width() * resolution.height()],
+				),
+				|image, position, (r, g, b, a): (f32, f32, f32, f32)| {
+					image.data[image.width as usize * position.y() + position.x()] = [r, g, b, a];
+				},
+			).unwrap().layer_data.channel_data.pixels
+	}
 }
+
+impl Asset for Image {}
 
 struct GpuMeshData {
 	vertex_buffer: gpu::Buffer,
@@ -321,23 +339,5 @@ impl Scene {
 			gpu_mesh_data.blas.build(cmd);
 			gpu_mesh_data
 		})
-	}
-}
-
-impl Asset for Image {
-	fn load(path: impl AsRef<std::path::Path>) -> Self
-		where
-			Self: Sized {
-		exr::prelude::read_first_rgba_layer_from_file(
-				path,
-				|resolution, _| Image::new(
-					resolution.width() as u32,
-					resolution.height() as u32,
-					vec![[0.0, 0.0, 0.0, 0.0]; resolution.width() * resolution.height()],
-				),
-				|image, position, (r, g, b, a): (f32, f32, f32, f32)| {
-					image.data[image.width as usize * position.y() + position.x()] = [r, g, b, a];
-				},
-			).unwrap().layer_data.channel_data.pixels
 	}
 }

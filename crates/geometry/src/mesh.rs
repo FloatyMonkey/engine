@@ -1,6 +1,5 @@
 use asset::Asset;
 use math::Vec3;
-use crate::io;
 
 pub struct Mesh {
 	pub vertices: Vec<Vertex>,
@@ -76,7 +75,11 @@ impl MeshBuilder {
 	}
 }
 
-fn calculate_vert_normals(mesh: &mut Mesh) {
+pub fn calculate_vert_normals(mesh: &mut Mesh) {
+	for vertex in &mut mesh.vertices {
+		vertex.n = Vec3::ZERO;
+	}
+
 	for face in mesh.indices.chunks_exact(3) {
 		let v0 = &mesh.vertices[face[0]];
 		let v1 = &mesh.vertices[face[1]];
@@ -97,10 +100,4 @@ fn calculate_vert_normals(mesh: &mut Mesh) {
 	}
 }
 
-impl Asset for Mesh {
-	fn load(path: impl AsRef<std::path::Path>) -> Self
-		where
-			Self: Sized {
-		io::load_mesh(path.as_ref().to_str().unwrap())
-	}
-}
+impl Asset for Mesh {}

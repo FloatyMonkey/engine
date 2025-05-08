@@ -543,3 +543,9 @@ impl<T: Copy> From<Matrix4<T>> for Matrix<T, 3, 4> {
 		]}
 	}
 }
+
+impl<T: Copy> From<Vector3<T>> for [T; 3] {
+	fn from(v: Vector3<T>) -> Self {
+		[v.x, v.y, v.z]
+	}
+}

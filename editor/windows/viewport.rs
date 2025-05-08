@@ -176,7 +176,8 @@ impl tabs::Tab<MyContext> for ViewportTab {
 		}
 
 		// TODO: Ideally, we shouldn't query the camera twice in this function
-		let (camera_transform, _) = ctx.world.query::<(&mut Transform3, &Camera)>().iter().next().unwrap();
-		EditorCamera::update(camera_transform, ui, &response);
+		if let Some((camera_transform, _)) = ctx.world.query::<(&mut Transform3, &Camera)>().iter().next() {
+			EditorCamera::update(camera_transform, ui, &response);
+		}
 	}
 }

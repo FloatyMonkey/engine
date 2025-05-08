@@ -16,6 +16,7 @@ gpu = { path = "crates/gpu" }
 graphics = { path = "crates/graphics" }
 math = { path = "crates/math" }
 os = { path = "crates/os" }
+usd = { path = "crates/usd" }
 
 egui = "0.26.2"
 egui_extras = { version = "0.26.2", features = ["svg"] }

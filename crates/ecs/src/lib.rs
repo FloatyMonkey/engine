@@ -1,8 +1,10 @@
 mod commands;
+mod name;
 mod query;
 mod world;
 
 pub use commands::*;
+pub use name::*;
 pub use query::*;
 pub use world::*;
 

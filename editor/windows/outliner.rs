@@ -1,4 +1,4 @@
-use ecs::{self, Entity, World};
+use ecs::{self, Entity, Name, World};
 use crate::icons;
 use crate::tabs;
 use crate::editor::MyContext;
@@ -53,7 +53,7 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 				})
 				.body(|mut body| {
 					let mut cmds = ecs::Commands::new();
-					for (entity, name) in &ctx.world.query::<(Entity, &crate::scene::Name)>() {
+					for (entity, name) in &ctx.world.query::<(Entity, &Name)>() {
 						body.row(16.0, |mut row| {
 							row.set_selected(ctx.selection.contains(&entity));
 

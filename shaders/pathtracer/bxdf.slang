@@ -49,8 +49,8 @@ public interface Bxdf {
 }
 
 public struct Bsdf<B: Bxdf> {
-	B bxdf;
-	Onb basis;
+	public B bxdf;
+	public Onb basis;
 
 	public func eval(wi: float3, wo: float3) -> BxdfEval {
 		let wi_local = basis.world_to_local(wi);

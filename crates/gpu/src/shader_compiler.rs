@@ -1,4 +1,4 @@
-use slang::{self, Downcast};
+use shader_slang::{self as slang, Downcast};
 
 pub struct ShaderCompiler {
 	global_session: slang::GlobalSession,

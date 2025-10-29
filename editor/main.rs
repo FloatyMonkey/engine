@@ -80,7 +80,7 @@ fn main() {
 		let clipped_primitives = editor.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
 
 		for (id, image_delta) in &full_output.textures_delta.set {
-			egui_renderer.create_texture(&mut device, *id, &image_delta);
+			egui_renderer.create_texture(&mut device, *id, image_delta);
 		}
 
 		// Gizmo
@@ -97,7 +97,7 @@ fn main() {
 
 		if let Some((scene, path_tracer)) = &mut renderer {
 			scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
-			path_tracer.run(&mut cmd, &scene, 20);
+			path_tracer.run(&mut cmd, scene, 20);
 
 			if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
 				let view_matrix = Mat4::from(camera_transform.inv());

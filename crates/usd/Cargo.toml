@@ -10,4 +10,4 @@ geometry = { path = "../geometry" }
 graphics = { path = "../graphics" }
 math = { path = "../math" }
 
-openusd = { git = "https://github.com/FloatyMonkey/openusd-rs.git" }
+openusd-rs = { git = "https://github.com/FloatyMonkey/openusd-rs.git", tag = "v0.1.0" }

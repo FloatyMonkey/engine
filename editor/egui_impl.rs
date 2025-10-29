@@ -176,10 +176,10 @@ impl EguiRenderer {
 		let clip_max_x = clip_max_x.round() as u32;
 		let clip_max_y = clip_max_y.round() as u32;
 
-		let clip_min_x = clip_min_x.clamp(0, size_in_pixels[0] as u32);
-		let clip_min_y = clip_min_y.clamp(0, size_in_pixels[1] as u32);
-		let clip_max_x = clip_max_x.clamp(clip_min_x, size_in_pixels[0] as u32);
-		let clip_max_y = clip_max_y.clamp(clip_min_y, size_in_pixels[1] as u32);
+		let clip_min_x = clip_min_x.clamp(0, size_in_pixels[0]);
+		let clip_min_y = clip_min_y.clamp(0, size_in_pixels[1]);
+		let clip_max_x = clip_max_x.clamp(clip_min_x, size_in_pixels[0]);
+		let clip_max_y = clip_max_y.clamp(clip_min_y, size_in_pixels[1]);
 
 		cmd.set_scissor(&gpu::Rect {
 			left: clip_min_x,
@@ -304,9 +304,9 @@ pub fn set_full_output(app: &mut os::platform::App, _window: &mut os::platform::
 /// Ignores special keys (backspace, delete, F1, …) and '\r', '\n', '\t'.
 fn is_printable_char(chr: char) -> bool {
 	let is_in_private_use_area =
-		'\u{e000}' <= chr && chr <= '\u{f8ff}' ||
-		'\u{f0000}' <= chr && chr <= '\u{ffffd}' ||
-		'\u{100000}' <= chr && chr <= '\u{10fffd}';
+		('\u{e000}'..='\u{f8ff}').contains(&chr) ||
+		('\u{f0000}'..='\u{ffffd}').contains(&chr) ||
+		('\u{100000}'..='\u{10fffd}').contains(&chr);
 
 	!is_in_private_use_area && !chr.is_ascii_control()
 }

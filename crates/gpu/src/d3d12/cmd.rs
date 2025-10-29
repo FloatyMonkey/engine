@@ -262,7 +262,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		});
 
 		unsafe {
-			self.cmd().BeginRenderPass(Some(rt.as_slice()), ds.map_or(None, |ds| Some(&ds)), D3D12_RENDER_PASS_FLAG_NONE);
+			self.cmd().BeginRenderPass(Some(rt.as_slice()), ds.map(|ds| &ds as *const _), D3D12_RENDER_PASS_FLAG_NONE);
 		}
 	}
 

@@ -3,6 +3,12 @@ pub struct Time {
 	delta: std::time::Duration,
 }
 
+impl Default for Time {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Time {
 	pub fn new() -> Self {
 		let now = std::time::Instant::now();

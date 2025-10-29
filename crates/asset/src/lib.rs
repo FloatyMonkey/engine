@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct AssetServer {
 	id: u64,
 	assets: HashMap<u64, Box<dyn std::any::Any>>,
@@ -7,10 +8,7 @@ pub struct AssetServer {
 
 impl AssetServer {
 	pub fn new() -> Self {
-		Self {
-			id: 0,
-			assets: HashMap::new(),
-		}
+		Default::default()
 	}
 
 	pub fn insert<T: Asset>(&mut self, asset: T) -> AssetId<T> {
@@ -47,10 +45,7 @@ impl<T> AssetId<T> {
 
 impl<T: Asset> Clone for AssetId<T> {
 	fn clone(&self) -> Self {
-		Self {
-			id: self.id,
-			phantom: std::marker::PhantomData,
-		}
+		*self
 	}
 }
 

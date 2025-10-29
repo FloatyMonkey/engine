@@ -49,11 +49,10 @@ impl tabs::Tab<MyContext> for InspectorTab {
 				ui.label(label);
 			};
 
-			if let Some(selection) = ctx.selection.iter().next() {
-				if let Some(name) = ctx.world.entity_mut(*selection).get_mut::<Name>() {
+			if let Some(selection) = ctx.selection.iter().next()
+				&& let Some(name) = ctx.world.entity_mut(*selection).get_mut::<Name>() {
 					ui.add(egui::TextEdit::singleline(&mut name.name).desired_width(f32::INFINITY));
 				}
-			}
 
 			ui.collapsing("Transform", |ui| {
 				ui.horizontal(|ui| {

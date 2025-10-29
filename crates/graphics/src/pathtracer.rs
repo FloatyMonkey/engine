@@ -97,8 +97,8 @@ impl PathTracer {
 		let table_alignment = 64;
 		let mut shader_table_data = vec![0u8; table_alignment * 3]; // Works for now with single entry per table
 
-		pipeline.write_shader_identifier(0, &mut shader_table_data[table_alignment * 0..]);
-		pipeline.write_shader_identifier(1, &mut shader_table_data[table_alignment * 1..]);
+		pipeline.write_shader_identifier(0, &mut shader_table_data[0..]);
+		pipeline.write_shader_identifier(1, &mut shader_table_data[table_alignment..]);
 		pipeline.write_shader_identifier(2, &mut shader_table_data[table_alignment * 2..]);
 
 		let shader_table = device.create_buffer(&gpu::BufferDesc {
@@ -165,12 +165,12 @@ impl PathTracer {
 		cmd.dispatch_rays(&gpu::DispatchRaysDesc {
 			size: [self.resolution[0], self.resolution[1], 1],
 			raygen: Some(gpu::ShaderTable {
-				ptr: self.shader_table.gpu_ptr().offset(64 * 0),
+				ptr: self.shader_table.gpu_ptr().offset(0),
 				size: 32,
 				stride: 32,
 			}),
 			miss: Some(gpu::ShaderTable {
-				ptr: self.shader_table.gpu_ptr().offset(64 *  1),
+				ptr: self.shader_table.gpu_ptr().offset(64),
 				size: 32,
 				stride: 32,
 			}),

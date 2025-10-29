@@ -65,7 +65,7 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 								);
 							});
 							row.col(|ui| {
-								ui.label(format!("{}", name.name));
+								ui.label(name.name.to_string());
 							});
 							row.col(|ui| {
 								ui.label(format!("({},{})", entity.index(), entity.generation()));

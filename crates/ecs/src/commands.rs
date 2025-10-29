@@ -1,14 +1,13 @@
 use super::{Entity, World};
 
+#[derive(Default)]
 pub struct Commands {
 	commands: Vec<Box<dyn Command>>, // TODO: Optimize
 }
 
 impl Commands {
 	pub fn new() -> Self {
-		Self {
-			commands: Vec::new(),
-		}
+		Default::default()
 	}
 
 	pub fn push<C: Command + 'static>(&mut self, command: C) {

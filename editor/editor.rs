@@ -72,7 +72,7 @@ impl Editor {
 					.fill(egui::Color32::from_rgb(10, 10, 10))
 					.inner_margin(egui::Vec2::new(6.0, 3.0)))
 				.show_separator_line(false)
-				.show(&ctx, |ui| {
+				.show(ctx, |ui| {
 					ui.horizontal(|ui| {
 						ui.spacing_mut().item_spacing = egui::vec2(15.0, 0.0);
 
@@ -89,13 +89,13 @@ impl Editor {
 					.fill(egui::Color32::from_rgb(10, 10, 10))
 					.inner_margin(egui::Vec2::new(6.0, 3.0)))
 				.show_separator_line(false)
-				.show(&ctx, |ui| {
+				.show(ctx, |ui| {
 					ui.horizontal(|ui| {
 						ui.label("0.1.0");
 					});
 				});
 			
-			egui::CentralPanel::default().show(&ctx, |ui| {
+			egui::CentralPanel::default().show(ctx, |ui| {
 				let mut style = tabs::Style::from_egui(ui.style().as_ref());
 				style.padding.top = 0.0;
 				style.padding.bottom = 0.0;

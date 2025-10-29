@@ -49,8 +49,6 @@ impl ShaderCompiler {
 
 		let linked_program = program.link().unwrap();
 
-		let code = linked_program.entry_point_code(0, 0).unwrap().as_slice().to_vec();
-
-		code
+		linked_program.entry_point_code(0, 0).unwrap().as_slice().to_vec()
 	}
 }

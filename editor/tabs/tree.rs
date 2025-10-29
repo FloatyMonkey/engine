@@ -111,11 +111,11 @@ impl NodeIndex {
 	}
 
 	pub const fn is_left(self) -> bool {
-		self.0 % 2 != 0
+		!self.0.is_multiple_of(2)
 	}
 
 	pub const fn is_right(self) -> bool {
-		self.0 % 2 == 0
+		self.0.is_multiple_of(2)
 	}
 
 	const fn children_at(self, level: usize) -> std::ops::Range<usize> {

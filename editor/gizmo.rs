@@ -268,7 +268,9 @@ impl GizmoRenderer {
 		cmd.set_viewport(&rect.into(), 0.0..1.0);
 		cmd.set_scissor(&rect);
 
-		cmd.draw(0..4, 0..gizmo.vertices.len() as u32 / 2);
+		if !gizmo.vertices.is_empty() {
+			cmd.draw(0..4, 0..gizmo.vertices.len() as u32 / 2);
+		}
 
 		cmd.render_pass_end();
 

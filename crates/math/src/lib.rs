@@ -29,8 +29,8 @@ pub type Mat3 = Matrix3<f32>;
 pub type Mat4 = Matrix4<f32>;
 pub type Mat3x4 = Matrix<f32, 3, 4>;
 
-pub const E: f32 = 2.71828182845904523536;
-pub const PI: f32 = 3.14159265358979323846;
+pub const E: f32 = std::f32::consts::E;
+pub const PI: f32 = std::f32::consts::PI;
 
 /// Clamps x to be in the range [min, max].
 pub fn clamp<T: Number + NumberOps<T>>(x: T, min: T, max: T) -> T {

@@ -4,7 +4,7 @@ use geometry::mesh::{Mesh, Vertex, VertexGroups};
 use graphics::scene::{DomeLight, Image, RectLight, Renderable, SphereLight};
 use math::{transform::Transform3, Quaternion, Unit, UnitQuaternion, Vec3};
 
-use openusd::{gf, sdf, usd, usd_geom, usd_lux};
+use openusd_rs::{gf, sdf, usd, usd_geom, usd_lux};
 
 fn convert_mesh(mesh: &usd_geom::Mesh) -> Mesh {
 	let points = mesh.points_attr().get::<Vec<gf::Vec3f>>();
@@ -17,7 +17,7 @@ fn convert_mesh(mesh: &usd_geom::Mesh) -> Mesh {
 		}
 	}).collect();
 
-	let triangles = usd_geom::triangulate(&mesh);
+	let triangles = usd_geom::triangulate(mesh);
 
 	let indices = triangles.iter().map(|i| {
 		*i as usize
@@ -42,7 +42,6 @@ fn traverse_recurse(
 	transform_stack: &mut Vec<Transform3>,
 	assets: &mut AssetServer,
 	prim: &usd::Prim,
-	depth: usize
 ) {
 	let xform = usd_geom::XformOp::get_local_transform(prim);
 
@@ -107,7 +106,7 @@ fn traverse_recurse(
 
 			let root_path = std::path::Path::new(stage_path);
 			let parent_path = root_path.parent().unwrap_or(root_path);
-			let texuture_path = parent_path.join(texture_file_ref.asset_path.clone());
+			let texuture_path = parent_path.join(texture_file_ref.authored_path.clone()); // TODO: .asset_path()
 
 			let texture = Image::from_file(texuture_path);
 			let texture_asset = assets.insert(texture);
@@ -124,7 +123,7 @@ fn traverse_recurse(
 	}
 
 	for child in prim.children() {
-		traverse_recurse(stage_path, stage, world, transform_stack, assets, &child, depth + 1);
+		traverse_recurse(stage_path, stage, world, transform_stack, assets, &child);
 	}
 
 	if xform.is_some() {
@@ -139,7 +138,7 @@ pub fn populate_world_from_usd(filepath: &str, world: &mut World, assets: &mut A
 
 	let mut transform_stack: Vec<Transform3> = Vec::new();
 
-	traverse_recurse(&filepath, &stage, world, &mut transform_stack, assets, &pseudo_root, 0);
+	traverse_recurse(filepath, &stage, world, &mut transform_stack, assets, &pseudo_root);
 }
 
 fn from_usd_vec3f(v: gf::Vec3f) -> Vec3 {

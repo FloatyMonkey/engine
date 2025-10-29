@@ -41,7 +41,7 @@ impl<T: Component> QueryParam for &T {
 	type Fetch<'a> = &'a [UnsafeCell<T>];
 
 	fn matches_archetype(world: &World, archetype: &Archetype) -> bool {
-		world.component_id::<T>().map_or(false, |id| archetype.contains(id))
+		world.component_id::<T>().is_some_and(|id| archetype.contains(id))
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
@@ -60,7 +60,7 @@ impl<T: Component> QueryParam for &mut T {
 	type Fetch<'a> = &'a [UnsafeCell<T>];
 
 	fn matches_archetype(world: &World, archetype: &Archetype) -> bool {
-		world.component_id::<T>().map_or(false, |id| archetype.contains(id))
+		world.component_id::<T>().is_some_and(|id| archetype.contains(id))
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
@@ -86,7 +86,7 @@ impl<C: Component> QueryParam for Has<C> {
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
-		world.component_id::<C>().map_or(false, |id| archetype.contains(id))
+		world.component_id::<C>().is_some_and(|id| archetype.contains(id))
 	}
 
 	#[inline(always)]

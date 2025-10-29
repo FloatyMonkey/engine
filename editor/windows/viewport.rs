@@ -33,11 +33,10 @@ fn navigation_gizmo(ui: &mut egui::Ui, p: egui::Pos2, rotation: UnitQuaternion<f
 
 	let center = p + egui::Vec2::splat(outer_radius);
 
-	if let Some(pointer_pos) = ui.ctx().pointer_latest_pos() {
-		if (pointer_pos - center).length_sq() < outer_radius * outer_radius {
+	if let Some(pointer_pos) = ui.ctx().pointer_latest_pos()
+		&& (pointer_pos - center).length_sq() < outer_radius * outer_radius {
 			painter.circle_filled(center, outer_radius, egui::Color32::from_rgba_unmultiplied(255, 255, 255, 10));
 		}
-	}
 
 	let scale = Vec3::new(inner_radius, -inner_radius, 1.0);
 
@@ -107,7 +106,7 @@ impl tabs::Tab<MyContext> for ViewportTab {
 			visuals.selection.stroke = egui::Stroke::NONE;
 			visuals.selection.bg_fill = egui::Color32::from_rgba_premultiplied(4, 119, 213, 240);
 
-			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/mouse-pointer.svg")).selected(self.gizmo_mode == None).rounding(egui::Rounding{nw: 5.0, ne: 5.0, se: 0.0, sw: 0.0})).clicked() {
+			if ui.add(egui::ImageButton::new(egui::include_image!("../../resources/mouse-pointer.svg")).selected(self.gizmo_mode.is_none()).rounding(egui::Rounding{nw: 5.0, ne: 5.0, se: 0.0, sw: 0.0})).clicked() {
 				self.gizmo_mode = None;
 			}
 
@@ -135,8 +134,8 @@ impl tabs::Tab<MyContext> for ViewportTab {
 		let view_matrix = Mat4::from(camera_transform.inv());
 		let projection_matrix = camera.projection_matrix();
 
-		if let Some(selection) = ctx.selection.iter().next() {
-			if let (Some(mode), Some(transform)) = (self.gizmo_mode, ctx.world.entity_mut(*selection).get_mut::<Transform3>()) {
+		if let Some(selection) = ctx.selection.iter().next()
+			&& let (Some(mode), Some(transform)) = (self.gizmo_mode, ctx.world.entity_mut(*selection).get_mut::<Transform3>()) {
 
 				let model_matrix = Mat4::from(*transform);
 
@@ -173,7 +172,6 @@ impl tabs::Tab<MyContext> for ViewportTab {
 					transform.scale.z = response.scale.z;
 				}
 			}
-		}
 
 		// TODO: Ideally, we shouldn't query the camera twice in this function
 		if let Some((camera_transform, _)) = ctx.world.query::<(&mut Transform3, &Camera)>().iter().next() {

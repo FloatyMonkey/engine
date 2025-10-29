@@ -578,8 +578,7 @@ impl super::DeviceImpl for Device {
 		let mut instance_extension_names = Vec::new();
 
 		let instance = {
-			const VK_LAYER_KHRONOS_VALIDATION: &CStr =
-				unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") };
+			const VK_LAYER_KHRONOS_VALIDATION: &CStr = c"VK_LAYER_KHRONOS_validation";
 
 			let mut layers: Vec<&CStr> = Vec::new();
 
@@ -1043,7 +1042,7 @@ impl super::DeviceImpl for Device {
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::VERTEX)
 				.module(module)
-				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+				.name(c"main");
 
 			shader_stages.push(stage);
 		}
@@ -1062,7 +1061,7 @@ impl super::DeviceImpl for Device {
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::FRAGMENT)
 				.module(module)
-				.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+				.name(c"main");
 
 			shader_stages.push(stage);
 		}
@@ -1194,7 +1193,7 @@ impl super::DeviceImpl for Device {
 		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
 			.module(shader_module)
-			.name(CStr::from_bytes_with_nul(b"main\0").unwrap());
+			.name(c"main");
 		
 		let create_info = vk::ComputePipelineCreateInfo::default()
 			.stage(shader_stage)
@@ -1345,7 +1344,7 @@ struct AccelerationStructureInfo<'a> {
 }
 
 impl<'a> AccelerationStructureInfo<'a> {
-	fn map_aabbs(aabbs: &super::AccelerationStructureAABBs) -> vk::AccelerationStructureGeometryKHR {
+	fn map_aabbs(aabbs: &'_ super::AccelerationStructureAABBs) -> vk::AccelerationStructureGeometryKHR<'_> {
 		let aabbs_data = vk::AccelerationStructureGeometryAabbsDataKHR::default()
 			.data(vk::DeviceOrHostAddressConstKHR {
 				device_address: aabbs.data.0,
@@ -1358,7 +1357,7 @@ impl<'a> AccelerationStructureInfo<'a> {
 			.flags(map_acceleration_structure_geometry_flags(aabbs.flags))
 	}
 
-	fn map_triangles(triangles: &super::AccelerationStructureTriangles) -> vk::AccelerationStructureGeometryKHR {
+	fn map_triangles(triangles: &'_ super::AccelerationStructureTriangles) -> vk::AccelerationStructureGeometryKHR<'_> {
 		let triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
 			.vertex_format(map_format(triangles.vertex_format))
 			.vertex_data(vk::DeviceOrHostAddressConstKHR {
@@ -1380,7 +1379,7 @@ impl<'a> AccelerationStructureInfo<'a> {
 			.flags(map_acceleration_structure_geometry_flags(triangles.flags))
 	}
 
-	fn map_instances(instances: &super::AccelerationStructureInstances) -> vk::AccelerationStructureGeometryKHR {
+	fn map_instances(instances: &'_ super::AccelerationStructureInstances) -> vk::AccelerationStructureGeometryKHR<'_> {
 		let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default()
 			.data(vk::DeviceOrHostAddressConstKHR {
 				device_address: instances.data.0,

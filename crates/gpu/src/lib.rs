@@ -1186,8 +1186,8 @@ pub struct AccelerationStructureInstance {
 /// This way the GpuPtr is type safe and pointer arithmetic can be implemented by overloading operators.
 /// ```
 /// pub struct GpuPtr<R: GpuResource> {
-/// 	resource: R,
-/// 	offset: usize,
+///     resource: R,
+///     offset: usize,
 /// }
 /// ```
 pub struct GpuPtr(u64);

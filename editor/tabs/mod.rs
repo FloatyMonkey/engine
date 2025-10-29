@@ -215,7 +215,7 @@ pub fn show<Context>(
 						hover_data = Some(HoverData {
 							rect,
 							dst: tree_index,
-							tabs: tabs_response.rect.contains(pointer_pos).then(|| tabs_response.rect),
+							tabs: tabs_response.rect.contains(pointer_pos).then_some(tabs_response.rect),
 							pointer: pointer_pos,
 						});
 					}
@@ -236,11 +236,10 @@ pub fn show<Context>(
 			painter.rect_filled(helper, 0.0, style.selection);
 
 			if ui.input(|i| i.pointer.any_released()) {
-				if let Node::Leaf { active, .. } = &mut tree[src] {
-					if *active >= tab_index {
+				if let Node::Leaf { active, .. } = &mut tree[src]
+					&& *active >= tab_index {
 						*active = active.saturating_sub(1);
 					}
-				}
 
 				let tab = tree[src].remove_tab(tab_index).unwrap();
 
@@ -252,11 +251,10 @@ pub fn show<Context>(
 
 				tree.remove_empty_leaf();
 				for node in tree.iter_mut() {
-					if let Node::Leaf { tabs, active, .. } = node {
-						if *active >= tabs.len() {
+					if let Node::Leaf { tabs, active, .. } = node
+						&& *active >= tabs.len() {
 							*active = 0;
 						}
-					}
 				}
 			}
 		}

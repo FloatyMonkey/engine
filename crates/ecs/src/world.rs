@@ -81,6 +81,7 @@ impl ComponentStore {
 
 type ArchetypeId = usize;
 
+#[derive(Default)]
 pub struct Archetype {
 	pub entities: Vec<EntityId>,
 	pub components: Vec<ComponentStore>,
@@ -88,10 +89,7 @@ pub struct Archetype {
 
 impl Archetype {
 	pub fn new() -> Self {
-		Self {
-			entities: Vec::new(),
-			components: Vec::new(),
-		}
+		Default::default()
 	}
 
 	fn swap_remove(&mut self, index: EntityId) -> EntityId {
@@ -108,7 +106,7 @@ impl Archetype {
 		self.components.iter().position(|c| c.id == id)
 	}
 
-	pub unsafe fn get_slice<C: Component>(&self, component: usize) -> &[UnsafeCell<C>] {
+	pub(crate) unsafe fn get_slice<C: Component>(&self, component: usize) -> &[UnsafeCell<C>] {
 		let data = self.components[component].data
 			.to_any()
 			.downcast_ref::<Vec<C>>()
@@ -197,6 +195,7 @@ const fn wrapping_add_nonzero(lhs: NonZeroU32, rhs: u32) -> NonZeroU32 {
 	unsafe { NonZeroU32::new_unchecked(ret) }
 }
 
+#[derive(Default)]
 pub struct World {
 	pub archetypes: Vec<Archetype>,
 	pub entities: Vec<EntityInfo>,
@@ -208,14 +207,7 @@ pub struct World {
 
 impl World {
 	pub fn new() -> Self {
-		Self {
-			archetypes: Vec::new(),
-			entities: Vec::new(),
-			free_entities: Vec::new(),
-			components: HashMap::new(),
-			dyn_components: HashMap::new(),
-			bundle_id_to_archetype: HashMap::new(),
-		}
+		Default::default()
 	}
 
 	fn init_component<C: Component>(&mut self) -> ComponentId {
@@ -267,7 +259,7 @@ impl World {
 		Some(entity_info.location)
 	}
 
-	pub fn spawn(&mut self, bundle: impl Bundle) -> EntityMut {
+	pub fn spawn(&'_ mut self, bundle: impl Bundle) -> EntityMut<'_> {
 		let entity = self.alloc_entity();
 		let location = spawn_in_world(self, bundle, entity.index);
 		self.entities[entity.index as usize].location = location;
@@ -275,7 +267,7 @@ impl World {
 		EntityMut { world: self, location, entity }
 	}
 
-	pub fn query<Q: QueryParam>(&self) -> Query<Q> {
+	pub fn query<Q: QueryParam>(&'_ self) -> Query<'_, Q> {
 		Query::new(self)
 	}
 
@@ -283,7 +275,7 @@ impl World {
 	/// Panics if the `entity` does not exist. Use [`World::get_entity_mut`] to check for existence instead of panic-ing.
 	#[inline]
 	#[track_caller]
-	pub fn entity(&self, entity: Entity) -> EntityRef {
+	pub fn entity(&'_ self, entity: Entity) -> EntityRef<'_> {
 		match self.get_entity(entity) {
 			Some(entity) => entity,
 			None => panic!("{entity:?} does not exist"),
@@ -292,7 +284,7 @@ impl World {
 
 	/// Returns an [`EntityRef`] that exposes read-only operations for the given `entity`.
 	/// Returns `None` if the `entity` does not exist. Use [`World::entity_mut`] to panic instead of unwrapping.
-	pub fn get_entity(&self, entity: Entity) -> Option<EntityRef> {
+	pub fn get_entity(&'_ self, entity: Entity) -> Option<EntityRef<'_>> {
 		let location = self.entity_location(entity)?;
 		// SAFETY: `entity` exists and `location` is its location.
 		Some(unsafe { EntityRef::new(self, location, entity) })
@@ -302,7 +294,7 @@ impl World {
 	/// Panics if the `entity` does not exist. Use [`World::get_entity_mut`] to check for existence instead of panic-ing.
 	#[inline]
 	#[track_caller]
-	pub fn entity_mut(&mut self, entity: Entity) -> EntityMut {
+	pub fn entity_mut(&'_ mut self, entity: Entity) -> EntityMut<'_> {
 		match self.get_entity_mut(entity) {
 			Some(entity) => entity,
 			None => panic!("{entity:?} does not exist"),
@@ -311,7 +303,7 @@ impl World {
 
 	/// Returns an [`EntityMut`] that exposes read and write operations for the given `entity`.
 	/// Returns `None` if the `entity` does not exist. Use [`World::entity_mut`] to panic instead of unwrapping.
-	pub fn get_entity_mut(&mut self, entity: Entity) -> Option<EntityMut> {
+	pub fn get_entity_mut(&'_ mut self, entity: Entity) -> Option<EntityMut<'_>> {
 		let location = self.entity_location(entity)?;
 		// SAFETY: `entity` exists and `location` is its location.
 		Some(unsafe { EntityMut::new(self, location, entity) })
@@ -363,7 +355,7 @@ impl<'w> EntityRef<'w> {
 
 	/// Returns `true` if this entity has a component of type `C`. Otherwise returns `false`.
 	pub fn contains<C: Component>(&self) -> bool {
-		self.world.component_id::<C>().map_or(false, |id| self.archetype().contains(id))
+		self.world.component_id::<C>().is_some_and(|id| self.archetype().contains(id))
 	}
 
 	/// Gets access to the component of type `C` on this entity.
@@ -404,7 +396,7 @@ impl<'w> EntityMut<'w> {
 
 	/// Returns `true` if this entity has a component of type `C`. Otherwise returns `false`.
 	pub fn contains<C: Component>(&self) -> bool {
-		self.world.component_id::<C>().map_or(false, |id| self.archetype().contains(id))
+		self.world.component_id::<C>().is_some_and(|id| self.archetype().contains(id))
 	}
 
 	/// Gets access to the component of type `C` on this entity.

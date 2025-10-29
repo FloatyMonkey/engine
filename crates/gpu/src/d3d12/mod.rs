@@ -1,6 +1,6 @@
 mod cmd;
+mod pix;
 
-use std::ffi::CString;
 use std::ops::Range;
 use std::result;
 use std::str;
@@ -8,7 +8,7 @@ use std::str;
 use windows::{
 	core::*, Win32::Foundation::*,
 	Win32::Graphics::{Direct3D::*, Direct3D12::*, Dxgi::*, Dxgi::Common::*},
-	Win32::System::{LibraryLoader::*, Threading::*},
+	Win32::System::Threading::*,
 };
 
 #[unsafe(export_name = "D3D12SDKVersion")]
@@ -25,48 +25,13 @@ impl From<windows::core::Error> for super::Error {
 	}
 }
 
-#[derive(Clone, Copy)]
-struct WinPixEventRuntime {
-	begin_event: extern "stdcall" fn(*const std::ffi::c_void, u64, PSTR) -> i32,
-	end_event: extern "stdcall" fn(*const std::ffi::c_void) -> i32,
-	set_marker: extern "stdcall" fn(*const std::ffi::c_void, u64, PSTR) -> i32,
-}
-
-impl WinPixEventRuntime {
-	pub fn load() -> Option<Self> {
-		unsafe {
-			let module = LoadLibraryA(s!("WinPixEventRuntime.dll")).ok()?;
-
-			Some(Self {
-				begin_event: std::mem::transmute(GetProcAddress(module, s!("PIXBeginEventOnCommandList"))?),
-				end_event: std::mem::transmute(GetProcAddress(module, s!("PIXEndEventOnCommandList"))?),
-				set_marker: std::mem::transmute(GetProcAddress(module, s!("PIXSetMarkerOnCommandList"))?),
-			})
-		}
-	}
-
-	pub fn set_marker_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
-		let name = CString::new(name).unwrap();
-		(self.set_marker)(command_list.as_raw(), color, PSTR(name.as_ptr() as _));
-	}
-
-	pub fn begin_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7, color: u64, name: &str) {
-		let name = CString::new(name).unwrap();
-		(self.begin_event)(command_list.as_raw(), color, PSTR(name.as_ptr() as _));
-	}
-
-	pub fn end_event_on_command_list(&self, command_list: &ID3D12GraphicsCommandList7) {
-		(self.end_event)(command_list.as_raw());
-	}
-}
-
 pub struct Device {
 	adapter_info: super::AdapterInfo,
 	capabilities: super::Capabilities,
 	dxgi_factory: IDXGIFactory6,
 	device: ID3D12Device10,
 	command_queue: ID3D12CommandQueue,
-	pix: Option<WinPixEventRuntime>,
+	pix: Option<pix::WinPixEventRuntime>,
 	resource_heap: Heap,
 	sampler_heap: Heap,
 	rtv_heap: Heap,
@@ -116,7 +81,7 @@ pub struct CmdList {
 	bb_index: usize,
 	command_allocators: Vec<ID3D12CommandAllocator>,
 	command_lists: Vec<ID3D12GraphicsCommandList7>,
-	pix: Option<WinPixEventRuntime>,
+	pix: Option<pix::WinPixEventRuntime>,
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
 }
 
@@ -822,7 +787,7 @@ impl super::DeviceImpl for Device {
 			let dsv_heap = Heap::new(&device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 100); // TODO: Hardcoded
 
 			let pix = desc.validation.contains(super::Validation::DEBUGGER)
-				.then(WinPixEventRuntime::load).flatten();
+				.then(pix::WinPixEventRuntime::load).flatten();
 
 			Device {
 				adapter_info,

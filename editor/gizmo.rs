@@ -189,8 +189,8 @@ impl GizmoRenderer {
 		let pixel_shader = shader_compiler.compile("shaders/editor/gizmo.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
-			vs: Some(&vertex_shader),
-			ps: Some(&pixel_shader),
+			vs: Some(("main_vs", &vertex_shader)),
+			ps: Some(("main_ps", &pixel_shader)),
 			descriptor_layout: gpu::DescriptorLayout {
 				push_constants: Some(gpu::PushConstantBinding {
 					size: size_of::<PushConstants>() as u32,

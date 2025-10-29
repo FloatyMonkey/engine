@@ -282,7 +282,7 @@ impl Compositor {
 
 		let pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
-				cs: &shader,
+				cs: ("main", &shader),
 				descriptor_layout: &descriptor_layout,
 			})
 			.unwrap();

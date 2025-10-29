@@ -1278,14 +1278,14 @@ impl super::DeviceImpl for Device {
 			pRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
 			VS: desc.vs.map_or(D3D12_SHADER_BYTECODE::default(), |vs| {
 				D3D12_SHADER_BYTECODE {
-					pShaderBytecode: vs.as_ptr() as _,
-					BytecodeLength: vs.len(),
+					pShaderBytecode: vs.1.as_ptr() as _,
+					BytecodeLength: vs.1.len(),
 				}
 			}),
 			PS: desc.ps.map_or(D3D12_SHADER_BYTECODE::default(), |ps| {
 				D3D12_SHADER_BYTECODE {
-					pShaderBytecode: ps.as_ptr() as _,
-					BytecodeLength: ps.len(),
+					pShaderBytecode: ps.1.as_ptr() as _,
+					BytecodeLength: ps.1.len(),
 				}
 			}),
 			RasterizerState: D3D12_RASTERIZER_DESC {
@@ -1366,8 +1366,8 @@ impl super::DeviceImpl for Device {
 
 		let dx_desc = D3D12_COMPUTE_PIPELINE_STATE_DESC {
 			CS: D3D12_SHADER_BYTECODE {
-				pShaderBytecode: cs.as_ptr() as _,
-				BytecodeLength: cs.len(),
+				pShaderBytecode: cs.1.as_ptr() as _,
+				BytecodeLength: cs.1.len(),
 			},
 			pRootSignature: unsafe { std::mem::transmute_copy(&root_signature) },
 			..Default::default()

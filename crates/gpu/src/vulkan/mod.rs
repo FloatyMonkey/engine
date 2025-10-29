@@ -166,10 +166,10 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 		vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::SHADER_RESOURCE) {
-		vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER;
+		vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::UNORDERED_ACCESS) {
-		vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER;
+		vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
@@ -418,19 +418,19 @@ impl super::SurfaceImpl<Device> for Surface {
 pub struct Buffer {
 	buffer: vk::Buffer,
 	allocation: allocator::Allocation,
-	srv_index: Option<usize>,
-	uav_index: Option<usize>,
+	srv_index: Option<u32>,
+	uav_index: Option<u32>,
 	cpu_ptr: *mut u8,
 	gpu_ptr: u64,
 }
 
 impl super::BufferImpl<Device> for Buffer {
 	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+		self.srv_index
 	}
 
 	fn uav_index(&self) -> Option<u32> {
-		self.uav_index.map(|i| i as u32)
+		self.uav_index
 	}
 
 	fn cpu_ptr(&self) -> *mut u8 {
@@ -620,6 +620,9 @@ pub struct Device {
 	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
 	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
 	debug_utils_ext: Option<ash::ext::debug_utils::Instance>,
+
+	bindless_manager: BindlessManager,
+	pipeline_layout: vk::PipelineLayout,
 }
 
 impl super::DeviceImpl for Device {
@@ -752,9 +755,13 @@ impl super::DeviceImpl for Device {
 				.buffer_device_address(true)
 				.vulkan_memory_model(true)
 				.runtime_descriptor_array(true)
-				.shader_sampled_image_array_non_uniform_indexing(true)
 				.shader_storage_buffer_array_non_uniform_indexing(true)
+				.shader_sampled_image_array_non_uniform_indexing(true)
 				.shader_storage_image_array_non_uniform_indexing(true)
+				.descriptor_binding_storage_buffer_update_after_bind(true)
+				.descriptor_binding_sampled_image_update_after_bind(true)
+				.descriptor_binding_storage_image_update_after_bind(true)
+				.descriptor_binding_partially_bound(true)
 				.descriptor_indexing(true);
 
 			let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::default()
@@ -762,7 +769,8 @@ impl super::DeviceImpl for Device {
 				.synchronization2(true); // TODO: Actually use this
 
 			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
-				.acceleration_structure(true);
+				.acceleration_structure(true)
+				.descriptor_binding_acceleration_structure_update_after_bind(true);
 
 			let mut raytracing_pipeline =
 				vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
@@ -833,8 +841,11 @@ impl super::DeviceImpl for Device {
 		};
 
 		let capabilities = super::Capabilities {
-			raytracing: true, // TODO: Hardcoded
+			raytracing: false, // TODO: Set to false for now to test easiest possible path
 		};
+
+		let bindless_manager = BindlessManager::new(&device);
+		let pipeline_layout = create_pipeline_layout(&device, &bindless_manager);
 
 		Self {
 			adapter_info,
@@ -850,6 +861,8 @@ impl super::DeviceImpl for Device {
 			ray_tracing_pipeline_ext,
 			debug_utils_ext,
 			//rt_pipeline_properties,
+			bindless_manager,
+			pipeline_layout,
 		}
 	}
 
@@ -989,26 +1002,48 @@ impl super::DeviceImpl for Device {
 		}
 		.unwrap();
 
-		let mapped_ptr = allocation
+		let cpu_ptr = allocation
 			.mapped_ptr()
 			.map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
 
-		let device_address = unsafe {
+		let gpu_ptr = unsafe {
 			self.device
 				.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
 		};
 
+		let srv_uav_index = desc
+			.usage
+			.intersects(super::BufferUsage::SHADER_RESOURCE | super::BufferUsage::UNORDERED_ACCESS)
+			.then(|| {
+				self.bindless_manager
+					.register_buffer_uav(&self.device, buffer)
+			});
+
+		let srv_index = desc
+			.usage
+			.contains(super::BufferUsage::SHADER_RESOURCE)
+			.then(|| srv_uav_index)
+			.flatten();
+
+		let uav_index = desc
+			.usage
+			.intersects(super::BufferUsage::UNORDERED_ACCESS)
+			.then(|| srv_uav_index)
+			.flatten();
+
 		Ok(Buffer {
 			buffer,
 			allocation,
-			srv_index: None, // TODO
-			uav_index: None,
-			cpu_ptr: mapped_ptr,
-			gpu_ptr: device_address,
+			srv_index,
+			uav_index,
+			cpu_ptr,
+			gpu_ptr,
 		})
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
+		// TODO: Try to also set Initial Layout to UNDEFINED in D3D12 -> create_texture -> CreateCommittedResource3
+		// This way we can maybe remove the TextureLayout from the TextureDesc struct
 		let create_info = vk::ImageCreateInfo::default()
 			.image_type(map_image_type(desc))
 			.format(map_format(desc.format))
@@ -1023,7 +1058,7 @@ impl super::DeviceImpl for Device {
 			.tiling(vk::ImageTiling::OPTIMAL)
 			.usage(map_image_usage_flags(desc.usage))
 			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.initial_layout(map_image_layout(desc.layout));
+			.initial_layout(vk::ImageLayout::UNDEFINED);
 
 		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
 
@@ -1148,40 +1183,45 @@ impl super::DeviceImpl for Device {
 		let mut shader_modules = Vec::new();
 		let mut shader_stages = Vec::new();
 
+		let vs_entry_name;
+		let ps_entry_name;
+
 		if let Some(shader) = desc.vs {
 			let create_info = vk::ShaderModuleCreateInfo {
-				code_size: shader.len(),
-				p_code: shader.as_ptr() as *const u32,
+				code_size: shader.1.len(),
+				p_code: shader.1.as_ptr() as *const u32,
 				..Default::default()
 			};
 
 			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
 
 			shader_modules.push(module);
+			vs_entry_name = CString::new(shader.0).unwrap();
 
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::VERTEX)
 				.module(module)
-				.name(c"main");
+				.name(vs_entry_name.as_c_str());
 
 			shader_stages.push(stage);
 		}
 
 		if let Some(shader) = desc.ps {
 			let create_info = vk::ShaderModuleCreateInfo {
-				code_size: shader.len(),
-				p_code: shader.as_ptr() as *const u32,
+				code_size: shader.1.len(),
+				p_code: shader.1.as_ptr() as *const u32,
 				..Default::default()
 			};
 
 			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
 
 			shader_modules.push(module);
+			ps_entry_name = CString::new(shader.0).unwrap();
 
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::FRAGMENT)
 				.module(module)
-				.name(c"main");
+				.name(ps_entry_name.as_c_str());
 
 			shader_stages.push(stage);
 		}
@@ -1291,7 +1331,7 @@ impl super::DeviceImpl for Device {
 
 		let create_info = vk::GraphicsPipelineCreateInfo::default()
 			.stages(&shader_stages)
-			// TODO: layout
+			.layout(self.pipeline_layout)
 			.vertex_input_state(&vertex_input_state)
 			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
@@ -1320,8 +1360,8 @@ impl super::DeviceImpl for Device {
 		desc: &super::ComputePipelineDesc,
 	) -> Result<Self::ComputePipeline, super::Error> {
 		let shader_module_create_info = vk::ShaderModuleCreateInfo {
-			p_code: desc.cs.as_ptr() as _,
-			code_size: desc.cs.len(),
+			p_code: desc.cs.1.as_ptr() as _,
+			code_size: desc.cs.1.len(),
 			..Default::default()
 		};
 
@@ -1330,15 +1370,16 @@ impl super::DeviceImpl for Device {
 				.create_shader_module(&shader_module_create_info, None)
 		}
 		.unwrap();
+		let entry_name = CString::new(desc.cs.0).unwrap();
 
 		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
 			.module(shader_module)
-			.name(c"main");
+			.name(entry_name.as_c_str());
 
 		let create_info = vk::ComputePipelineCreateInfo::default()
 			.stage(shader_stage)
-			.layout(todo!());
+			.layout(self.pipeline_layout);
 
 		let pipeline = unsafe {
 			self.device
@@ -1424,7 +1465,7 @@ impl super::DeviceImpl for Device {
 			.stages(&stages)
 			.groups(&groups)
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
-			.layout(todo!());
+			.layout(self.pipeline_layout);
 
 		let pipeline = unsafe {
 			self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
@@ -1664,4 +1705,267 @@ impl<'a> AccelerationStructureInfo<'a> {
 			_geometry: geometries.into_boxed_slice(),
 		}
 	}
+}
+
+const MAX_BINDLESS_RESOURCES: u32 = 1024; // TODO: Increase!
+
+struct BindlessManager {
+	descriptor_pool: vk::DescriptorPool,
+	descriptor_set_layouts: [vk::DescriptorSetLayout; 5],
+	descriptor_sets: [vk::DescriptorSet; 5],
+
+	storage_buffer_index: u32,
+	sampled_image_index: u32,
+	storage_image_index: u32,
+	acceleration_structure_index: u32,
+	sampler_index: u32,
+}
+
+impl BindlessManager {
+	fn new(device: &ash::Device) -> Self {
+		let pool_sizes = [
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::STORAGE_BUFFER,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::SAMPLED_IMAGE,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::STORAGE_IMAGE,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::SAMPLER,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+		];
+
+		let pool_info = vk::DescriptorPoolCreateInfo::default()
+			.pool_sizes(&pool_sizes)
+			.max_sets(5)
+			.flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND);
+
+		let descriptor_pool = unsafe { device.create_descriptor_pool(&pool_info, None).unwrap() };
+
+		let descriptor_types = [
+			vk::DescriptorType::STORAGE_BUFFER,
+			vk::DescriptorType::SAMPLED_IMAGE,
+			vk::DescriptorType::STORAGE_IMAGE,
+			vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+			vk::DescriptorType::SAMPLER,
+		];
+
+		let descriptor_layouts = descriptor_types
+			.iter()
+			.map(|&ty| {
+				let bindings = [vk::DescriptorSetLayoutBinding::default()
+					.binding(0)
+					.descriptor_type(ty)
+					.descriptor_count(MAX_BINDLESS_RESOURCES)
+					.stage_flags(vk::ShaderStageFlags::ALL)];
+
+				let binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
+					| vk::DescriptorBindingFlags::UPDATE_AFTER_BIND];
+
+				let mut layout_flags_info =
+					vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+						.binding_flags(&binding_flags);
+
+				let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+					.bindings(&bindings)
+					.flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+					.push_next(&mut layout_flags_info);
+
+				unsafe {
+					device
+						.create_descriptor_set_layout(&layout_info, None)
+						.unwrap()
+				}
+			})
+			.collect::<Vec<_>>();
+
+		let alloc_info = vk::DescriptorSetAllocateInfo::default()
+			.descriptor_pool(descriptor_pool)
+			.set_layouts(&descriptor_layouts);
+
+		let descriptor_sets = unsafe { device.allocate_descriptor_sets(&alloc_info).unwrap() };
+
+		Self {
+			descriptor_pool,
+			descriptor_set_layouts: descriptor_layouts.try_into().unwrap(),
+			descriptor_sets: descriptor_sets.try_into().unwrap(),
+
+			storage_buffer_index: 0,
+			sampled_image_index: 0,
+			storage_image_index: 0,
+			acceleration_structure_index: 0,
+			sampler_index: 0,
+		}
+	}
+
+	fn register_buffer_uav(&mut self, device: &ash::Device, buffer: vk::Buffer) -> u32 {
+		if self.storage_buffer_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Storage Buffers");
+		}
+
+		let buffer_info = vk::DescriptorBufferInfo::default()
+			.buffer(buffer)
+			.offset(0)
+			.range(vk::WHOLE_SIZE);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[0])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.storage_buffer_index)
+			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+			.buffer_info(std::slice::from_ref(&buffer_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = self.storage_buffer_index;
+		self.storage_buffer_index += 1;
+		assigned_index
+	}
+
+	fn register_texture_srv(
+		&self,
+		device: &ash::Device,
+		image_view: vk::ImageView,
+		current_index: &mut u32,
+	) -> Option<u32> {
+		if *current_index >= MAX_BINDLESS_RESOURCES {
+			log::error!("Exceeded MAX_BINDLESS_RESOURCES for Textures");
+			return None;
+		}
+
+		let image_info = vk::DescriptorImageInfo::default()
+			.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+			.image_view(image_view);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[1])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(*current_index)
+			.descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+			.image_info(std::slice::from_ref(&image_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = *current_index;
+		*current_index += 1;
+		Some(assigned_index)
+	}
+
+	fn register_texture_uav(
+		&self,
+		device: &ash::Device,
+		image_view: vk::ImageView,
+		current_index: &mut u32,
+	) -> Option<u32> {
+		if *current_index >= MAX_BINDLESS_RESOURCES {
+			log::error!("Exceeded MAX_BINDLESS_RESOURCES for Storage Images");
+			return None;
+		}
+
+		let image_info = vk::DescriptorImageInfo::default()
+			.image_layout(vk::ImageLayout::GENERAL)
+			.image_view(image_view);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[2])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(*current_index)
+			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+			.image_info(std::slice::from_ref(&image_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = *current_index;
+		*current_index += 1;
+		Some(assigned_index)
+	}
+
+	fn register_acceleration_structure(
+		&self,
+		device: &ash::Device,
+		accel_struct: vk::AccelerationStructureKHR,
+		current_index: &mut u32,
+	) -> Option<u32> {
+		if *current_index >= MAX_BINDLESS_RESOURCES {
+			log::error!("Exceeded MAX_BINDLESS_RESOURCES for Acceleration Structures");
+			return None;
+		}
+
+		let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::default()
+			.acceleration_structures(std::slice::from_ref(&accel_struct));
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[3])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(*current_index)
+			.descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+			.push_next(&mut accel_info);
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = *current_index;
+		*current_index += 1;
+		Some(assigned_index)
+	}
+
+	fn register_sampler(
+		&self,
+		device: &ash::Device,
+		sampler: vk::Sampler,
+		current_index: &mut u32,
+	) -> Option<u32> {
+		if *current_index >= MAX_BINDLESS_RESOURCES {
+			log::error!("Exceeded MAX_BINDLESS_RESOURCES for Samplers");
+			return None;
+		}
+
+		let sampler_info = vk::DescriptorImageInfo::default().sampler(sampler);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[4])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(*current_index)
+			.descriptor_type(vk::DescriptorType::SAMPLER)
+			.image_info(std::slice::from_ref(&sampler_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = *current_index;
+		*current_index += 1;
+		Some(assigned_index)
+	}
+
+	fn destroy(&self, device: &ash::Device) {
+		unsafe {
+			// TODO: Destroy other resources
+			device.destroy_descriptor_pool(self.descriptor_pool, None);
+		}
+	}
+}
+
+fn create_pipeline_layout(device: &ash::Device, bindless: &BindlessManager) -> vk::PipelineLayout {
+	let push_constant_ranges = [vk::PushConstantRange {
+		stage_flags: vk::ShaderStageFlags::ALL,
+		offset: 0,
+		size: 128, // TODO: Hardcoded guaranteed minimum size
+	}];
+
+	let layout_info = vk::PipelineLayoutCreateInfo::default()
+		.set_layouts(&bindless.descriptor_set_layouts)
+		.push_constant_ranges(&push_constant_ranges);
+
+	let layout = unsafe { device.create_pipeline_layout(&layout_info, None).unwrap() };
+
+	layout
 }

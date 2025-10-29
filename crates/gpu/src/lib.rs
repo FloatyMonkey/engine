@@ -23,10 +23,10 @@ impl std::fmt::Debug for Error {
 	}
 }
 
-pub const BACKEND: Backend = Backend::D3D12;
+pub const BACKEND: Backend = Backend::Vulkan;
 
 // TODO: This hardcodes the backend at compile time. Make it dynamic.
-pub type Device = d3d12::Device;
+pub type Device = vulkan::Device;
 pub type Surface = <Device as DeviceImpl>::Surface;
 pub type CmdList = <Device as DeviceImpl>::CmdList;
 pub type Buffer = <Device as DeviceImpl>::Buffer;
@@ -627,8 +627,11 @@ pub struct ColorAttachment {
 // ----------------------------------------------------------------
 
 pub struct GraphicsPipelineDesc<'a> {
-	pub vs: Option<&'a [u8]>,
-	pub ps: Option<&'a [u8]>,
+	// Tuple of entry point name and shader bytecode.
+	// TODO: Improve this API to allow multiple entry points per shader binary.
+	// Try to unify with raytracing ShaderLibrary.
+	pub vs: Option<(&'a str, &'a [u8])>,
+	pub ps: Option<(&'a str, &'a [u8])>,
 
 	pub descriptor_layout: DescriptorLayout,
 	pub rasterizer: RasterizerDesc,
@@ -638,7 +641,7 @@ pub struct GraphicsPipelineDesc<'a> {
 }
 
 pub struct ComputePipelineDesc<'a> {
-	pub cs: &'a [u8],
+	pub cs: (&'a str, &'a [u8]),
 	pub descriptor_layout: &'a DescriptorLayout,
 }
 

@@ -53,8 +53,8 @@ impl EguiRenderer {
 		let pixel_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
-			vs: Some(&vertex_shader),
-			ps: Some(&pixel_shader),
+			vs: Some(("main_vs", &vertex_shader)),
+			ps: Some(("main_ps", &pixel_shader)),
 			descriptor_layout: gpu::DescriptorLayout {
 				push_constants: Some(gpu::PushConstantBinding { size: 5 * 4 }),
 				bindings: Some(vec![

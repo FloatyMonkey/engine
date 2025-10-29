@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use std::ops::Range;
 
+use crate::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
 use crate::os::{self, App, Window};
-use crate::gpu::{self, DeviceImpl, CmdListImpl, BufferImpl, TextureImpl};
 
 // TODO: Dynamically reallocate
 const VERTEX_BUFFER_SIZE: usize = size_of::<egui::epaint::Vertex>() * 100000;
@@ -33,17 +33,21 @@ pub struct EguiRenderer {
 
 impl EguiRenderer {
 	pub fn new(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
-		let vb = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let vb = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
-		let ib = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<u32>() * INDEX_BUFFER_SIZE,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let ib = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<u32>() * INDEX_BUFFER_SIZE,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
 		let vertex_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_vs");
 		let pixel_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_ps");
@@ -52,9 +56,7 @@ impl EguiRenderer {
 			vs: Some(&vertex_shader),
 			ps: Some(&pixel_shader),
 			descriptor_layout: gpu::DescriptorLayout {
-				push_constants: Some(gpu::PushConstantBinding {
-					size: 5 * 4,
-				}),
+				push_constants: Some(gpu::PushConstantBinding { size: 5 * 4 }),
 				bindings: Some(vec![
 					gpu::DescriptorBinding::bindless_srv(1), // buffers
 					gpu::DescriptorBinding::bindless_srv(2), // textures
@@ -67,7 +69,7 @@ impl EguiRenderer {
 						filter_mag: gpu::FilterMode::Linear,
 						filter_mip: gpu::FilterMode::Linear,
 						..Default::default()
-					}
+					},
 				}]),
 			},
 			rasterizer: gpu::RasterizerDesc::default(),
@@ -98,7 +100,12 @@ impl EguiRenderer {
 		}
 	}
 
-	pub fn paint(&mut self, cmd: &gpu::CmdList, clipped_primitives: &[egui::ClippedPrimitive], screen_desc: &ScreenDesc) {
+	pub fn paint(
+		&mut self,
+		cmd: &gpu::CmdList,
+		clipped_primitives: &[egui::ClippedPrimitive],
+		screen_desc: &ScreenDesc,
+	) {
 		self.update_buffers(clipped_primitives);
 
 		let size_in_pixels = screen_desc.size_in_pixels;
@@ -115,8 +122,20 @@ impl EguiRenderer {
 		self.paint_primitives(cmd, clipped_primitives, screen_desc);
 	}
 
-	fn paint_primitives(&self, cmd: &gpu::CmdList, clipped_primitives: &[egui::ClippedPrimitive], screen_desc: &ScreenDesc) {
-		for (i, egui::ClippedPrimitive { clip_rect, primitive }) in clipped_primitives.iter().enumerate() {
+	fn paint_primitives(
+		&self,
+		cmd: &gpu::CmdList,
+		clipped_primitives: &[egui::ClippedPrimitive],
+		screen_desc: &ScreenDesc,
+	) {
+		for (
+			i,
+			egui::ClippedPrimitive {
+				clip_rect,
+				primitive,
+			},
+		) in clipped_primitives.iter().enumerate()
+		{
 			match primitive {
 				egui::epaint::Primitive::Mesh(mesh) => {
 					self.paint_mesh(cmd, clip_rect, mesh, i, screen_desc);
@@ -136,22 +155,32 @@ impl EguiRenderer {
 
 		let mut vertex_offset = 0;
 
-		for egui::ClippedPrimitive { clip_rect: _, primitive } in clipped_primitives {
+		for egui::ClippedPrimitive {
+			clip_rect: _,
+			primitive,
+		} in clipped_primitives
+		{
 			match primitive {
 				egui::epaint::Primitive::Mesh(mesh) => {
 					let index_offset = self.ib_ranges.last().unwrap_or(&(0..0)).end;
 
 					unsafe {
-						std::ptr::copy_nonoverlapping(mesh.vertices.as_ptr(), map_vb.add(vertex_offset), mesh.vertices.len());
+						std::ptr::copy_nonoverlapping(
+							mesh.vertices.as_ptr(),
+							map_vb.add(vertex_offset),
+							mesh.vertices.len(),
+						);
 					}
 
 					for i in 0..mesh.indices.len() {
 						unsafe {
-							*map_ib.add(index_offset as usize + i) = mesh.indices[i] + vertex_offset as u32;
+							*map_ib.add(index_offset as usize + i) =
+								mesh.indices[i] + vertex_offset as u32;
 						}
 					}
 
-					self.ib_ranges.push(index_offset..(mesh.indices.len() as u32 + index_offset));
+					self.ib_ranges
+						.push(index_offset..(mesh.indices.len() as u32 + index_offset));
 
 					vertex_offset += mesh.vertices.len();
 				}
@@ -162,7 +191,14 @@ impl EguiRenderer {
 		}
 	}
 
-	fn paint_mesh(&self, cmd: &gpu::CmdList, clip_rect: &egui::Rect, mesh: &egui::epaint::Mesh, i: usize, screen_desc: &ScreenDesc) {
+	fn paint_mesh(
+		&self,
+		cmd: &gpu::CmdList,
+		clip_rect: &egui::Rect,
+		mesh: &egui::epaint::Mesh,
+		i: usize,
+		screen_desc: &ScreenDesc,
+	) {
 		let pixels_per_point = screen_desc.pixels_per_point;
 		let size_in_pixels = screen_desc.size_in_pixels;
 
@@ -189,9 +225,12 @@ impl EguiRenderer {
 		});
 
 		let texture_id = match &mesh.texture_id {
-			egui::TextureId::Managed(_) => {
-				self.textures.get(&mesh.texture_id).unwrap().srv_index().unwrap()
-			}
+			egui::TextureId::Managed(_) => self
+				.textures
+				.get(&mesh.texture_id)
+				.unwrap()
+				.srv_index()
+				.unwrap(),
 			egui::TextureId::User(id) => *id as u32,
 		};
 
@@ -199,15 +238,27 @@ impl EguiRenderer {
 		cmd.draw_indexed(self.ib_ranges[i].clone(), 0, 0..1);
 	}
 
-	pub fn create_texture(&mut self, device: &mut gpu::Device, id: egui::TextureId, delta: &egui::epaint::ImageDelta) {
+	pub fn create_texture(
+		&mut self,
+		device: &mut gpu::Device,
+		id: egui::TextureId,
+		delta: &egui::epaint::ImageDelta,
+	) {
 		let pixels: Vec<u8> = match &delta.image {
 			egui::ImageData::Color(image) => {
 				assert_eq!(image.width() * image.height(), image.pixels.len());
-				image.pixels.iter().flat_map(|color| color.to_array()).collect()
+				image
+					.pixels
+					.iter()
+					.flat_map(|color| color.to_array())
+					.collect()
 			}
 			egui::ImageData::Font(image) => {
 				assert_eq!(image.width() * image.height(), image.pixels.len());
-				image.srgba_pixels(None).flat_map(|color| color.to_array()).collect()
+				image
+					.srgba_pixels(None)
+					.flat_map(|color| color.to_array())
+					.collect()
 			}
 		};
 
@@ -252,28 +303,39 @@ pub fn get_raw_input(app: &os::platform::App, window: &os::platform::Window) -> 
 	for event in app.events() {
 		match event {
 			os::Event::Key { key, pressed } => {
-				events.push(egui::Event::Key { key: map_key(key), physical_key: None, pressed, repeat: false, modifiers: Default::default() });
-			},
+				events.push(egui::Event::Key {
+					key: map_key(key),
+					physical_key: None,
+					pressed,
+					repeat: false,
+					modifiers: Default::default(),
+				});
+			}
 			os::Event::Text { character } => {
 				if is_printable_char(character) {
 					events.push(egui::Event::Text(character.to_string()));
 				}
-			},
+			}
 			os::Event::MouseButton { button, pressed } => {
 				let button = match button {
 					os::MouseButton::Left => egui::PointerButton::Primary,
 					os::MouseButton::Middle => egui::PointerButton::Middle,
 					os::MouseButton::Right => egui::PointerButton::Secondary,
 				};
-				events.push(egui::Event::PointerButton { pos: pos_in_points, button, pressed, modifiers: egui::Modifiers::NONE });
-			},
+				events.push(egui::Event::PointerButton {
+					pos: pos_in_points,
+					button,
+					pressed,
+					modifiers: egui::Modifiers::NONE,
+				});
+			}
 			os::Event::MouseWheel { delta } => {
 				const POINTS_PER_SCROLL_LINE: f32 = 50.0;
 				events.push(egui::Event::Scroll(egui::vec2(
 					delta[0] * POINTS_PER_SCROLL_LINE,
 					delta[1] * POINTS_PER_SCROLL_LINE,
 				)));
-			},
+			}
 		}
 	}
 
@@ -284,10 +346,13 @@ pub fn get_raw_input(app: &os::platform::App, window: &os::platform::Window) -> 
 
 	egui::RawInput {
 		// TODO: Better to solve this using ScreenDesc?
-		screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(
-			window.size().x as f32 / scale_factor,
-			window.size().y as f32 / scale_factor,
-		))),
+		screen_rect: Some(egui::Rect::from_min_size(
+			egui::Pos2::ZERO,
+			egui::Vec2::new(
+				window.size().x as f32 / scale_factor,
+				window.size().y as f32 / scale_factor,
+			),
+		)),
 		viewports: std::iter::once((egui::ViewportId::ROOT, viewport)).collect(),
 		focused: window.is_focused(),
 		events,
@@ -295,7 +360,11 @@ pub fn get_raw_input(app: &os::platform::App, window: &os::platform::Window) -> 
 	}
 }
 
-pub fn set_full_output(app: &mut os::platform::App, _window: &mut os::platform::Window, output: &egui::FullOutput) {
+pub fn set_full_output(
+	app: &mut os::platform::App,
+	_window: &mut os::platform::Window,
+	output: &egui::FullOutput,
+) {
 	let os_cursor = map_cursor(output.platform_output.cursor_icon);
 
 	app.set_cursor(&os_cursor);
@@ -303,10 +372,9 @@ pub fn set_full_output(app: &mut os::platform::App, _window: &mut os::platform::
 
 /// Ignores special keys (backspace, delete, F1, …) and '\r', '\n', '\t'.
 fn is_printable_char(chr: char) -> bool {
-	let is_in_private_use_area =
-		('\u{e000}'..='\u{f8ff}').contains(&chr) ||
-		('\u{f0000}'..='\u{ffffd}').contains(&chr) ||
-		('\u{100000}'..='\u{10fffd}').contains(&chr);
+	let is_in_private_use_area = ('\u{e000}'..='\u{f8ff}').contains(&chr)
+		|| ('\u{f0000}'..='\u{ffffd}').contains(&chr)
+		|| ('\u{100000}'..='\u{10fffd}').contains(&chr);
 
 	!is_in_private_use_area && !chr.is_ascii_control()
 }
@@ -325,8 +393,12 @@ fn map_cursor(cursor: egui::CursorIcon) -> os::Cursor {
 		CU::Move => os::Cursor::ResizeAll,
 		CU::NoDrop => os::Cursor::NotAllowed,
 		CU::NotAllowed => os::Cursor::NotAllowed,
-		CU::ResizeHorizontal | CU::ResizeColumn | CU::ResizeEast | CU::ResizeWest => os::Cursor::ResizeEw,
-		CU::ResizeVertical | CU::ResizeRow | CU::ResizeNorth | CU::ResizeSouth => os::Cursor::ResizeNs,
+		CU::ResizeHorizontal | CU::ResizeColumn | CU::ResizeEast | CU::ResizeWest => {
+			os::Cursor::ResizeEw
+		}
+		CU::ResizeVertical | CU::ResizeRow | CU::ResizeNorth | CU::ResizeSouth => {
+			os::Cursor::ResizeNs
+		}
 		CU::ResizeNeSw | CU::ResizeNorthEast | CU::ResizeSouthWest => os::Cursor::ResizeNeSw,
 		CU::ResizeNwSe | CU::ResizeNorthWest | CU::ResizeSouthEast => os::Cursor::ResizeNwSe,
 		_ => os::Cursor::Arrow,

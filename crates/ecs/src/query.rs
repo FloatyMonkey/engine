@@ -1,6 +1,6 @@
-use crate::recursive;
 use super::{Archetype, Component, Entity, World};
-use std::{cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, iter::FusedIterator};
+use crate::recursive;
+use std::{cell::UnsafeCell, iter::FusedIterator, marker::PhantomData, mem::MaybeUninit};
 
 /// Type that can be fetched from a [`World`] using a [`Query`].
 pub trait QueryParam {
@@ -41,11 +41,15 @@ impl<T: Component> QueryParam for &T {
 	type Fetch<'a> = &'a [UnsafeCell<T>];
 
 	fn matches_archetype(world: &World, archetype: &Archetype) -> bool {
-		world.component_id::<T>().is_some_and(|id| archetype.contains(id))
+		world
+			.component_id::<T>()
+			.is_some_and(|id| archetype.contains(id))
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
-		let component = archetype.component_index(world.component_id::<T>().unwrap()).unwrap();
+		let component = archetype
+			.component_index(world.component_id::<T>().unwrap())
+			.unwrap();
 		unsafe { archetype.get_slice(component) }
 	}
 
@@ -60,11 +64,15 @@ impl<T: Component> QueryParam for &mut T {
 	type Fetch<'a> = &'a [UnsafeCell<T>];
 
 	fn matches_archetype(world: &World, archetype: &Archetype) -> bool {
-		world.component_id::<T>().is_some_and(|id| archetype.contains(id))
+		world
+			.component_id::<T>()
+			.is_some_and(|id| archetype.contains(id))
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
-		let component = archetype.component_index(world.component_id::<T>().unwrap()).unwrap();
+		let component = archetype
+			.component_index(world.component_id::<T>().unwrap())
+			.unwrap();
 		unsafe { archetype.get_slice(component) }
 	}
 
@@ -86,7 +94,9 @@ impl<C: Component> QueryParam for Has<C> {
 	}
 
 	fn fetch<'a>(world: &'a World, archetype: &'a Archetype) -> Self::Fetch<'a> {
-		world.component_id::<C>().is_some_and(|id| archetype.contains(id))
+		world
+			.component_id::<C>()
+			.is_some_and(|id| archetype.contains(id))
 	}
 
 	#[inline(always)]
@@ -113,7 +123,7 @@ impl<T: QueryParam> QueryParam for Option<T> {
 	}
 }
 
-macro_rules! query_params_impl {
+macro_rules! query_params {
 	($($name: ident),*) => {
 		impl<$($name: QueryParam,)*> QueryParam for ($($name,)*) {
 			type Item<'a> = ($($name::Item<'a>,)*);
@@ -137,7 +147,7 @@ macro_rules! query_params_impl {
 	};
 }
 
-recursive! (query_params_impl, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
+recursive!(query_params, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
 /// An [`Iterator`] over the items returned by a [`Query`].
 pub struct QueryIter<'w, Q: QueryParam> {
@@ -189,12 +199,16 @@ impl<'w, Q: QueryParam> Iterator for QueryIter<'w, Q> {
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
-		let len = self.archetypes
+		let len = self
+			.archetypes
 			.clone()
 			.map(|i| &self.world.archetypes[i])
-			.filter(|archetype| !archetype.is_empty() && Q::matches_archetype(self.world, archetype))
+			.filter(|archetype| {
+				!archetype.is_empty() && Q::matches_archetype(self.world, archetype)
+			})
 			.map(|archetype| archetype.len())
-			.sum::<usize>() + (self.len - self.row);
+			.sum::<usize>()
+			+ (self.len - self.row);
 
 		(len, Some(len))
 	}

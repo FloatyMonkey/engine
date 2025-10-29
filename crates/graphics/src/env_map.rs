@@ -1,5 +1,5 @@
 use super::mipgen::MipGen;
-use gpu::{self, DeviceImpl, TextureImpl, CmdListImpl};
+use gpu::{self, CmdListImpl, DeviceImpl, TextureImpl};
 
 const RESOLUTION: usize = 512;
 const SAMPLES_PER_PIXEL: usize = 64;
@@ -27,7 +27,8 @@ impl ImportanceMap {
 	pub fn setup(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
 		// Setup env map prepare shader.
 
-		let shader = shader_compiler.compile("shaders/pathtracer/kernels/env-map-prepare.slang", "main");
+		let shader =
+			shader_compiler.compile("shaders/pathtracer/kernels/env-map-prepare.slang", "main");
 
 		let descriptor_layout = gpu::DescriptorLayout {
 			push_constants: Some(gpu::PushConstantBinding {
@@ -37,46 +38,53 @@ impl ImportanceMap {
 				gpu::DescriptorBinding::bindless_srv(1),
 				gpu::DescriptorBinding::bindless_uav(2),
 			]),
-			static_samplers: Some(vec![
-				gpu::SamplerBinding {
-					shader_register: 0,
-					register_space: 0,
-					sampler_desc: gpu::SamplerDesc {
-						filter_min: gpu::FilterMode::Linear,
-						filter_mag: gpu::FilterMode::Linear,
-						filter_mip: gpu::FilterMode::Linear,
-						..Default::default()
-					},
+			static_samplers: Some(vec![gpu::SamplerBinding {
+				shader_register: 0,
+				register_space: 0,
+				sampler_desc: gpu::SamplerDesc {
+					filter_min: gpu::FilterMode::Linear,
+					filter_mag: gpu::FilterMode::Linear,
+					filter_mip: gpu::FilterMode::Linear,
+					..Default::default()
 				},
-			]),
+			}]),
 		};
 
-		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs: &shader,
-			descriptor_layout: &descriptor_layout,
-		}).unwrap();
+		let compute_pipeline = device
+			.create_compute_pipeline(&gpu::ComputePipelineDesc {
+				cs: &shader,
+				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
 
 		// Setup importance map.
 
 		let mip_levels = gpu::max_mip_level(RESOLUTION as u32) + 1;
 
-		let importance_map = device.create_texture(&gpu::TextureDesc {
-			width: RESOLUTION as u64,
-			height: RESOLUTION as u64,
-			depth: 1,
-			array_size: 1,
-			mip_levels,
-			format: gpu::Format::R32Float,
-			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::ShaderResource,
-		}).unwrap();
+		let importance_map = device
+			.create_texture(&gpu::TextureDesc {
+				width: RESOLUTION as u64,
+				height: RESOLUTION as u64,
+				depth: 1,
+				array_size: 1,
+				mip_levels,
+				format: gpu::Format::R32Float,
+				usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
+				layout: gpu::TextureLayout::ShaderResource,
+			})
+			.unwrap();
 
-		let uavs = (1..mip_levels).map(|i| {
-			device.create_texture_view(&gpu::TextureViewDesc {
-				first_mip_level: i,
-				mip_level_count: 1,
-			}, &importance_map)
-		}).collect::<Vec<_>>();
+		let uavs = (1..mip_levels)
+			.map(|i| {
+				device.create_texture_view(
+					&gpu::TextureViewDesc {
+						first_mip_level: i,
+						mip_level_count: 1,
+					},
+					&importance_map,
+				)
+			})
+			.collect::<Vec<_>>();
 
 		Self {
 			importance_map,
@@ -117,11 +125,12 @@ impl ImportanceMap {
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch([dimension.div_ceil(16), dimension.div_ceil(16), 1]);
-		
+
 		cmd.barriers(&gpu::Barriers::global());
 
 		// Generate mips.
-		self.mipgen.generate_mips(cmd, &self.importance_map, dimension, &self.uavs);
+		self.mipgen
+			.generate_mips(cmd, &self.importance_map, dimension, &self.uavs);
 
 		self.dirty = false;
 	}

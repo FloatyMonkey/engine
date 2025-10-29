@@ -1,4 +1,4 @@
-use gpu::{self, AccelerationStructureImpl, BufferImpl, DeviceImpl, CmdListImpl};
+use gpu::{self, AccelerationStructureImpl, BufferImpl, CmdListImpl, DeviceImpl};
 
 pub struct Blas {
 	pub accel: gpu::AccelerationStructure,
@@ -8,7 +8,14 @@ pub struct Blas {
 }
 
 impl Blas {
-	pub fn create(device: &mut gpu::Device, vertex_buffer: &gpu::Buffer, index_buffer: &gpu::Buffer, vertex_count: usize, index_count: usize, vertex_stride: usize) -> Self {
+	pub fn create(
+		device: &mut gpu::Device,
+		vertex_buffer: &gpu::Buffer,
+		index_buffer: &gpu::Buffer,
+		vertex_count: usize,
+		index_count: usize,
+		vertex_stride: usize,
+	) -> Self {
 		let geo = gpu::AccelerationStructureTriangles {
 			vertex_buffer: vertex_buffer.gpu_ptr(),
 			vertex_format: gpu::Format::RGB32Float,
@@ -28,24 +35,30 @@ impl Blas {
 
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
 
-		let buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.acceleration_structure_size,
-			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: sizes.acceleration_structure_size,
+				usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.build_scratch_size,
-			usage: gpu::BufferUsage::UNORDERED_ACCESS,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let scratch_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: sizes.build_scratch_size,
+				usage: gpu::BufferUsage::UNORDERED_ACCESS,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
-			ty: gpu::AccelerationStructureType::BottomLevel,
-			buffer: &buffer,
-			offset: 0,
-			size: sizes.acceleration_structure_size,
-		}).unwrap();
+		let accel = device
+			.create_acceleration_structure(&gpu::AccelerationStructureDesc {
+				ty: gpu::AccelerationStructureType::BottomLevel,
+				buffer: &buffer,
+				offset: 0,
+				size: sizes.acceleration_structure_size,
+			})
+			.unwrap();
 
 		Self {
 			accel,
@@ -84,39 +97,50 @@ impl Tlas {
 	pub fn create(device: &mut gpu::Device, count: usize) -> Self {
 		let instance_descriptor_size = gpu::AccelerationStructure::instance_descriptor_size();
 
-		let instance_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: instance_descriptor_size * count,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let instance_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: instance_descriptor_size * count,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
 		let build_inputs = gpu::AccelerationStructureBuildInputs {
 			flags: gpu::AccelerationStructureBuildFlags::PREFER_FAST_TRACE,
 			entries: gpu::AccelerationStructureEntries::Instances(
-				gpu::AccelerationStructureInstances { data: instance_buffer.gpu_ptr(), count }
+				gpu::AccelerationStructureInstances {
+					data: instance_buffer.gpu_ptr(),
+					count,
+				},
 			),
 		};
 
 		let sizes = device.acceleration_structure_sizes(&build_inputs);
 
-		let buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.acceleration_structure_size,
-			usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: sizes.acceleration_structure_size,
+				usage: gpu::BufferUsage::ACCELERATION_STRUCTURE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let scratch_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: sizes.build_scratch_size,
-			usage: gpu::BufferUsage::UNORDERED_ACCESS,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let scratch_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: sizes.build_scratch_size,
+				usage: gpu::BufferUsage::UNORDERED_ACCESS,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let accel = device.create_acceleration_structure(&gpu::AccelerationStructureDesc {
-			ty: gpu::AccelerationStructureType::TopLevel,
-			buffer: &buffer,
-			offset: 0,
-			size: sizes.acceleration_structure_size,
-		}).unwrap();
+		let accel = device
+			.create_acceleration_structure(&gpu::AccelerationStructureDesc {
+				ty: gpu::AccelerationStructureType::TopLevel,
+				buffer: &buffer,
+				offset: 0,
+				size: sizes.acceleration_structure_size,
+			})
+			.unwrap();
 
 		Self {
 			accel,

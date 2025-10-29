@@ -8,13 +8,17 @@ mod windows;
 
 use engine::*;
 
-use asset::AssetServer;
-use gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
-use graphics::{camera::Camera, scene::Scene, pathtracer::{Compositor, PathTracer}};
-use math::{Mat4, transform::Transform3};
-use os::{self, App, Window};
 use crate::egui_impl::{EguiRenderer, ScreenDesc, get_raw_input, set_full_output};
 use crate::scene::setup_scene;
+use asset::AssetServer;
+use gpu::{self, CmdListImpl, DeviceImpl, SurfaceImpl, TextureImpl};
+use graphics::{
+	camera::Camera,
+	pathtracer::{Compositor, PathTracer},
+	scene::Scene,
+};
+use math::{Mat4, transform::Transform3};
+use os::{self, App, Window};
 
 fn main() {
 	let mut assets = AssetServer::new();
@@ -48,7 +52,9 @@ fn main() {
 		format: gpu::Format::RGBA8UNorm,
 	};
 
-	let mut surface = device.create_surface(&surface_info, gpu::WindowHandle(window.native_handle().0)).unwrap();
+	let mut surface = device
+		.create_surface(&surface_info, gpu::WindowHandle(window.native_handle().0))
+		.unwrap();
 	let mut cmd = device.create_cmd_list(2);
 
 	let mut egui_renderer = EguiRenderer::new(&mut device, &shader_compiler);
@@ -77,7 +83,9 @@ fn main() {
 
 		set_full_output(&mut app, &mut window, &full_output);
 
-		let clipped_primitives = editor.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+		let clipped_primitives = editor
+			.egui_ctx
+			.tessellate(full_output.shapes, full_output.pixels_per_point);
 
 		for (id, image_delta) in &full_output.textures_delta.set {
 			egui_renderer.create_texture(&mut device, *id, image_delta);
@@ -93,20 +101,43 @@ fn main() {
 		//gizmo.cylinder(Vec3::new(3.0, 0.0, 0.0), 0.5, 1.0, 0xFFFF00FF);
 
 		// Path Tracer
-		cmd.debug_event_push("Path Tracer", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
+		cmd.debug_event_push(
+			"Path Tracer",
+			gpu::Color {
+				r: 0,
+				g: 0,
+				b: 255,
+				a: 255,
+			},
+		);
 
 		if let Some((scene, path_tracer)) = &mut renderer {
 			scene.update(&mut editor.context.world, &assets, &mut device, &mut cmd);
 			path_tracer.run(&mut cmd, scene, 20);
 
-			if let Some((camera_transform, camera)) = editor.context.world.query::<(&Transform3, &Camera)>().iter().next() {
+			if let Some((camera_transform, camera)) = editor
+				.context
+				.world
+				.query::<(&Transform3, &Camera)>()
+				.iter()
+				.next()
+			{
 				let view_matrix = Mat4::from(camera_transform.inv());
 				let projection_matrix = camera.projection_matrix();
 				let view_projection = projection_matrix * view_matrix;
-				gizmo_renderer.render(&mut cmd, &gizmo, &view_projection.data, &path_tracer.depth_pass_texture);
+				gizmo_renderer.render(
+					&mut cmd,
+					&gizmo,
+					&view_projection.data,
+					&path_tracer.depth_pass_texture,
+				);
 			}
 
-			compositor.process(&mut cmd, &path_tracer.color_pass_texture, &gizmo_renderer.texture);
+			compositor.process(
+				&mut cmd,
+				&path_tracer.color_pass_texture,
+				&gizmo_renderer.texture,
+			);
 		}
 
 		editor.context.viewport_texture_srv = compositor.texture().srv_index().unwrap();
@@ -114,7 +145,15 @@ fn main() {
 		cmd.debug_event_pop();
 
 		// Editor
-		cmd.debug_event_push("Editor", gpu::Color { r: 0, g: 0, b: 255, a: 255 });
+		cmd.debug_event_push(
+			"Editor",
+			gpu::Color {
+				r: 0,
+				g: 0,
+				b: 255,
+				a: 255,
+			},
+		);
 
 		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
 			texture: surface.acquire(),
@@ -125,16 +164,25 @@ fn main() {
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
 			colors: &[gpu::RenderTarget {
 				texture: surface.acquire(),
-				load_op: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }),
+				load_op: gpu::LoadOp::Clear(gpu::Color {
+					r: 0.0,
+					g: 0.0,
+					b: 0.0,
+					a: 1.0,
+				}),
 				store_op: gpu::StoreOp::Store,
 			}],
 			depth_stencil: None,
 		});
 
-		egui_renderer.paint(&cmd, &clipped_primitives, &ScreenDesc {
-			size_in_pixels: window.size().into(),
-			pixels_per_point: full_output.pixels_per_point,
-		});
+		egui_renderer.paint(
+			&cmd,
+			&clipped_primitives,
+			&ScreenDesc {
+				size_in_pixels: window.size().into(),
+				pixels_per_point: full_output.pixels_per_point,
+			},
+		);
 
 		cmd.render_pass_end();
 

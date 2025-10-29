@@ -1,9 +1,9 @@
-use crate::recursive;
 use super::{Query, QueryParam};
+use crate::recursive;
 
 use std::any::{Any, TypeId};
 use std::cell::UnsafeCell;
-use std::collections::{hash_map::DefaultHasher, HashMap};
+use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 
@@ -53,9 +53,7 @@ impl<C: Component> ComponentVec for Vec<C> {
 }
 
 fn component_vec_to_mut<C: 'static>(c: &mut dyn ComponentVec) -> &mut Vec<C> {
-	c.to_any_mut()
-		.downcast_mut::<Vec<C>>()
-		.unwrap()
+	c.to_any_mut().downcast_mut::<Vec<C>>().unwrap()
 }
 
 pub struct ComponentStore {
@@ -107,7 +105,8 @@ impl Archetype {
 	}
 
 	pub(crate) unsafe fn get_slice<C: Component>(&self, component: usize) -> &[UnsafeCell<C>] {
-		let data = self.components[component].data
+		let data = self.components[component]
+			.data
 			.to_any()
 			.downcast_ref::<Vec<C>>()
 			.unwrap();
@@ -118,7 +117,7 @@ impl Archetype {
 	pub fn contains(&self, component_id: ComponentId) -> bool {
 		self.components.iter().any(|c| c.id == component_id)
 	}
-	
+
 	pub fn len(&self) -> usize {
 		self.entities.len()
 	}
@@ -228,11 +227,17 @@ impl World {
 
 	fn alloc_entity(&mut self) -> Entity {
 		if let Some(index) = self.free_entities.pop() {
-			Entity { index, generation: self.entities[index as usize].generation }
+			Entity {
+				index,
+				generation: self.entities[index as usize].generation,
+			}
 		} else {
 			self.entities.push(EntityInfo::EMPTY);
 			debug_assert!(self.entities.len() <= EntityId::MAX as usize);
-			Entity { index: (self.entities.len() - 1) as EntityId, generation: NonZeroU32::MIN }
+			Entity {
+				index: (self.entities.len() - 1) as EntityId,
+				generation: NonZeroU32::MIN,
+			}
 		}
 	}
 
@@ -246,7 +251,10 @@ impl World {
 		entity_info.generation = wrapping_add_nonzero(entity_info.generation, 1);
 		self.free_entities.push(entity.index);
 
-		Some(std::mem::replace(&mut entity_info.location, EntityLocation::EMPTY))
+		Some(std::mem::replace(
+			&mut entity_info.location,
+			EntityLocation::EMPTY,
+		))
 	}
 
 	fn entity_location(&self, entity: Entity) -> Option<EntityLocation> {
@@ -264,7 +272,11 @@ impl World {
 		let location = spawn_in_world(self, bundle, entity.index);
 		self.entities[entity.index as usize].location = location;
 
-		EntityMut { world: self, location, entity }
+		EntityMut {
+			world: self,
+			location,
+			entity,
+		}
 	}
 
 	pub fn query<Q: QueryParam>(&'_ self) -> Query<'_, Q> {
@@ -339,7 +351,11 @@ pub struct EntityRef<'w> {
 
 impl<'w> EntityRef<'w> {
 	unsafe fn new(world: &'w World, location: EntityLocation, entity: Entity) -> Self {
-		Self { world, location, entity }
+		Self {
+			world,
+			location,
+			entity,
+		}
 	}
 
 	/// Returns the id of this entity.
@@ -355,7 +371,9 @@ impl<'w> EntityRef<'w> {
 
 	/// Returns `true` if this entity has a component of type `C`. Otherwise returns `false`.
 	pub fn contains<C: Component>(&self) -> bool {
-		self.world.component_id::<C>().is_some_and(|id| self.archetype().contains(id))
+		self.world
+			.component_id::<C>()
+			.is_some_and(|id| self.archetype().contains(id))
 	}
 
 	/// Gets access to the component of type `C` on this entity.
@@ -380,7 +398,11 @@ pub struct EntityMut<'w> {
 
 impl<'w> EntityMut<'w> {
 	unsafe fn new(world: &'w mut World, location: EntityLocation, entity: Entity) -> Self {
-		Self { world, location, entity }
+		Self {
+			world,
+			location,
+			entity,
+		}
 	}
 
 	/// Returns the id of this entity.
@@ -396,7 +418,9 @@ impl<'w> EntityMut<'w> {
 
 	/// Returns `true` if this entity has a component of type `C`. Otherwise returns `false`.
 	pub fn contains<C: Component>(&self) -> bool {
-		self.world.component_id::<C>().is_some_and(|id| self.archetype().contains(id))
+		self.world
+			.component_id::<C>()
+			.is_some_and(|id| self.archetype().contains(id))
 	}
 
 	/// Gets access to the component of type `C` on this entity.
@@ -419,8 +443,8 @@ impl<'w> EntityMut<'w> {
 
 	pub fn despawn(self) {
 		if let Some(location) = self.world.free_entity(self.entity) {
-			let moved_entity = self.world.archetypes[location.archetype_id]
-				.swap_remove(location.archetype_row);
+			let moved_entity =
+				self.world.archetypes[location.archetype_id].swap_remove(location.archetype_row);
 			self.world.entities[moved_entity as usize].location = location;
 		}
 	}
@@ -464,9 +488,13 @@ macro_rules! bundle_impl {
 	}
 }
 
-recursive! (bundle_impl, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
+recursive!(bundle_impl, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
-fn spawn_in_world<B: DynamicBundle>(world: &mut World, bundle: B, entity_index: EntityId) -> EntityLocation {
+fn spawn_in_world<B: DynamicBundle>(
+	world: &mut World,
+	bundle: B,
+	entity_index: EntityId,
+) -> EntityLocation {
 	let mut components = Vec::new();
 	bundle.component_ids(world, &mut |id| components.push(id));
 	let unsorted_components = components.clone();
@@ -480,7 +508,13 @@ fn spawn_in_world<B: DynamicBundle>(world: &mut World, bundle: B, entity_index: 
 		let mut archetype = Archetype::new();
 
 		for component_id in components.iter() {
-			archetype.components.push(world.dyn_components.get(component_id).unwrap().new_same_type());
+			archetype.components.push(
+				world
+					.dyn_components
+					.get(component_id)
+					.unwrap()
+					.new_same_type(),
+			);
 		}
 
 		let index = world.archetypes.len();
@@ -489,20 +523,24 @@ fn spawn_in_world<B: DynamicBundle>(world: &mut World, bundle: B, entity_index: 
 		world.archetypes.push(archetype);
 		index
 	};
-	
+
 	let archetype = &mut world.archetypes[archetype_index];
 	archetype.entities.push(entity_index);
 	let mut component_i = 0;
 	bundle.write(&mut |ptr| {
 		let component_id = unsorted_components[component_i];
-		let component_index = archetype.components.iter().position(|c| c.id == component_id).unwrap();
+		let component_index = archetype
+			.components
+			.iter()
+			.position(|c| c.id == component_id)
+			.unwrap();
 		archetype.components[component_index].data.push_ptr(ptr);
 		component_i += 1;
 	});
 
 	EntityLocation {
 		archetype_id: archetype_index,
-		archetype_row: (world.archetypes[archetype_index].len() - 1) as EntityId
+		archetype_row: (world.archetypes[archetype_index].len() - 1) as EntityId,
 	}
 }
 
@@ -512,9 +550,6 @@ mod tests {
 
 	#[test]
 	fn entity_niche_optimization() {
-		assert_eq!(
-			size_of::<Entity>(),
-			size_of::<Option<Entity>>()
-		);
+		assert_eq!(size_of::<Entity>(), size_of::<Option<Entity>>());
 	}
 }

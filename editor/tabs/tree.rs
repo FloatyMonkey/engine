@@ -214,7 +214,7 @@ impl<Context> Tree<Context> {
 	pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Node<Context>> {
 		self.tree.iter_mut()
 	}
-	
+
 	pub fn split_tabs(
 		&mut self,
 		parent: NodeIndex,

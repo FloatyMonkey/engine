@@ -2,7 +2,7 @@ use asset::AssetServer;
 use ecs::{Name, World};
 use geometry::mesh::{Mesh, Vertex, VertexGroups};
 use graphics::scene::{DomeLight, Image, RectLight, Renderable, SphereLight};
-use math::{transform::Transform3, Quaternion, Unit, UnitQuaternion, Vec3};
+use math::{Quaternion, Unit, UnitQuaternion, Vec3, transform::Transform3};
 
 use openusd_rs::{gf, sdf, usd, usd_geom, usd_lux};
 
@@ -10,18 +10,18 @@ fn convert_mesh(mesh: &usd_geom::Mesh) -> Mesh {
 	let points = mesh.points_attr().get::<Vec<gf::Vec3f>>();
 	let normals = mesh.normals_attr().get::<Vec<gf::Vec3f>>();
 
-	let vertices = points.iter().zip(normals.iter()).map(|(p, n)| {
-		Vertex {
+	let vertices = points
+		.iter()
+		.zip(normals.iter())
+		.map(|(p, n)| Vertex {
 			p: Vec3::new(p.x, p.y, p.z),
 			n: Vec3::new(n.x, n.y, n.z),
-		}
-	}).collect();
+		})
+		.collect();
 
 	let triangles = usd_geom::triangulate(mesh);
 
-	let indices = triangles.iter().map(|i| {
-		*i as usize
-	}).collect();
+	let indices = triangles.iter().map(|i| *i as usize).collect();
 
 	let mut mesh = Mesh {
 		vertices,
@@ -49,8 +49,11 @@ fn traverse_recurse(
 		transform_stack.push(from_usd_transform3d(xform));
 	}
 
-	let get_transform = |stack: &mut Vec<Transform3>|
-		stack.iter().fold(Transform3::<f32>::IDENTITY, |acc, xform| acc * *xform);
+	let get_transform = |stack: &mut Vec<Transform3>| {
+		stack
+			.iter()
+			.fold(Transform3::<f32>::IDENTITY, |acc, xform| acc * *xform)
+	};
 
 	match prim.type_name().as_str() {
 		"Mesh" => {
@@ -63,7 +66,7 @@ fn traverse_recurse(
 				get_transform(transform_stack),
 				Renderable { mesh },
 			));
-		},
+		}
 		"SphereLight" => {
 			let light = usd_lux::SphereLight::define(stage, prim.path().clone());
 
@@ -78,7 +81,7 @@ fn traverse_recurse(
 					radius: light.radius_attr().get::<f32>(),
 				},
 			));
-		},
+		}
 		"RectLight" => {
 			let light = usd_lux::RectLight::define(stage, prim.path().clone());
 
@@ -94,7 +97,7 @@ fn traverse_recurse(
 					height: light.height_attr().get::<f32>(),
 				},
 			));
-		},
+		}
 		"DomeLight" => {
 			let light = usd_lux::DomeLight::define(stage, prim.path().clone());
 
@@ -119,7 +122,7 @@ fn traverse_recurse(
 				},
 			));
 		}
-		_ => {},
+		_ => {}
 	}
 
 	for child in prim.children() {
@@ -138,7 +141,14 @@ pub fn populate_world_from_usd(filepath: &str, world: &mut World, assets: &mut A
 
 	let mut transform_stack: Vec<Transform3> = Vec::new();
 
-	traverse_recurse(filepath, &stage, world, &mut transform_stack, assets, &pseudo_root);
+	traverse_recurse(
+		filepath,
+		&stage,
+		world,
+		&mut transform_stack,
+		assets,
+		&pseudo_root,
+	);
 }
 
 fn from_usd_vec3f(v: gf::Vec3f) -> Vec3 {
@@ -150,7 +160,12 @@ fn from_usd_vec3d(v: gf::Vec3d) -> Vec3 {
 }
 
 fn from_usd_quatd(q: gf::Quatd) -> UnitQuaternion<f32> {
-	Unit::new_unchecked(Quaternion { i: q.i as f32, j: q.j as f32, k: q.k as f32, w: q.w as f32 })
+	Unit::new_unchecked(Quaternion {
+		i: q.i as f32,
+		j: q.j as f32,
+		k: q.k as f32,
+		w: q.w as f32,
+	})
 }
 
 fn from_usd_transform3d(t: gf::Transform3d) -> Transform3 {

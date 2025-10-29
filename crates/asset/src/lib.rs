@@ -22,11 +22,15 @@ impl AssetServer {
 	}
 
 	pub fn get<T: Asset>(&self, handle: &AssetId<T>) -> Option<&T> {
-		self.assets.get(&handle.id).and_then(|asset| asset.downcast_ref::<T>())
+		self.assets
+			.get(&handle.id)
+			.and_then(|asset| asset.downcast_ref::<T>())
 	}
 
 	pub fn get_mut<T: Asset>(&mut self, handle: &AssetId<T>) -> Option<&mut T> {
-		self.assets.get_mut(&handle.id).and_then(|asset| asset.downcast_mut::<T>())
+		self.assets
+			.get_mut(&handle.id)
+			.and_then(|asset| asset.downcast_mut::<T>())
 	}
 }
 

@@ -1,15 +1,19 @@
-use gpu::{self, DeviceImpl, CmdListImpl, BufferImpl};
-use math::{Vec3, Mat3x4};
 use crate::mesh::{AttributeGroup, Mesh};
+use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl};
+use math::{Mat3x4, Vec3};
 
 fn to_gpu_data(vertex_groups: &AttributeGroup<f32>) -> (Vec<u32>, Vec<u32>) {
-	let lookup = vertex_groups.lookup.iter().map(|&i| {
-		i as u32
-	}).collect::<Vec<_>>();
+	let lookup = vertex_groups
+		.lookup
+		.iter()
+		.map(|&i| i as u32)
+		.collect::<Vec<_>>();
 
-	let values = vertex_groups.values.iter().map(|&(attribute_id, value)| {
-		(attribute_id as u32) | ((value * 65535.0) as u32) << 16
-	}).collect::<Vec<_>>();
+	let values = vertex_groups
+		.values
+		.iter()
+		.map(|&(attribute_id, value)| (attribute_id as u32) | ((value * 65535.0) as u32) << 16)
+		.collect::<Vec<_>>();
 
 	(lookup, values)
 }
@@ -41,7 +45,12 @@ pub struct BoneDeform {
 }
 
 impl BoneDeform {
-	pub fn new(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler, mesh: &Mesh, bone_count: usize) -> Self {
+	pub fn new(
+		device: &mut gpu::Device,
+		shader_compiler: &gpu::ShaderCompiler,
+		mesh: &Mesh,
+		bone_count: usize,
+	) -> Self {
 		let shader = shader_compiler.compile("shaders/geometry/bone-deform.slang", "main");
 
 		let descriptor_layout = gpu::DescriptorLayout {
@@ -55,39 +64,49 @@ impl BoneDeform {
 			static_samplers: None,
 		};
 
-		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs: &shader,
-			descriptor_layout: &descriptor_layout,
-		}).unwrap();
+		let compute_pipeline = device
+			.create_compute_pipeline(&gpu::ComputePipelineDesc {
+				cs: &shader,
+				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
 
 		let (lookup, values) = to_gpu_data(&mesh.vertex_groups);
 
-		let lookup_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<u32>() * lookup.len(),
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let lookup_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<u32>() * lookup.len(),
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let weights_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<u32>() * values.len(),
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let weights_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<u32>() * values.len(),
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
 		gpu::upload_buffer(device, &lookup_buffer, gpu::slice_as_u8_slice(&lookup));
 		gpu::upload_buffer(device, &weights_buffer, gpu::slice_as_u8_slice(&values));
 
-		let bone_transforms_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<Mat3x4>() * bone_count,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let bone_transforms_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<Mat3x4>() * bone_count,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
-		let transformed_vertex_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<Vertex>() * mesh.vertices.len(),
-			usage: gpu::BufferUsage::SHADER_RESOURCE | gpu::BufferUsage::UNORDERED_ACCESS,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let transformed_vertex_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<Vertex>() * mesh.vertices.len(),
+				usage: gpu::BufferUsage::SHADER_RESOURCE | gpu::BufferUsage::UNORDERED_ACCESS,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
 		Self {
 			num_vertices: mesh.vertices.len(),
@@ -101,7 +120,9 @@ impl BoneDeform {
 
 	pub fn update_bone_transforms(&mut self, transforms: &[Mat3x4]) {
 		let ptr = self.bone_transforms_buffer.cpu_ptr() as *mut Mat3x4;
-		unsafe { std::ptr::copy_nonoverlapping(transforms.as_ptr(), ptr, transforms.len()); }
+		unsafe {
+			std::ptr::copy_nonoverlapping(transforms.as_ptr(), ptr, transforms.len());
+		}
 	}
 
 	pub fn execute(&self, cmd: &gpu::CmdList, vertex_srv: u32) {
@@ -118,7 +139,7 @@ impl BoneDeform {
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));
 
 		cmd.dispatch([push_constants.num_vertices.div_ceil(32), 1, 1]);
-		
+
 		cmd.barriers(&gpu::Barriers::global());
 	}
 

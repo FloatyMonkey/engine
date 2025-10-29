@@ -11,14 +11,11 @@ mod dual;
 mod quaternion;
 mod unit;
 
-use num::{cast, Number, NumberOps};
+use num::{Number, NumberOps, cast};
 
 pub use complex::{Complex, UnitComplex};
 pub use dual::Dual;
-pub use matrix::{
-	Matrix, Matrix2, Matrix3, Matrix4,
-	Vector, Vector2, Vector3, Vector4,
-};
+pub use matrix::{Matrix, Matrix2, Matrix3, Matrix4, Vector, Vector2, Vector3, Vector4};
 pub use quaternion::{Quaternion, UnitQuaternion};
 pub use unit::Unit;
 
@@ -41,8 +38,12 @@ pub fn clamp<T: Number + NumberOps<T>>(x: T, min: T, max: T) -> T {
 pub fn wrap<T: Number>(mut x: T, min: T, max: T) -> T {
 	let range = max - min;
 
-	while x < min { x += range; }
-	while x > max { x -= range; }
+	while x < min {
+		x += range;
+	}
+	while x > max {
+		x -= range;
+	}
 
 	x
 }

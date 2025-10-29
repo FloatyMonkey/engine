@@ -3,10 +3,13 @@
 
 mod cmd;
 
+use std::{
+	collections::HashSet,
+	ffi::{CStr, c_char, c_void},
+};
 use std::{ffi::CString, ops::Range};
-use std::{ffi::{c_void, CStr, c_char}, collections::HashSet};
 
-use ash::{vk, prelude::VkResult};
+use ash::{prelude::VkResult, vk};
 use gpu_allocator::vulkan as allocator;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 
@@ -32,58 +35,58 @@ fn map_format(format: super::Format) -> vk::Format {
 
 		super::Format::R8UNorm => vk::Format::R8_UNORM,
 		super::Format::R8SNorm => vk::Format::R8_SNORM,
-		super::Format::R8UInt  => vk::Format::R8_UINT,
-		super::Format::R8SInt  => vk::Format::R8_SINT,
+		super::Format::R8UInt => vk::Format::R8_UINT,
+		super::Format::R8SInt => vk::Format::R8_SINT,
 
 		super::Format::R16UNorm => vk::Format::R16_UNORM,
 		super::Format::R16SNorm => vk::Format::R16_SNORM,
-		super::Format::R16UInt  => vk::Format::R16_UINT,
-		super::Format::R16SInt  => vk::Format::R16_SINT,
+		super::Format::R16UInt => vk::Format::R16_UINT,
+		super::Format::R16SInt => vk::Format::R16_SINT,
 		super::Format::R16Float => vk::Format::R16_SFLOAT,
 
-		super::Format::R32UInt  => vk::Format::R32_UINT,
-		super::Format::R32SInt  => vk::Format::R32_SINT,
+		super::Format::R32UInt => vk::Format::R32_UINT,
+		super::Format::R32SInt => vk::Format::R32_SINT,
 		super::Format::R32Float => vk::Format::R32_SFLOAT,
 
 		super::Format::RG8UNorm => vk::Format::R8G8_UNORM,
 		super::Format::RG8SNorm => vk::Format::R8G8_SNORM,
-		super::Format::RG8UInt  => vk::Format::R8G8_UINT,
-		super::Format::RG8SInt  => vk::Format::R8G8_SINT,
+		super::Format::RG8UInt => vk::Format::R8G8_UINT,
+		super::Format::RG8SInt => vk::Format::R8G8_SINT,
 
 		super::Format::RG16UNorm => vk::Format::R16G16_UNORM,
 		super::Format::RG16SNorm => vk::Format::R16G16_SNORM,
-		super::Format::RG16UInt  => vk::Format::R16G16_UINT,
-		super::Format::RG16SInt  => vk::Format::R16G16_SINT,
+		super::Format::RG16UInt => vk::Format::R16G16_UINT,
+		super::Format::RG16SInt => vk::Format::R16G16_SINT,
 		super::Format::RG16Float => vk::Format::R16G16_SFLOAT,
 
-		super::Format::RG32UInt  => vk::Format::R32G32_UINT,
-		super::Format::RG32SInt  => vk::Format::R32G32_SINT,
+		super::Format::RG32UInt => vk::Format::R32G32_UINT,
+		super::Format::RG32SInt => vk::Format::R32G32_SINT,
 		super::Format::RG32Float => vk::Format::R32G32_SFLOAT,
 
-		super::Format::RGB32UInt  => vk::Format::R32G32B32_UINT,
-		super::Format::RGB32SInt  => vk::Format::R32G32B32_SINT,
+		super::Format::RGB32UInt => vk::Format::R32G32B32_UINT,
+		super::Format::RGB32SInt => vk::Format::R32G32B32_SINT,
 		super::Format::RGB32Float => vk::Format::R32G32B32_SFLOAT,
 
 		super::Format::RGBA8UNorm => vk::Format::R8G8B8A8_UNORM,
 		super::Format::RGBA8SNorm => vk::Format::R8G8B8A8_SNORM,
-		super::Format::RGBA8UInt  => vk::Format::R8G8B8A8_UINT,
-		super::Format::RGBA8SInt  => vk::Format::R8G8B8A8_SINT,
+		super::Format::RGBA8UInt => vk::Format::R8G8B8A8_UINT,
+		super::Format::RGBA8SInt => vk::Format::R8G8B8A8_SINT,
 
 		super::Format::RGBA16UNorm => vk::Format::R16G16B16A16_UNORM,
 		super::Format::RGBA16SNorm => vk::Format::R16G16B16A16_SNORM,
-		super::Format::RGBA16UInt  => vk::Format::R16G16B16A16_UINT,
-		super::Format::RGBA16SInt  => vk::Format::R16G16B16A16_SINT,
+		super::Format::RGBA16UInt => vk::Format::R16G16B16A16_UINT,
+		super::Format::RGBA16SInt => vk::Format::R16G16B16A16_SINT,
 		super::Format::RGBA16Float => vk::Format::R16G16B16A16_SFLOAT,
 
-		super::Format::RGBA32UInt  => vk::Format::R32G32B32A32_UINT,
-		super::Format::RGBA32SInt  => vk::Format::R32G32B32A32_SINT,
+		super::Format::RGBA32UInt => vk::Format::R32G32B32A32_UINT,
+		super::Format::RGBA32SInt => vk::Format::R32G32B32A32_SINT,
 		super::Format::RGBA32Float => vk::Format::R32G32B32A32_SFLOAT,
 
 		super::Format::BGRA8UNorm => vk::Format::B8G8R8A8_UNORM,
 
-		super::Format::D16UNorm          => vk::Format::D16_UNORM,
-		super::Format::D24UNormS8UInt    => vk::Format::D24_UNORM_S8_UINT,
-		super::Format::D32Float          => vk::Format::D32_SFLOAT,
+		super::Format::D16UNorm => vk::Format::D16_UNORM,
+		super::Format::D24UNormS8UInt => vk::Format::D24_UNORM_S8_UINT,
+		super::Format::D32Float => vk::Format::D32_SFLOAT,
 		super::Format::D32FloatS8UIntX24 => vk::Format::D32_SFLOAT_S8_UINT,
 	}
 }
@@ -91,7 +94,7 @@ fn map_format(format: super::Format) -> vk::Format {
 fn map_index_format(format: super::Format) -> vk::IndexType {
 	match format {
 		super::Format::Unknown => vk::IndexType::NONE_KHR,
-		super::Format::R8UInt  => vk::IndexType::UINT8_KHR,
+		super::Format::R8UInt => vk::IndexType::UINT8_KHR,
 		super::Format::R16UInt => vk::IndexType::UINT16,
 		super::Format::R32UInt => vk::IndexType::UINT32,
 		_ => panic!(),
@@ -101,61 +104,73 @@ fn map_index_format(format: super::Format) -> vk::IndexType {
 fn map_filter_mode(filter_mode: super::FilterMode) -> vk::Filter {
 	match filter_mode {
 		super::FilterMode::Nearest => vk::Filter::NEAREST,
-		super::FilterMode::Linear  => vk::Filter::LINEAR,
+		super::FilterMode::Linear => vk::Filter::LINEAR,
 	}
 }
 
 fn map_mip_filter_mode(filter_mode: super::FilterMode) -> vk::SamplerMipmapMode {
 	match filter_mode {
 		super::FilterMode::Nearest => vk::SamplerMipmapMode::NEAREST,
-		super::FilterMode::Linear  => vk::SamplerMipmapMode::LINEAR,
+		super::FilterMode::Linear => vk::SamplerMipmapMode::LINEAR,
 	}
 }
 
 fn map_address_mode(address_mode: super::AddressMode) -> vk::SamplerAddressMode {
 	match address_mode {
-		super::AddressMode::Clamp      => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-		super::AddressMode::Repeat     => vk::SamplerAddressMode::REPEAT,
-		super::AddressMode::Mirror     => vk::SamplerAddressMode::MIRRORED_REPEAT,
+		super::AddressMode::Clamp => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+		super::AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+		super::AddressMode::Mirror => vk::SamplerAddressMode::MIRRORED_REPEAT,
 		super::AddressMode::MirrorOnce => vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE,
-		super::AddressMode::Border     => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+		super::AddressMode::Border => vk::SamplerAddressMode::CLAMP_TO_BORDER,
 	}
 }
 
 fn map_border_color(border_color: super::BorderColor) -> vk::BorderColor {
 	match border_color {
 		super::BorderColor::TransparentBlack => vk::BorderColor::FLOAT_TRANSPARENT_BLACK,
-		super::BorderColor::OpaqueBlack      => vk::BorderColor::FLOAT_OPAQUE_BLACK,
-		super::BorderColor::White            => vk::BorderColor::FLOAT_OPAQUE_WHITE,
+		super::BorderColor::OpaqueBlack => vk::BorderColor::FLOAT_OPAQUE_BLACK,
+		super::BorderColor::White => vk::BorderColor::FLOAT_OPAQUE_WHITE,
 	}
 }
 
 fn map_image_type(desc: &super::TextureDesc) -> vk::ImageType {
-	if desc.depth > 1 { return vk::ImageType::TYPE_3D; }
-	if desc.height > 1 { return vk::ImageType::TYPE_2D; }
+	if desc.depth > 1 {
+		return vk::ImageType::TYPE_3D;
+	}
+	if desc.height > 1 {
+		return vk::ImageType::TYPE_2D;
+	}
 	vk::ImageType::TYPE_1D
 }
 
 fn map_image_layout(layout: super::TextureLayout) -> vk::ImageLayout {
 	match layout {
-		super::TextureLayout::Common            => vk::ImageLayout::GENERAL,
-		super::TextureLayout::Present           => vk::ImageLayout::PRESENT_SRC_KHR,
-		super::TextureLayout::CopySrc           => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-		super::TextureLayout::CopyDst           => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-		super::TextureLayout::ShaderResource    => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-		super::TextureLayout::UnorderedAccess   => vk::ImageLayout::GENERAL,
-		super::TextureLayout::RenderTarget      => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-		super::TextureLayout::DepthStencilWrite => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-		super::TextureLayout::DepthStencilRead  => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+		super::TextureLayout::Common => vk::ImageLayout::GENERAL,
+		super::TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
+		super::TextureLayout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+		super::TextureLayout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+		super::TextureLayout::ShaderResource => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+		super::TextureLayout::UnorderedAccess => vk::ImageLayout::GENERAL,
+		super::TextureLayout::RenderTarget => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+		super::TextureLayout::DepthStencilWrite => {
+			vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		}
+		super::TextureLayout::DepthStencilRead => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
 	}
 }
 
 fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 	let mut vk_flags = vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
 
-	if usage.contains(super::BufferUsage::INDEX)                  { vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER; }
-	if usage.contains(super::BufferUsage::SHADER_RESOURCE)        { vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER; }
-	if usage.contains(super::BufferUsage::UNORDERED_ACCESS)       { vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER; }
+	if usage.contains(super::BufferUsage::INDEX) {
+		vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER;
+	}
+	if usage.contains(super::BufferUsage::SHADER_RESOURCE) {
+		vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER;
+	}
+	if usage.contains(super::BufferUsage::UNORDERED_ACCESS) {
+		vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER;
+	}
 	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
@@ -168,46 +183,54 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 fn map_image_usage_flags(usage: super::TextureUsage) -> vk::ImageUsageFlags {
 	let mut vk_flags = vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
 
-	if usage.contains(super::TextureUsage::RENDER_TARGET)    { vk_flags |= vk::ImageUsageFlags::COLOR_ATTACHMENT; }
-	if usage.contains(super::TextureUsage::DEPTH_STENCIL)    { vk_flags |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT; }
-	if usage.contains(super::TextureUsage::SHADER_RESOURCE)  { vk_flags |= vk::ImageUsageFlags::SAMPLED; }
-	if usage.contains(super::TextureUsage::UNORDERED_ACCESS) { vk_flags |= vk::ImageUsageFlags::STORAGE; }
+	if usage.contains(super::TextureUsage::RENDER_TARGET) {
+		vk_flags |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
+	}
+	if usage.contains(super::TextureUsage::DEPTH_STENCIL) {
+		vk_flags |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+	}
+	if usage.contains(super::TextureUsage::SHADER_RESOURCE) {
+		vk_flags |= vk::ImageUsageFlags::SAMPLED;
+	}
+	if usage.contains(super::TextureUsage::UNORDERED_ACCESS) {
+		vk_flags |= vk::ImageUsageFlags::STORAGE;
+	}
 
 	vk_flags
 }
 
 fn map_compare_op(compare_op: super::CompareOp) -> vk::CompareOp {
 	match compare_op {
-		super::CompareOp::Never        => vk::CompareOp::NEVER,
-		super::CompareOp::Always       => vk::CompareOp::ALWAYS,
-		super::CompareOp::Equal        => vk::CompareOp::EQUAL,
-		super::CompareOp::NotEqual     => vk::CompareOp::NOT_EQUAL,
-		super::CompareOp::Less         => vk::CompareOp::LESS,
-		super::CompareOp::LessEqual    => vk::CompareOp::LESS_OR_EQUAL,
-		super::CompareOp::Greater      => vk::CompareOp::GREATER,
+		super::CompareOp::Never => vk::CompareOp::NEVER,
+		super::CompareOp::Always => vk::CompareOp::ALWAYS,
+		super::CompareOp::Equal => vk::CompareOp::EQUAL,
+		super::CompareOp::NotEqual => vk::CompareOp::NOT_EQUAL,
+		super::CompareOp::Less => vk::CompareOp::LESS,
+		super::CompareOp::LessEqual => vk::CompareOp::LESS_OR_EQUAL,
+		super::CompareOp::Greater => vk::CompareOp::GREATER,
 		super::CompareOp::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
 	}
 }
 
 fn map_topology(topology: super::Topology) -> vk::PrimitiveTopology {
 	match topology {
-		super::Topology::PointList        => vk::PrimitiveTopology::POINT_LIST,
-		super::Topology::LineList         => vk::PrimitiveTopology::LINE_LIST,
-		super::Topology::LineStrip        => vk::PrimitiveTopology::LINE_STRIP,
-		super::Topology::TriangleList     => vk::PrimitiveTopology::TRIANGLE_LIST,
-		super::Topology::TriangleStrip    => vk::PrimitiveTopology::TRIANGLE_STRIP,
+		super::Topology::PointList => vk::PrimitiveTopology::POINT_LIST,
+		super::Topology::LineList => vk::PrimitiveTopology::LINE_LIST,
+		super::Topology::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
+		super::Topology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
+		super::Topology::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
 	}
 }
 
 fn map_stencil_op(stencil_op: &super::StencilOp) -> vk::StencilOp {
 	match stencil_op {
-		super::StencilOp::Keep           => vk::StencilOp::KEEP,
-		super::StencilOp::Zero           => vk::StencilOp::ZERO,
-		super::StencilOp::Replace        => vk::StencilOp::REPLACE,
-		super::StencilOp::Invert         => vk::StencilOp::INVERT,
-		super::StencilOp::IncrementWrap  => vk::StencilOp::INCREMENT_AND_WRAP,
+		super::StencilOp::Keep => vk::StencilOp::KEEP,
+		super::StencilOp::Zero => vk::StencilOp::ZERO,
+		super::StencilOp::Replace => vk::StencilOp::REPLACE,
+		super::StencilOp::Invert => vk::StencilOp::INVERT,
+		super::StencilOp::IncrementWrap => vk::StencilOp::INCREMENT_AND_WRAP,
 		super::StencilOp::IncrementClamp => vk::StencilOp::INCREMENT_AND_CLAMP,
-		super::StencilOp::DecrementWrap  => vk::StencilOp::DECREMENT_AND_WRAP,
+		super::StencilOp::DecrementWrap => vk::StencilOp::DECREMENT_AND_WRAP,
 		super::StencilOp::DecrementClamp => vk::StencilOp::DECREMENT_AND_CLAMP,
 	}
 }
@@ -221,87 +244,115 @@ fn map_polygon_mode(polygon_mode: &super::PolygonMode) -> vk::PolygonMode {
 
 fn map_cull_mode(cull_mode: &super::CullMode) -> vk::CullModeFlags {
 	match cull_mode {
-		super::CullMode::None  => vk::CullModeFlags::NONE,
+		super::CullMode::None => vk::CullModeFlags::NONE,
 		super::CullMode::Front => vk::CullModeFlags::FRONT,
-		super::CullMode::Back  => vk::CullModeFlags::BACK,
+		super::CullMode::Back => vk::CullModeFlags::BACK,
 	}
 }
 
 fn map_blend_factor(blend_factor: &super::BlendFactor) -> vk::BlendFactor {
 	match blend_factor {
-		super::BlendFactor::Zero             => vk::BlendFactor::ZERO,
-		super::BlendFactor::One              => vk::BlendFactor::ONE,
-		super::BlendFactor::SrcColor         => vk::BlendFactor::SRC_COLOR,
-		super::BlendFactor::InvSrcColor      => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
-		super::BlendFactor::SrcAlpha         => vk::BlendFactor::SRC_ALPHA,
-		super::BlendFactor::InvSrcAlpha      => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-		super::BlendFactor::DstColor         => vk::BlendFactor::DST_COLOR,
-		super::BlendFactor::InvDstColor      => vk::BlendFactor::ONE_MINUS_DST_COLOR,
-		super::BlendFactor::DstAlpha         => vk::BlendFactor::DST_ALPHA,
-		super::BlendFactor::InvDstAlpha      => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
-		super::BlendFactor::Src1Color        => vk::BlendFactor::SRC1_COLOR,
-		super::BlendFactor::InvSrc1Color     => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
-		super::BlendFactor::Src1Alpha        => vk::BlendFactor::SRC1_ALPHA,
-		super::BlendFactor::InvSrc1Alpha     => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
-		super::BlendFactor::SrcAlphaSat      => vk::BlendFactor::SRC_ALPHA_SATURATE,
-		super::BlendFactor::ConstantColor    => vk::BlendFactor::CONSTANT_COLOR,
+		super::BlendFactor::Zero => vk::BlendFactor::ZERO,
+		super::BlendFactor::One => vk::BlendFactor::ONE,
+		super::BlendFactor::SrcColor => vk::BlendFactor::SRC_COLOR,
+		super::BlendFactor::InvSrcColor => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+		super::BlendFactor::SrcAlpha => vk::BlendFactor::SRC_ALPHA,
+		super::BlendFactor::InvSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+		super::BlendFactor::DstColor => vk::BlendFactor::DST_COLOR,
+		super::BlendFactor::InvDstColor => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+		super::BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
+		super::BlendFactor::InvDstAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+		super::BlendFactor::Src1Color => vk::BlendFactor::SRC1_COLOR,
+		super::BlendFactor::InvSrc1Color => vk::BlendFactor::ONE_MINUS_SRC1_COLOR,
+		super::BlendFactor::Src1Alpha => vk::BlendFactor::SRC1_ALPHA,
+		super::BlendFactor::InvSrc1Alpha => vk::BlendFactor::ONE_MINUS_SRC1_ALPHA,
+		super::BlendFactor::SrcAlphaSat => vk::BlendFactor::SRC_ALPHA_SATURATE,
+		super::BlendFactor::ConstantColor => vk::BlendFactor::CONSTANT_COLOR,
 		super::BlendFactor::InvConstantColor => vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR,
 	}
 }
 
 fn map_blend_op(blend_op: &super::BlendOp) -> vk::BlendOp {
 	match blend_op {
-		super::BlendOp::Add         => vk::BlendOp::ADD,
-		super::BlendOp::Subtract    => vk::BlendOp::SUBTRACT,
+		super::BlendOp::Add => vk::BlendOp::ADD,
+		super::BlendOp::Subtract => vk::BlendOp::SUBTRACT,
 		super::BlendOp::RevSubtract => vk::BlendOp::REVERSE_SUBTRACT,
-		super::BlendOp::Min         => vk::BlendOp::MIN,
-		super::BlendOp::Max         => vk::BlendOp::MAX,
+		super::BlendOp::Min => vk::BlendOp::MIN,
+		super::BlendOp::Max => vk::BlendOp::MAX,
 	}
 }
 
-fn map_acceleration_structure_flags(flags: super::AccelerationStructureBuildFlags) -> vk::BuildAccelerationStructureFlagsKHR {
+fn map_acceleration_structure_flags(
+	flags: super::AccelerationStructureBuildFlags,
+) -> vk::BuildAccelerationStructureFlagsKHR {
 	let mut vk_flags = vk::BuildAccelerationStructureFlagsKHR::empty();
-	
-	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_UPDATE)      { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_UPDATE; }
-	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_COMPACTION)  { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION; }
-	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_TRACE) { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE; }
-	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_BUILD) { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_BUILD; }
-	if flags.contains(super::AccelerationStructureBuildFlags::MINIMIZE_MEMORY)   { vk_flags |= vk::BuildAccelerationStructureFlagsKHR::LOW_MEMORY; }
+
+	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_UPDATE) {
+		vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_UPDATE;
+	}
+	if flags.contains(super::AccelerationStructureBuildFlags::ALLOW_COMPACTION) {
+		vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION;
+	}
+	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_TRACE) {
+		vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE;
+	}
+	if flags.contains(super::AccelerationStructureBuildFlags::PREFER_FAST_BUILD) {
+		vk_flags |= vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_BUILD;
+	}
+	if flags.contains(super::AccelerationStructureBuildFlags::MINIMIZE_MEMORY) {
+		vk_flags |= vk::BuildAccelerationStructureFlagsKHR::LOW_MEMORY;
+	}
 
 	vk_flags
 }
 
-fn map_acceleration_structure_geometry_flags(flags: super::AccelerationStructureGeometryFlags) -> vk::GeometryFlagsKHR {
+fn map_acceleration_structure_geometry_flags(
+	flags: super::AccelerationStructureGeometryFlags,
+) -> vk::GeometryFlagsKHR {
 	let mut vk_flags = vk::GeometryFlagsKHR::empty();
 
-	if flags.contains(super::AccelerationStructureGeometryFlags::OPAQUE)                          { vk_flags |= vk::GeometryFlagsKHR::OPAQUE; }
-	if flags.contains(super::AccelerationStructureGeometryFlags::NO_DUPLICATE_ANY_HIT_INVOCATION) { vk_flags |= vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION; }
+	if flags.contains(super::AccelerationStructureGeometryFlags::OPAQUE) {
+		vk_flags |= vk::GeometryFlagsKHR::OPAQUE;
+	}
+	if flags.contains(super::AccelerationStructureGeometryFlags::NO_DUPLICATE_ANY_HIT_INVOCATION) {
+		vk_flags |= vk::GeometryFlagsKHR::NO_DUPLICATE_ANY_HIT_INVOCATION;
+	}
 
 	vk_flags
 }
 
-fn map_acceleration_structure_instance_flags(flags: super::AccelerationStructureInstanceFlags) -> vk::GeometryInstanceFlagsKHR {
+fn map_acceleration_structure_instance_flags(
+	flags: super::AccelerationStructureInstanceFlags,
+) -> vk::GeometryInstanceFlagsKHR {
 	let mut vk_flags = vk::GeometryInstanceFlagsKHR::empty();
 
-	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_CULL_DISABLE) { vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE; }
-	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_FRONT_CCW)    { vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE; }
-	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_OPAQUE)          { vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE; }
-	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_NON_OPAQUE)      { vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_NO_OPAQUE; }
+	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_CULL_DISABLE) {
+		vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE;
+	}
+	if flags.contains(super::AccelerationStructureInstanceFlags::TRIANGLE_FRONT_CCW) {
+		vk_flags |= vk::GeometryInstanceFlagsKHR::TRIANGLE_FRONT_COUNTERCLOCKWISE;
+	}
+	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_OPAQUE) {
+		vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE;
+	}
+	if flags.contains(super::AccelerationStructureInstanceFlags::FORCE_NON_OPAQUE) {
+		vk_flags |= vk::GeometryInstanceFlagsKHR::FORCE_NO_OPAQUE;
+	}
 
 	vk_flags
 }
 
 fn map_load_op<T: Default>(load_op: super::LoadOp<T>) -> (vk::AttachmentLoadOp, T) {
 	match load_op {
-		super::LoadOp::Load         => (vk::AttachmentLoadOp::LOAD, Default::default()),
+		super::LoadOp::Load => (vk::AttachmentLoadOp::LOAD, Default::default()),
 		super::LoadOp::Clear(value) => (vk::AttachmentLoadOp::CLEAR, value),
-		super::LoadOp::Discard      => (vk::AttachmentLoadOp::DONT_CARE, Default::default()),
+		super::LoadOp::Discard => (vk::AttachmentLoadOp::DONT_CARE, Default::default()),
 	}
 }
 
 fn map_store_op(store_op: super::StoreOp) -> vk::AttachmentStoreOp {
 	match store_op {
-		super::StoreOp::Store   => vk::AttachmentStoreOp::STORE,
+		super::StoreOp::Store => vk::AttachmentStoreOp::STORE,
 		super::StoreOp::Discard => vk::AttachmentStoreOp::DONT_CARE,
 	}
 }
@@ -328,7 +379,12 @@ impl super::SurfaceImpl<Device> for Surface {
 	fn acquire(&mut self) -> &Texture {
 		let (index, _suboptimal) = unsafe {
 			self.swapchain_ext
-				.acquire_next_image(self.swapchain, u64::MAX, self.next_semaphore, vk::Fence::null())
+				.acquire_next_image(
+					self.swapchain,
+					u64::MAX,
+					self.next_semaphore,
+					vk::Fence::null(),
+				)
 				.unwrap()
 		};
 
@@ -351,7 +407,11 @@ impl super::SurfaceImpl<Device> for Surface {
 			.image_indices(&image_indices)
 			.wait_semaphores(&wait_semaphores);
 
-		unsafe { self.swapchain_ext.queue_present(device.graphics_queue, &present_info) }.unwrap();
+		unsafe {
+			self.swapchain_ext
+				.queue_present(device.graphics_queue, &present_info)
+		}
+		.unwrap();
 	}
 }
 
@@ -426,21 +486,20 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 		size_of::<vk::AccelerationStructureInstanceKHR>()
 	}
 
-	fn write_instance_descriptor(instance: &super::AccelerationStructureInstance, slice: &mut [u8]) {
+	fn write_instance_descriptor(
+		instance: &super::AccelerationStructureInstance,
+		slice: &mut [u8],
+	) {
 		let t = &instance.transform;
 
 		let vk_instance = vk::AccelerationStructureInstanceKHR {
 			transform: vk::TransformMatrixKHR {
 				matrix: [
-					t[0][0], t[0][1], t[0][2], t[0][3],
-					t[1][0], t[1][1], t[1][2], t[1][3],
+					t[0][0], t[0][1], t[0][2], t[0][3], t[1][0], t[1][1], t[1][2], t[1][3],
 					t[2][0], t[2][1], t[2][2], t[2][3],
 				],
 			},
-			instance_custom_index_and_mask: vk::Packed24_8::new(
-				instance.user_id,
-				instance.mask,
-			),
+			instance_custom_index_and_mask: vk::Packed24_8::new(instance.user_id, instance.mask),
 			instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
 				instance.contribution_to_hit_group_index,
 				map_acceleration_structure_instance_flags(instance.flags).as_raw() as _,
@@ -451,7 +510,11 @@ impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 		};
 
 		unsafe {
-			std::ptr::copy_nonoverlapping(&vk_instance as *const _ as _, slice.as_mut_ptr(), size_of::<vk::AccelerationStructureInstanceKHR>());
+			std::ptr::copy_nonoverlapping(
+				&vk_instance as *const _ as _,
+				slice.as_mut_ptr(),
+				size_of::<vk::AccelerationStructureInstanceKHR>(),
+			);
 		}
 	}
 }
@@ -460,17 +523,13 @@ pub struct GraphicsPipeline {
 	pipeline: vk::Pipeline,
 }
 
-impl super::GraphicsPipelineImpl<Device> for GraphicsPipeline {
-	
-}
+impl super::GraphicsPipelineImpl<Device> for GraphicsPipeline {}
 
 pub struct ComputePipeline {
 	pipeline: vk::Pipeline,
 }
 
-impl super::ComputePipelineImpl<Device> for ComputePipeline {
-	
-}
+impl super::ComputePipelineImpl<Device> for ComputePipeline {}
 
 pub struct RaytracingPipeline {
 	pipeline: vk::Pipeline,
@@ -494,9 +553,9 @@ unsafe extern "system" fn debug_callback(
 ) -> vk::Bool32 {
 	let log_level = match message_severity {
 		vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => log::Level::Debug,
-		vk::DebugUtilsMessageSeverityFlagsEXT::INFO    => log::Level::Info,
+		vk::DebugUtilsMessageSeverityFlagsEXT::INFO => log::Level::Info,
 		vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => log::Level::Warn,
-		vk::DebugUtilsMessageSeverityFlagsEXT::ERROR   => log::Level::Error,
+		vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => log::Level::Error,
 		_ => unreachable!(),
 	};
 
@@ -515,29 +574,32 @@ fn pick_physical_device_and_queue_family_indices(
 	Ok(unsafe { instance.enumerate_physical_devices() }?
 		.into_iter()
 		.find_map(|physical_device| {
-			let has_extensions = unsafe { instance.enumerate_device_extension_properties(physical_device) }.map(
-				|exts| {
-					let set: HashSet<&CStr> = exts
-						.iter()
-						.map(|ext| unsafe {
-							CStr::from_ptr(&ext.extension_name as *const c_char)
-						})
-						.collect();
+			let has_extensions =
+				unsafe { instance.enumerate_device_extension_properties(physical_device) }.map(
+					|exts| {
+						let set: HashSet<&CStr> = exts
+							.iter()
+							.map(|ext| unsafe {
+								CStr::from_ptr(&ext.extension_name as *const c_char)
+							})
+							.collect();
 
-					extensions.iter().all(|ext| set.contains(ext))
-				},
-			);
+						extensions.iter().all(|ext| set.contains(ext))
+					},
+				);
 
 			if has_extensions != Ok(true) {
 				return None;
 			}
 
-			let graphics_family = unsafe { instance.get_physical_device_queue_family_properties(physical_device) }
-				.into_iter()
-				.enumerate()
-				.find(|(_, queue_family)| {
-					queue_family.queue_count > 0 && queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-				});
+			let graphics_family =
+				unsafe { instance.get_physical_device_queue_family_properties(physical_device) }
+					.into_iter()
+					.enumerate()
+					.find(|(_, queue_family)| {
+						queue_family.queue_count > 0
+							&& queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+					});
 
 			graphics_family.map(|(i, _)| (physical_device, i as u32))
 		}))
@@ -555,7 +617,6 @@ pub struct Device {
 	graphics_queue: vk::Queue,
 	command_pool: vk::CommandPool,
 	//rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-
 	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
 	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
 	debug_utils_ext: Option<ash::ext::debug_utils::Instance>,
@@ -586,12 +647,14 @@ impl super::DeviceImpl for Device {
 				layers.push(VK_LAYER_KHRONOS_VALIDATION);
 			}
 
-			let supported_layer_names = unsafe { entry
-				.enumerate_instance_layer_properties()
-				.unwrap()
-				.into_iter()
-				.map(|layer| CStr::from_ptr(layer.layer_name.as_ptr()))
-				.collect::<Vec<_>>() };
+			let supported_layer_names = unsafe {
+				entry
+					.enumerate_instance_layer_properties()
+					.unwrap()
+					.into_iter()
+					.map(|layer| CStr::from_ptr(layer.layer_name.as_ptr()))
+					.collect::<Vec<_>>()
+			};
 
 			for layer in &layers {
 				if !supported_layer_names.contains(layer) {
@@ -609,10 +672,7 @@ impl super::DeviceImpl for Device {
 				instance_extension_names.push(vk::KHR_WIN32_SURFACE_NAME);
 			}
 
-			let layer_ptrs = layers
-				.iter()
-				.map(|s| s.as_ptr())
-				.collect::<Vec<_>>();
+			let layer_ptrs = layers.iter().map(|s| s.as_ptr()).collect::<Vec<_>>();
 
 			let extension_ptrs = instance_extension_names
 				.iter()
@@ -645,18 +705,21 @@ impl super::DeviceImpl for Device {
 			let debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
 				.message_severity(
 					//vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE |
-					vk::DebugUtilsMessageSeverityFlagsEXT::INFO |
-					vk::DebugUtilsMessageSeverityFlagsEXT::WARNING |
-					vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+					vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+						| vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+						| vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
 				)
 				.message_type(
-					vk::DebugUtilsMessageTypeFlagsEXT::GENERAL |
-					vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE |
-					vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+					vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+						| vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+						| vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
 				)
 				.pfn_user_callback(Some(debug_callback));
 
-			let _messenger = unsafe { ext.create_debug_utils_messenger(&debug_utils_messenger_create_info, None) }.unwrap();
+			let _messenger = unsafe {
+				ext.create_debug_utils_messenger(&debug_utils_messenger_create_info, None)
+			}
+			.unwrap();
 		}
 
 		let device_extension_names = [
@@ -667,12 +730,10 @@ impl super::DeviceImpl for Device {
 			vk::KHR_SWAPCHAIN_NAME, // TODO: Conditionally enable
 		];
 
-		let (physical_device, queue_family_index) = pick_physical_device_and_queue_family_indices(
-			&instance,
-			&device_extension_names,
-		)
-		.unwrap()
-		.unwrap();
+		let (physical_device, queue_family_index) =
+			pick_physical_device_and_queue_family_indices(&instance, &device_extension_names)
+				.unwrap()
+				.unwrap();
 
 		let device = {
 			let queue_create_info = vk::DeviceQueueCreateInfo::default()
@@ -703,8 +764,9 @@ impl super::DeviceImpl for Device {
 			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
 				.acceleration_structure(true);
 
-			let mut raytracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
-				.ray_tracing_pipeline(true);
+			let mut raytracing_pipeline =
+				vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
+					.ray_tracing_pipeline(true);
 
 			let queue_create_infos = [queue_create_info];
 			let device_extension_names_ptrs = device_extension_names.map(|n| n.as_ptr());
@@ -729,7 +791,8 @@ impl super::DeviceImpl for Device {
 			debug_settings: Default::default(),
 			buffer_device_address: true,
 			allocation_sizes: Default::default(),
-		}).unwrap();
+		})
+		.unwrap();
 
 		let graphics_queue = unsafe { device.get_device_queue(queue_family_index, 0) };
 
@@ -741,16 +804,20 @@ impl super::DeviceImpl for Device {
 			unsafe { device.create_command_pool(&command_pool_create_info, None) }.unwrap()
 		};
 
-		let acceleration_structure_ext = ash::khr::acceleration_structure::Device::new(&instance, &device);
-		let ray_tracing_pipeline_ext = ash::khr::ray_tracing_pipeline::Device::new(&instance, &device);
+		let acceleration_structure_ext =
+			ash::khr::acceleration_structure::Device::new(&instance, &device);
+		let ray_tracing_pipeline_ext =
+			ash::khr::ray_tracing_pipeline::Device::new(&instance, &device);
 
-		let mut rt_pipeline_properties = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
+		let mut rt_pipeline_properties =
+			vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
 
-		let mut physical_device_properties2 = vk::PhysicalDeviceProperties2::default()
-			.push_next(&mut rt_pipeline_properties);
+		let mut physical_device_properties2 =
+			vk::PhysicalDeviceProperties2::default().push_next(&mut rt_pipeline_properties);
 
 		unsafe {
-			instance.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
+			instance
+				.get_physical_device_properties2(physical_device, &mut physical_device_properties2);
 		}
 
 		let adapter_info = super::AdapterInfo {
@@ -786,7 +853,11 @@ impl super::DeviceImpl for Device {
 		}
 	}
 
-	fn create_surface(&mut self, desc: &super::SurfaceDesc, window_handle: super::WindowHandle) -> Result<Self::Surface, super::Error> {
+	fn create_surface(
+		&mut self,
+		desc: &super::SurfaceDesc,
+		window_handle: super::WindowHandle,
+	) -> Result<Self::Surface, super::Error> {
 		// TODO: Remove dependency on win32, move to platform layer
 		let hinstance = unsafe { GetModuleHandleW(None) }.unwrap();
 		let surface_create_info = vk::Win32SurfaceCreateInfoKHR::default()
@@ -794,14 +865,15 @@ impl super::DeviceImpl for Device {
 			.hwnd(window_handle.0 as vk::HWND);
 
 		let win32_surface_ext = ash::khr::win32_surface::Instance::new(&self.entry, &self.instance);
-		let surface = unsafe { win32_surface_ext.create_win32_surface(&surface_create_info, None) }.unwrap();
+		let surface =
+			unsafe { win32_surface_ext.create_win32_surface(&surface_create_info, None) }.unwrap();
 
 		let swapchain_ext = ash::khr::swapchain::Device::new(&self.instance, &self.device);
 
 		let present_mode = match desc.present_mode {
 			super::PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
-			super::PresentMode::Mailbox   => vk::PresentModeKHR::MAILBOX,
-			super::PresentMode::Fifo      => vk::PresentModeKHR::FIFO,
+			super::PresentMode::Mailbox => vk::PresentModeKHR::MAILBOX,
+			super::PresentMode::Fifo => vk::PresentModeKHR::FIFO,
 		};
 
 		let info = vk::SwapchainCreateInfoKHR::default()
@@ -825,23 +897,29 @@ impl super::DeviceImpl for Device {
 
 		let swapchain_images = unsafe { swapchain_ext.get_swapchain_images(swapchain) }.unwrap();
 
-		let textures = swapchain_images.iter().map(|image| {
-			// TODO: todo!("Image views");
+		let textures = swapchain_images
+			.iter()
+			.map(|image| {
+				// TODO: todo!("Image views");
 
-			Texture {
-				image: *image,
-				allocation: unsafe { std::mem::zeroed() }, // TODO: Terrible, fix this
-				srv_index: None,
-				uav_index: None,
-				rtv: None,
-				dsv: None,
-			}
-		}).collect::<Vec<Texture>>();
+				Texture {
+					image: *image,
+					allocation: unsafe { std::mem::zeroed() }, // TODO: Terrible, fix this
+					srv_index: None,
+					uav_index: None,
+					rtv: None,
+					dsv: None,
+				}
+			})
+			.collect::<Vec<Texture>>();
 
-		let acquire_semaphores = swapchain_images.iter().map(|image| {
-			let semaphore_create_info = vk::SemaphoreCreateInfo::default();
-			unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
-		}).collect::<Vec<vk::Semaphore>>();
+		let acquire_semaphores = swapchain_images
+			.iter()
+			.map(|image| {
+				let semaphore_create_info = vk::SemaphoreCreateInfo::default();
+				unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
+			})
+			.collect::<Vec<vk::Semaphore>>();
 
 		let next_semaphore = {
 			let semaphore_create_info = vk::SemaphoreCreateInfo::default();
@@ -864,7 +942,11 @@ impl super::DeviceImpl for Device {
 			.level(vk::CommandBufferLevel::PRIMARY)
 			.command_buffer_count(num_buffers);
 
-		let command_buffers = unsafe { self.device.allocate_command_buffers(&command_buffer_allocate_info) }.unwrap();
+		let command_buffers = unsafe {
+			self.device
+				.allocate_command_buffers(&command_buffer_allocate_info)
+		}
+		.unwrap();
 
 		CmdList {
 			bb_index: 0,
@@ -881,28 +963,40 @@ impl super::DeviceImpl for Device {
 
 		let buffer_info = vk::BufferCreateInfo::default()
 			.size(desc.size as _)
-			.usage(map_buffer_usage_flags(desc.usage) | default_flags) 
+			.usage(map_buffer_usage_flags(desc.usage) | default_flags)
 			.sharing_mode(vk::SharingMode::EXCLUSIVE);
 
 		let buffer = unsafe { self.device.create_buffer(&buffer_info, None) }.unwrap();
 
-		let allocation = self.allocator.allocate(&allocator::AllocationCreateDesc {
-			requirements: unsafe { self.device.get_buffer_memory_requirements(buffer) },
-			location: match desc.memory {
-				super::Memory::GpuOnly  => gpu_allocator::MemoryLocation::GpuOnly,
-				super::Memory::CpuToGpu => gpu_allocator::MemoryLocation::CpuToGpu,
-				super::Memory::GpuToCpu => gpu_allocator::MemoryLocation::GpuToCpu,
-			},
-			linear: true,
-			name: "Allocation",
-			allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
-		}).unwrap();
+		let allocation = self
+			.allocator
+			.allocate(&allocator::AllocationCreateDesc {
+				requirements: unsafe { self.device.get_buffer_memory_requirements(buffer) },
+				location: match desc.memory {
+					super::Memory::GpuOnly => gpu_allocator::MemoryLocation::GpuOnly,
+					super::Memory::CpuToGpu => gpu_allocator::MemoryLocation::CpuToGpu,
+					super::Memory::GpuToCpu => gpu_allocator::MemoryLocation::GpuToCpu,
+				},
+				linear: true,
+				name: "Allocation",
+				allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
+			})
+			.unwrap();
 
-		unsafe { self.device.bind_buffer_memory(buffer, allocation.memory(), allocation.offset()) }.unwrap();
+		unsafe {
+			self.device
+				.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+		}
+		.unwrap();
 
-		let mapped_ptr = allocation.mapped_ptr().map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
+		let mapped_ptr = allocation
+			.mapped_ptr()
+			.map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
 
-		let device_address = unsafe { self.device.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer)) };
+		let device_address = unsafe {
+			self.device
+				.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
+		};
 
 		Ok(Buffer {
 			buffer,
@@ -933,27 +1027,40 @@ impl super::DeviceImpl for Device {
 
 		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
 
-		let allocation = self.allocator.allocate(&allocator::AllocationCreateDesc {
-			requirements: unsafe { self.device.get_image_memory_requirements(image) },
-			location: gpu_allocator::MemoryLocation::GpuOnly,
-			linear: true,
-			name: "Allocation",
-			allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
-		}).unwrap();
+		let allocation = self
+			.allocator
+			.allocate(&allocator::AllocationCreateDesc {
+				requirements: unsafe { self.device.get_image_memory_requirements(image) },
+				location: gpu_allocator::MemoryLocation::GpuOnly,
+				linear: true,
+				name: "Allocation",
+				allocation_scheme: allocator::AllocationScheme::GpuAllocatorManaged,
+			})
+			.unwrap();
 
-		unsafe { self.device.bind_image_memory(image, allocation.memory(), allocation.offset()) }.unwrap();
+		unsafe {
+			self.device
+				.bind_image_memory(image, allocation.memory(), allocation.offset())
+		}
+		.unwrap();
 
-		let rtv = desc.usage.contains(super::TextureUsage::RENDER_TARGET).then(|| {
-			let create_info = vk::ImageViewCreateInfo::default();
-			todo!();
-			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
-		});
+		let rtv = desc
+			.usage
+			.contains(super::TextureUsage::RENDER_TARGET)
+			.then(|| {
+				let create_info = vk::ImageViewCreateInfo::default();
+				todo!();
+				unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
+			});
 
-		let dsv = desc.usage.contains(super::TextureUsage::DEPTH_STENCIL).then(|| {
-			let create_info = vk::ImageViewCreateInfo::default();
-			todo!();
-			unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
-		});
+		let dsv = desc
+			.usage
+			.contains(super::TextureUsage::DEPTH_STENCIL)
+			.then(|| {
+				let create_info = vk::ImageViewCreateInfo::default();
+				todo!();
+				unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
+			});
 
 		Ok(Texture {
 			image,
@@ -986,8 +1093,7 @@ impl super::DeviceImpl for Device {
 		}
 
 		if let Some(border_color) = desc.border_color {
-			create_info = create_info
-				.border_color(map_border_color(border_color));
+			create_info = create_info.border_color(map_border_color(border_color));
 		}
 
 		let sampler = unsafe { self.device.create_sampler(&create_info, None) }.unwrap();
@@ -995,26 +1101,37 @@ impl super::DeviceImpl for Device {
 		Ok(Sampler { sampler })
 	}
 
-	fn create_acceleration_structure(&mut self, desc: &super::AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, super::Error> {
+	fn create_acceleration_structure(
+		&mut self,
+		desc: &super::AccelerationStructureDesc<Self>,
+	) -> Result<Self::AccelerationStructure, super::Error> {
 		let create_info = vk::AccelerationStructureCreateInfoKHR::default()
 			.buffer(desc.buffer.buffer)
 			.offset(desc.offset as _)
 			.size(desc.size as _)
 			.ty(match desc.ty {
-				super::AccelerationStructureType::TopLevel    => vk::AccelerationStructureTypeKHR::TOP_LEVEL,
-				super::AccelerationStructureType::BottomLevel => vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+				super::AccelerationStructureType::TopLevel => {
+					vk::AccelerationStructureTypeKHR::TOP_LEVEL
+				}
+				super::AccelerationStructureType::BottomLevel => {
+					vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL
+				}
 			});
 
-		let acceleration_structure = unsafe { self.acceleration_structure_ext.create_acceleration_structure(&create_info, None) }.unwrap();
+		let acceleration_structure = unsafe {
+			self.acceleration_structure_ext
+				.create_acceleration_structure(&create_info, None)
+		}
+		.unwrap();
 
 		let srv_index = todo!();
 
-		let gpu_ptr = unsafe { self
-			.acceleration_structure_ext
-			.get_acceleration_structure_device_address(
-				&vk::AccelerationStructureDeviceAddressInfoKHR::default()
-					.acceleration_structure(acceleration_structure)
-			)
+		let gpu_ptr = unsafe {
+			self.acceleration_structure_ext
+				.get_acceleration_structure_device_address(
+					&vk::AccelerationStructureDeviceAddressInfoKHR::default()
+						.acceleration_structure(acceleration_structure),
+				)
 		};
 
 		Ok(AccelerationStructure {
@@ -1024,7 +1141,10 @@ impl super::DeviceImpl for Device {
 		})
 	}
 
-	fn create_graphics_pipeline(&self, desc: &super::GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, super::Error> {
+	fn create_graphics_pipeline(
+		&self,
+		desc: &super::GraphicsPipelineDesc,
+	) -> Result<Self::GraphicsPipeline, super::Error> {
 		let mut shader_modules = Vec::new();
 		let mut shader_stages = Vec::new();
 
@@ -1079,7 +1199,11 @@ impl super::DeviceImpl for Device {
 			.depth_clamp_enable(true)
 			.polygon_mode(map_polygon_mode(&desc.rasterizer.polygon_mode))
 			.cull_mode(map_cull_mode(&desc.rasterizer.cull_mode))
-			.front_face(if desc.rasterizer.front_ccw { vk::FrontFace::COUNTER_CLOCKWISE } else { vk::FrontFace::CLOCKWISE })
+			.front_face(if desc.rasterizer.front_ccw {
+				vk::FrontFace::COUNTER_CLOCKWISE
+			} else {
+				vk::FrontFace::CLOCKWISE
+			})
 			.line_width(1.0);
 
 		let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
@@ -1118,36 +1242,42 @@ impl super::DeviceImpl for Device {
 				.depth_bias_slope_factor(desc.rasterizer.depth_bias.slope);
 		}
 
-		let color_attachments = desc.color_attachments.iter().map(|attachment| {
-			let mut vk_attachment = vk::PipelineColorBlendAttachmentState::default()
-				.color_write_mask(vk::ColorComponentFlags::from_raw(attachment.write_mask.bits() as u32));
+		let color_attachments = desc
+			.color_attachments
+			.iter()
+			.map(|attachment| {
+				let mut vk_attachment = vk::PipelineColorBlendAttachmentState::default()
+					.color_write_mask(vk::ColorComponentFlags::from_raw(
+						attachment.write_mask.bits() as u32,
+					));
 
-			if let Some(ref blend) = attachment.blend {
-				vk_attachment = vk_attachment
-					.blend_enable(true)
-					.src_color_blend_factor(map_blend_factor(&blend.src_color))
-					.dst_color_blend_factor(map_blend_factor(&blend.dst_color))
-					.color_blend_op(map_blend_op(&blend.color_op))
-					.src_alpha_blend_factor(map_blend_factor(&blend.src_alpha))
-					.dst_alpha_blend_factor(map_blend_factor(&blend.dst_alpha))
-					.alpha_blend_op(map_blend_op(&blend.alpha_op));
-			}
+				if let Some(ref blend) = attachment.blend {
+					vk_attachment = vk_attachment
+						.blend_enable(true)
+						.src_color_blend_factor(map_blend_factor(&blend.src_color))
+						.dst_color_blend_factor(map_blend_factor(&blend.dst_color))
+						.color_blend_op(map_blend_op(&blend.color_op))
+						.src_alpha_blend_factor(map_blend_factor(&blend.src_alpha))
+						.dst_alpha_blend_factor(map_blend_factor(&blend.dst_alpha))
+						.alpha_blend_op(map_blend_op(&blend.alpha_op));
+				}
 
-			vk_attachment
-		}).collect::<Vec<_>>();
+				vk_attachment
+			})
+			.collect::<Vec<_>>();
 
-		let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
-			.attachments(&color_attachments);
+		let color_blend_state =
+			vk::PipelineColorBlendStateCreateInfo::default().attachments(&color_attachments);
 
-		let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
-			.dynamic_states(&[
-				vk::DynamicState::VIEWPORT,
-				vk::DynamicState::SCISSOR,
-				vk::DynamicState::BLEND_CONSTANTS,
-				vk::DynamicState::STENCIL_REFERENCE,
-			]);
+		let dynamic_state = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&[
+			vk::DynamicState::VIEWPORT,
+			vk::DynamicState::SCISSOR,
+			vk::DynamicState::BLEND_CONSTANTS,
+			vk::DynamicState::STENCIL_REFERENCE,
+		]);
 
-		let color_target_formats = desc.color_attachments
+		let color_target_formats = desc
+			.color_attachments
 			.iter()
 			.map(|attachment| map_format(attachment.format))
 			.collect::<Vec<_>>();
@@ -1172,7 +1302,11 @@ impl super::DeviceImpl for Device {
 			.dynamic_state(&dynamic_state)
 			.push_next(&mut rendering);
 
-		let pipeline = unsafe { self.device.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+		let pipeline = unsafe {
+			self.device
+				.create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None)
+		}
+		.unwrap()[0];
 
 		for module in shader_modules {
 			unsafe { self.device.destroy_shader_module(module, None) };
@@ -1181,77 +1315,110 @@ impl super::DeviceImpl for Device {
 		Ok(GraphicsPipeline { pipeline })
 	}
 
-	fn create_compute_pipeline(&self, desc: &super::ComputePipelineDesc) -> Result<Self::ComputePipeline, super::Error> {
+	fn create_compute_pipeline(
+		&self,
+		desc: &super::ComputePipelineDesc,
+	) -> Result<Self::ComputePipeline, super::Error> {
 		let shader_module_create_info = vk::ShaderModuleCreateInfo {
 			p_code: desc.cs.as_ptr() as _,
 			code_size: desc.cs.len(),
 			..Default::default()
 		};
 
-		let shader_module = unsafe { self.device.create_shader_module(&shader_module_create_info, None) }.unwrap();
+		let shader_module = unsafe {
+			self.device
+				.create_shader_module(&shader_module_create_info, None)
+		}
+		.unwrap();
 
 		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
 			.module(shader_module)
 			.name(c"main");
-		
+
 		let create_info = vk::ComputePipelineCreateInfo::default()
 			.stage(shader_stage)
 			.layout(todo!());
 
-		let pipeline = unsafe { self.device.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None) }.unwrap()[0];
+		let pipeline = unsafe {
+			self.device
+				.create_compute_pipelines(vk::PipelineCache::null(), &[create_info], None)
+		}
+		.unwrap()[0];
 
 		unsafe { self.device.destroy_shader_module(shader_module, None) };
 
 		Ok(ComputePipeline { pipeline })
 	}
 
-	fn create_raytracing_pipeline(&self, desc: &super::RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, super::Error> {
-		let modules = desc.libraries.iter().map(|library| {
-			let create_info = vk::ShaderModuleCreateInfo {
-				code_size: library.shader.len(),
-				p_code: library.shader.as_ptr() as *const u32,
-				..Default::default()
-			};
+	fn create_raytracing_pipeline(
+		&self,
+		desc: &super::RaytracingPipelineDesc,
+	) -> Result<Self::RaytracingPipeline, super::Error> {
+		let modules = desc
+			.libraries
+			.iter()
+			.map(|library| {
+				let create_info = vk::ShaderModuleCreateInfo {
+					code_size: library.shader.len(),
+					p_code: library.shader.as_ptr() as *const u32,
+					..Default::default()
+				};
 
-			unsafe { self.device.create_shader_module(&create_info, None) }.unwrap()
-		}).collect::<Vec<_>>();
+				unsafe { self.device.create_shader_module(&create_info, None) }.unwrap()
+			})
+			.collect::<Vec<_>>();
 
-		let names = desc.libraries.iter().map(|library| {
-			CString::new(library.entry.clone()).unwrap()
-		}).collect::<Vec<_>>();
+		let names = desc
+			.libraries
+			.iter()
+			.map(|library| CString::new(library.entry.clone()).unwrap())
+			.collect::<Vec<_>>();
 
-		let stages = desc.libraries.iter().enumerate().map(|(i, library)| {
-			let stage = match library.ty {
-				super::ShaderType::Raygen       => vk::ShaderStageFlags::RAYGEN_KHR,
-				super::ShaderType::Miss         => vk::ShaderStageFlags::MISS_KHR,
-				super::ShaderType::Intersection => vk::ShaderStageFlags::INTERSECTION_KHR,
-				super::ShaderType::ClosestHit   => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-				super::ShaderType::AnyHit       => vk::ShaderStageFlags::ANY_HIT_KHR,
-				super::ShaderType::Callable     => vk::ShaderStageFlags::CALLABLE_KHR,
-				_ => panic!(),
-			};
+		let stages = desc
+			.libraries
+			.iter()
+			.enumerate()
+			.map(|(i, library)| {
+				let stage = match library.ty {
+					super::ShaderType::Raygen => vk::ShaderStageFlags::RAYGEN_KHR,
+					super::ShaderType::Miss => vk::ShaderStageFlags::MISS_KHR,
+					super::ShaderType::Intersection => vk::ShaderStageFlags::INTERSECTION_KHR,
+					super::ShaderType::ClosestHit => vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+					super::ShaderType::AnyHit => vk::ShaderStageFlags::ANY_HIT_KHR,
+					super::ShaderType::Callable => vk::ShaderStageFlags::CALLABLE_KHR,
+					_ => panic!(),
+				};
 
-			vk::PipelineShaderStageCreateInfo::default()
-				.stage(stage)
-				.module(modules[i])
-				.name(names[i].as_c_str())
-		}).collect::<Vec<_>>();
+				vk::PipelineShaderStageCreateInfo::default()
+					.stage(stage)
+					.module(modules[i])
+					.name(names[i].as_c_str())
+			})
+			.collect::<Vec<_>>();
 
-		let groups = desc.groups.iter().map(|group| {
-			let ty = match group.ty {
-				super::ShaderGroupType::General    => vk::RayTracingShaderGroupTypeKHR::GENERAL,
-				super::ShaderGroupType::Triangles  => vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP,
-				super::ShaderGroupType::Procedural => vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP,
-			};
+		let groups = desc
+			.groups
+			.iter()
+			.map(|group| {
+				let ty = match group.ty {
+					super::ShaderGroupType::General => vk::RayTracingShaderGroupTypeKHR::GENERAL,
+					super::ShaderGroupType::Triangles => {
+						vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP
+					}
+					super::ShaderGroupType::Procedural => {
+						vk::RayTracingShaderGroupTypeKHR::PROCEDURAL_HIT_GROUP
+					}
+				};
 
-			vk::RayTracingShaderGroupCreateInfoKHR::default()
-				.ty(ty)
-				.general_shader(group.general.unwrap_or(vk::SHADER_UNUSED_KHR))
-				.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
-				.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
-				.intersection_shader(group.intersection.unwrap_or(vk::SHADER_UNUSED_KHR))
-		}).collect::<Vec<_>>();
+				vk::RayTracingShaderGroupCreateInfoKHR::default()
+					.ty(ty)
+					.general_shader(group.general.unwrap_or(vk::SHADER_UNUSED_KHR))
+					.closest_hit_shader(group.closest_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
+					.any_hit_shader(group.any_hit.unwrap_or(vk::SHADER_UNUSED_KHR))
+					.intersection_shader(group.intersection.unwrap_or(vk::SHADER_UNUSED_KHR))
+			})
+			.collect::<Vec<_>>();
 
 		let create_info = vk::RayTracingPipelineCreateInfoKHR::default()
 			.stages(&stages)
@@ -1259,23 +1426,28 @@ impl super::DeviceImpl for Device {
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
 			.layout(todo!());
 
-		let pipeline = unsafe { self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
-			vk::DeferredOperationKHR::null(),
-			vk::PipelineCache::null(),
-			&[create_info],
-			None
-		) }.unwrap()[0];
+		let pipeline = unsafe {
+			self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
+				vk::DeferredOperationKHR::null(),
+				vk::PipelineCache::null(),
+				&[create_info],
+				None,
+			)
+		}
+		.unwrap()[0];
 
 		for module in modules {
 			unsafe { self.device.destroy_shader_module(module, None) };
 		}
 
-		Ok(RaytracingPipeline {
-			pipeline
-		})
+		Ok(RaytracingPipeline { pipeline })
 	}
 
-	fn create_texture_view(&mut self, desc: &super::TextureViewDesc, texture: &Self::Texture) -> super::TextureView {
+	fn create_texture_view(
+		&mut self,
+		desc: &super::TextureViewDesc,
+		texture: &Self::Texture,
+	) -> super::TextureView {
 		todo!()
 	}
 
@@ -1286,10 +1458,13 @@ impl super::DeviceImpl for Device {
 
 		let command_buffers = [command_buffer];
 
-		let submit_infos = vk::SubmitInfo::default()
-			.command_buffers(&command_buffers);
+		let submit_infos = vk::SubmitInfo::default().command_buffers(&command_buffers);
 
-		unsafe { self.device.queue_submit(self.graphics_queue, &[submit_infos], vk::Fence::null()) }.unwrap();
+		unsafe {
+			self.device
+				.queue_submit(self.graphics_queue, &[submit_infos], vk::Fence::null())
+		}
+		.unwrap();
 	}
 
 	fn queue_wait(&self) {
@@ -1304,17 +1479,21 @@ impl super::DeviceImpl for Device {
 		&self.capabilities
 	}
 
-	fn acceleration_structure_sizes(&self, desc: &super::AccelerationStructureBuildInputs) -> super::AccelerationStructureSizes {
+	fn acceleration_structure_sizes(
+		&self,
+		desc: &super::AccelerationStructureBuildInputs,
+	) -> super::AccelerationStructureSizes {
 		let info = AccelerationStructureInfo::build(desc);
 
 		let mut size_info = vk::AccelerationStructureBuildSizesInfoKHR::default();
 		unsafe {
-			self.acceleration_structure_ext.get_acceleration_structure_build_sizes(
-				vk::AccelerationStructureBuildTypeKHR::DEVICE,
-				&info.build_info,
-				&info.max_primitve_counts,
-				&mut size_info,
-			)
+			self.acceleration_structure_ext
+				.get_acceleration_structure_build_sizes(
+					vk::AccelerationStructureBuildTypeKHR::DEVICE,
+					&info.build_info,
+					&info.max_primitve_counts,
+					&mut size_info,
+				)
 		}
 
 		super::AccelerationStructureSizes {
@@ -1344,7 +1523,9 @@ struct AccelerationStructureInfo<'a> {
 }
 
 impl<'a> AccelerationStructureInfo<'a> {
-	fn map_aabbs(aabbs: &'_ super::AccelerationStructureAABBs) -> vk::AccelerationStructureGeometryKHR<'_> {
+	fn map_aabbs(
+		aabbs: &'_ super::AccelerationStructureAABBs,
+	) -> vk::AccelerationStructureGeometryKHR<'_> {
 		let aabbs_data = vk::AccelerationStructureGeometryAabbsDataKHR::default()
 			.data(vk::DeviceOrHostAddressConstKHR {
 				device_address: aabbs.data.0,
@@ -1357,7 +1538,9 @@ impl<'a> AccelerationStructureInfo<'a> {
 			.flags(map_acceleration_structure_geometry_flags(aabbs.flags))
 	}
 
-	fn map_triangles(triangles: &'_ super::AccelerationStructureTriangles) -> vk::AccelerationStructureGeometryKHR<'_> {
+	fn map_triangles(
+		triangles: &'_ super::AccelerationStructureTriangles,
+	) -> vk::AccelerationStructureGeometryKHR<'_> {
 		let triangles_data = vk::AccelerationStructureGeometryTrianglesDataKHR::default()
 			.vertex_format(map_format(triangles.vertex_format))
 			.vertex_data(vk::DeviceOrHostAddressConstKHR {
@@ -1375,19 +1558,26 @@ impl<'a> AccelerationStructureInfo<'a> {
 
 		vk::AccelerationStructureGeometryKHR::default()
 			.geometry_type(vk::GeometryTypeKHR::TRIANGLES)
-			.geometry(vk::AccelerationStructureGeometryDataKHR { triangles: triangles_data })
+			.geometry(vk::AccelerationStructureGeometryDataKHR {
+				triangles: triangles_data,
+			})
 			.flags(map_acceleration_structure_geometry_flags(triangles.flags))
 	}
 
-	fn map_instances(instances: &'_ super::AccelerationStructureInstances) -> vk::AccelerationStructureGeometryKHR<'_> {
-		let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default()
-			.data(vk::DeviceOrHostAddressConstKHR {
+	fn map_instances(
+		instances: &'_ super::AccelerationStructureInstances,
+	) -> vk::AccelerationStructureGeometryKHR<'_> {
+		let instances_data = vk::AccelerationStructureGeometryInstancesDataKHR::default().data(
+			vk::DeviceOrHostAddressConstKHR {
 				device_address: instances.data.0,
-			});
+			},
+		);
 
 		vk::AccelerationStructureGeometryKHR::default()
 			.geometry_type(vk::GeometryTypeKHR::INSTANCES)
-			.geometry(vk::AccelerationStructureGeometryDataKHR { instances: instances_data })
+			.geometry(vk::AccelerationStructureGeometryDataKHR {
+				instances: instances_data,
+			})
 	}
 
 	fn build(desc: &'a super::AccelerationStructureBuildInputs) -> Self {
@@ -1396,45 +1586,58 @@ impl<'a> AccelerationStructureInfo<'a> {
 				let ranges = vk::AccelerationStructureBuildRangeInfoKHR::default()
 					.primitive_count(instances.count as u32);
 
-				(vec![Self::map_instances(instances)], vec![instances.count as u32], vec![ranges])
+				(
+					vec![Self::map_instances(instances)],
+					vec![instances.count as u32],
+					vec![ranges],
+				)
 			}
 			super::AccelerationStructureEntries::Triangles(in_geometries) => {
-				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = in_geometries.iter().map(|triangles| {
-					Self::map_triangles(triangles)
-				}).collect();
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = in_geometries
+					.iter()
+					.map(|triangles| Self::map_triangles(triangles))
+					.collect();
 
-				let primitive_counts: Vec<u32> = in_geometries.iter().map(|triangles| {
-					if triangles.index_buffer.is_null() {
-						triangles.vertex_count as u32
-					} else {
-						triangles.index_count as u32 / 3
-					}
-				}).collect();
-
-				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = in_geometries.iter().map(|triangles| {
-					vk::AccelerationStructureBuildRangeInfoKHR::default()
-						.primitive_count(if triangles.index_buffer.is_null() {
+				let primitive_counts: Vec<u32> = in_geometries
+					.iter()
+					.map(|triangles| {
+						if triangles.index_buffer.is_null() {
 							triangles.vertex_count as u32
 						} else {
 							triangles.index_count as u32 / 3
-						})
-				}).collect();
+						}
+					})
+					.collect();
+
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = in_geometries
+					.iter()
+					.map(|triangles| {
+						vk::AccelerationStructureBuildRangeInfoKHR::default().primitive_count(
+							if triangles.index_buffer.is_null() {
+								triangles.vertex_count as u32
+							} else {
+								triangles.index_count as u32 / 3
+							},
+						)
+					})
+					.collect();
 
 				(geometries, primitive_counts, ranges)
 			}
 			super::AccelerationStructureEntries::AABBs(aabbs) => {
-				let geometries: Vec<vk::AccelerationStructureGeometryKHR> = aabbs.iter().map(|aabb| {
-					Self::map_aabbs(aabb)
-				}).collect();
+				let geometries: Vec<vk::AccelerationStructureGeometryKHR> =
+					aabbs.iter().map(|aabb| Self::map_aabbs(aabb)).collect();
 
-				let primitive_counts: Vec<u32> = aabbs.iter().map(|aabb| {
-					aabb.count as u32
-				}).collect();
+				let primitive_counts: Vec<u32> =
+					aabbs.iter().map(|aabb| aabb.count as u32).collect();
 
-				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = aabbs.iter().map(|aabb| {
-					vk::AccelerationStructureBuildRangeInfoKHR::default()
-						.primitive_count(aabb.count as u32)
-				}).collect();
+				let ranges: Vec<vk::AccelerationStructureBuildRangeInfoKHR> = aabbs
+					.iter()
+					.map(|aabb| {
+						vk::AccelerationStructureBuildRangeInfoKHR::default()
+							.primitive_count(aabb.count as u32)
+					})
+					.collect();
 
 				(geometries, primitive_counts, ranges)
 			}

@@ -1,7 +1,7 @@
-use ecs::{self, Entity, Name, World};
+use crate::editor::MyContext;
 use crate::icons;
 use crate::tabs;
-use crate::editor::MyContext;
+use ecs::{self, Entity, Name, World};
 
 pub struct OutlinerTab {
 	name: String,
@@ -9,14 +9,16 @@ pub struct OutlinerTab {
 
 impl OutlinerTab {
 	pub fn new() -> Self {
-		OutlinerTab { name: format!("{} Outliner", icons::OUTLINER) }
+		OutlinerTab {
+			name: format!("{} Outliner", icons::OUTLINER),
+		}
 	}
 }
 
 fn icon_for_entity(world: &World, entity: Entity) -> char {
 	let e = world.entity(entity);
 
-	if e.contains::<graphics::camera::Camera> () {
+	if e.contains::<graphics::camera::Camera>() {
 		icons::OUTLINER_DATA_CAMERA
 	} else if e.contains::<graphics::scene::DomeLight>() {
 		icons::LIGHT_HEMI
@@ -59,9 +61,12 @@ impl tabs::Tab<MyContext> for OutlinerTab {
 
 							row.col(|ui| {
 								ui.label(
-									egui::RichText::new(format!("{}", icon_for_entity(&ctx.world, entity)))
-										.color(egui::Color32::from_rgb(193, 133, 84))
-										.size(18.0),
+									egui::RichText::new(format!(
+										"{}",
+										icon_for_entity(&ctx.world, entity)
+									))
+									.color(egui::Color32::from_rgb(193, 133, 84))
+									.size(18.0),
 								);
 							});
 							row.col(|ui| {

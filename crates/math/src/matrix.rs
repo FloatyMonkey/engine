@@ -1,6 +1,8 @@
 use super::num::{Float, FloatOps, Number, SignedNumber};
-use std::ops::{Mul, MulAssign, Index, IndexMut, Add, AddAssign, Div, DivAssign, Sub, SubAssign, Neg};
 use super::unit::Unit;
+use std::ops::{
+	Add, AddAssign, Div, DivAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -13,7 +15,9 @@ impl<T: Number, const R: usize, const C: usize> Matrix<T, R, C> {
 	pub const ONE: Self = Self::splat(T::ONE);
 
 	pub const fn splat(value: T) -> Self {
-		Self { data: [[value; C]; R] }
+		Self {
+			data: [[value; C]; R],
+		}
 	}
 }
 
@@ -50,7 +54,9 @@ impl<T: Number> Vector3<T> {
 	pub const Z: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ZERO, T::ONE));
 
 	pub const fn new(x: T, y: T, z: T) -> Self {
-		Self { data: [[x], [y], [z]] }
+		Self {
+			data: [[x], [y], [z]],
+		}
 	}
 
 	pub fn truncate(&self) -> Vector2<T> {
@@ -77,7 +83,9 @@ impl<T: Number> Vector4<T> {
 	pub const W: Unit<Self> = Unit::new_unchecked(Self::new(T::ZERO, T::ZERO, T::ZERO, T::ONE));
 
 	pub const fn new(x: T, y: T, z: T, w: T) -> Self {
-		Self { data: [[x], [y], [z], [w]] }
+		Self {
+			data: [[x], [y], [z], [w]],
+		}
 	}
 
 	pub fn truncate(&self) -> Vector3<T> {
@@ -121,7 +129,9 @@ impl<T: Float + FloatOps<T>, const N: usize> Vector<T, N> {
 	}
 }
 
-impl<T: Number, const R: usize, const C: usize, const CR: usize> Mul<Matrix<T, CR, C>> for Matrix<T, R, CR> {
+impl<T: Number, const R: usize, const C: usize, const CR: usize> Mul<Matrix<T, CR, C>>
+	for Matrix<T, R, CR>
+{
 	type Output = Matrix<T, R, C>;
 
 	fn mul(self, rhs: Matrix<T, CR, C>) -> Self::Output {
@@ -321,24 +331,32 @@ pub fn perspective(fov: f32, aspect_ratio: f32, near_clip: f32, far_clip: f32) -
 	let inv_z = far_clip / (near_clip - far_clip);
 
 	Matrix4::from_array([
-		inv_x, 0.0, 0.0, 0.0,
-		0.0, inv_y, 0.0, 0.0,
-		0.0, 0.0, inv_z, near_clip * inv_z,
-		0.0, 0.0, -1.0, 0.0,
+		inv_x,
+		0.0,
+		0.0,
+		0.0,
+		0.0,
+		inv_y,
+		0.0,
+		0.0,
+		0.0,
+		0.0,
+		inv_z,
+		near_clip * inv_z,
+		0.0,
+		0.0,
+		-1.0,
+		0.0,
 	])
 }
 
 impl<T, const R: usize, const C: usize> Matrix<T, R, C> {
 	pub fn as_slice(&self) -> &[T] {
-		unsafe {
-			std::slice::from_raw_parts(self.data.as_ptr() as *const T, R * C)
-		}
+		unsafe { std::slice::from_raw_parts(self.data.as_ptr() as *const T, R * C) }
 	}
 
 	pub fn as_mut_slice(&mut self) -> &mut [T] {
-		unsafe {
-			std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, R * C)
-		}
+		unsafe { std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, R * C) }
 	}
 }
 
@@ -347,9 +365,9 @@ impl Matrix3<f32> {
 	pub fn det(&self) -> f32 {
 		let m = |r: usize, c: usize| self.data[r][c];
 
-		m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1)) +
-		m(0, 1) * (m(1, 2) * m(2, 0) - m(1, 0) * m(2, 2)) +
-		m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0))
+		m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1))
+			+ m(0, 1) * (m(1, 2) * m(2, 0) - m(1, 0) * m(2, 2))
+			+ m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0))
 	}
 
 	/// Returns the inverse of this matrix.
@@ -370,11 +388,13 @@ impl Matrix3<f32> {
 		let m32 = m(0, 1) * m(2, 0) - m(0, 0) * m(2, 1);
 		let m33 = m(0, 0) * m(1, 1) - m(0, 1) * m(1, 0);
 
-		Self { data: [
-			[m11 * inv_det, m12 * inv_det, m13 * inv_det],
-			[m21 * inv_det, m22 * inv_det, m23 * inv_det],
-			[m31 * inv_det, m32 * inv_det, m33 * inv_det],
-		]}
+		Self {
+			data: [
+				[m11 * inv_det, m12 * inv_det, m13 * inv_det],
+				[m21 * inv_det, m22 * inv_det, m23 * inv_det],
+				[m31 * inv_det, m32 * inv_det, m33 * inv_det],
+			],
+		}
 	}
 }
 
@@ -385,25 +405,37 @@ impl Matrix4<f32> {
 			[0.0, 1.0, 0.0, 0.0],
 			[0.0, 0.0, 1.0, 0.0],
 			[0.0, 0.0, 0.0, 1.0],
-		]
+		],
 	};
 
 	/// Returns the determinant of this matrix.
 	pub fn det(&self) -> f32 {
 		let m = |r: usize, c: usize| self.data[r][c];
 
-		m(0, 0) * m(1, 1) * m(2, 2) * m(3, 3) + m(0, 0) * m(1, 2) * m(2, 3) * m(3, 1) +
-		m(0, 0) * m(1, 3) * m(2, 1) * m(3, 2) + m(0, 1) * m(1, 0) * m(2, 3) * m(3, 2) +
-		m(0, 1) * m(1, 2) * m(2, 0) * m(3, 3) + m(0, 1) * m(1, 3) * m(2, 2) * m(3, 0) +
-		m(0, 2) * m(1, 0) * m(2, 1) * m(3, 3) + m(0, 2) * m(1, 1) * m(2, 3) * m(3, 0) +
-		m(0, 2) * m(1, 3) * m(2, 0) * m(3, 1) + m(0, 3) * m(1, 0) * m(2, 2) * m(3, 1) +
-		m(0, 3) * m(1, 1) * m(2, 0) * m(3, 2) + m(0, 3) * m(1, 2) * m(2, 1) * m(3, 0) -
-		m(0, 0) * m(1, 1) * m(2, 3) * m(3, 2) - m(0, 0) * m(1, 2) * m(2, 1) * m(3, 3) -
-		m(0, 0) * m(1, 3) * m(2, 2) * m(3, 1) - m(0, 1) * m(1, 0) * m(2, 2) * m(3, 3) -
-		m(0, 1) * m(1, 2) * m(2, 3) * m(3, 0) - m(0, 1) * m(1, 3) * m(2, 0) * m(3, 2) -
-		m(0, 2) * m(1, 0) * m(2, 3) * m(3, 1) - m(0, 2) * m(1, 1) * m(2, 0) * m(3, 3) -
-		m(0, 2) * m(1, 3) * m(2, 1) * m(3, 0) - m(0, 3) * m(1, 0) * m(2, 1) * m(3, 2) -
-		m(0, 3) * m(1, 1) * m(2, 2) * m(3, 0) - m(0, 3) * m(1, 2) * m(2, 0) * m(3, 1)
+		m(0, 0) * m(1, 1) * m(2, 2) * m(3, 3)
+			+ m(0, 0) * m(1, 2) * m(2, 3) * m(3, 1)
+			+ m(0, 0) * m(1, 3) * m(2, 1) * m(3, 2)
+			+ m(0, 1) * m(1, 0) * m(2, 3) * m(3, 2)
+			+ m(0, 1) * m(1, 2) * m(2, 0) * m(3, 3)
+			+ m(0, 1) * m(1, 3) * m(2, 2) * m(3, 0)
+			+ m(0, 2) * m(1, 0) * m(2, 1) * m(3, 3)
+			+ m(0, 2) * m(1, 1) * m(2, 3) * m(3, 0)
+			+ m(0, 2) * m(1, 3) * m(2, 0) * m(3, 1)
+			+ m(0, 3) * m(1, 0) * m(2, 2) * m(3, 1)
+			+ m(0, 3) * m(1, 1) * m(2, 0) * m(3, 2)
+			+ m(0, 3) * m(1, 2) * m(2, 1) * m(3, 0)
+			- m(0, 0) * m(1, 1) * m(2, 3) * m(3, 2)
+			- m(0, 0) * m(1, 2) * m(2, 1) * m(3, 3)
+			- m(0, 0) * m(1, 3) * m(2, 2) * m(3, 1)
+			- m(0, 1) * m(1, 0) * m(2, 2) * m(3, 3)
+			- m(0, 1) * m(1, 2) * m(2, 3) * m(3, 0)
+			- m(0, 1) * m(1, 3) * m(2, 0) * m(3, 2)
+			- m(0, 2) * m(1, 0) * m(2, 3) * m(3, 1)
+			- m(0, 2) * m(1, 1) * m(2, 0) * m(3, 3)
+			- m(0, 2) * m(1, 3) * m(2, 1) * m(3, 0)
+			- m(0, 3) * m(1, 0) * m(2, 1) * m(3, 2)
+			- m(0, 3) * m(1, 1) * m(2, 2) * m(3, 0)
+			- m(0, 3) * m(1, 2) * m(2, 0) * m(3, 1)
 	}
 
 	/// Returns the inverse of this matrix.
@@ -412,32 +444,98 @@ impl Matrix4<f32> {
 
 		let inv_det = 1.0 / self.det();
 
-		let m11 = m(1, 1) * m(2, 2) * m(3, 3) + m(1, 2) * m(2, 3) * m(3, 1) + m(1, 3) * m(2, 1) * m(3, 2) - m(1, 1) * m(2, 3) * m(3, 2) - m(1, 2) * m(2, 1) * m(3, 3) - m(1, 3) * m(2, 2) * m(3, 1);
-		let m12 = m(0, 1) * m(2, 3) * m(3, 2) + m(0, 2) * m(2, 1) * m(3, 3) + m(0, 3) * m(2, 2) * m(3, 1) - m(0, 1) * m(2, 2) * m(3, 3) - m(0, 2) * m(2, 3) * m(3, 1) - m(0, 3) * m(2, 1) * m(3, 2);
-		let m13 = m(0, 1) * m(1, 2) * m(3, 3) + m(0, 2) * m(1, 3) * m(3, 1) + m(0, 3) * m(1, 1) * m(3, 2) - m(0, 1) * m(1, 3) * m(3, 2) - m(0, 2) * m(1, 1) * m(3, 3) - m(0, 3) * m(1, 2) * m(3, 1);
-		let m14 = m(0, 1) * m(1, 3) * m(2, 2) + m(0, 2) * m(1, 1) * m(2, 3) + m(0, 3) * m(1, 2) * m(2, 1) - m(0, 1) * m(1, 2) * m(2, 3) - m(0, 2) * m(1, 3) * m(2, 1) - m(0, 3) * m(1, 1) * m(2, 2);
-		
-		let m21 = m(1, 0) * m(2, 3) * m(3, 2) + m(1, 2) * m(2, 0) * m(3, 3) + m(1, 3) * m(2, 2) * m(3, 0) - m(1, 0) * m(2, 2) * m(3, 3) - m(1, 2) * m(2, 3) * m(3, 0) - m(1, 3) * m(2, 0) * m(3, 2);
-		let m22 = m(0, 0) * m(2, 2) * m(3, 3) + m(0, 2) * m(2, 3) * m(3, 0) + m(0, 3) * m(2, 0) * m(3, 2) - m(0, 0) * m(2, 3) * m(3, 2) - m(0, 2) * m(2, 0) * m(3, 3) - m(0, 3) * m(2, 2) * m(3, 0);
-		let m23 = m(0, 0) * m(1, 3) * m(3, 2) + m(0, 2) * m(1, 0) * m(3, 3) + m(0, 3) * m(1, 2) * m(3, 0) - m(0, 0) * m(1, 2) * m(3, 3) - m(0, 2) * m(1, 3) * m(3, 0) - m(0, 3) * m(1, 0) * m(3, 2);
-		let m24 = m(0, 0) * m(1, 2) * m(2, 3) + m(0, 2) * m(1, 3) * m(2, 0) + m(0, 3) * m(1, 0) * m(2, 2) - m(0, 0) * m(1, 3) * m(2, 2) - m(0, 2) * m(1, 0) * m(2, 3) - m(0, 3) * m(1, 2) * m(2, 0);
-		
-		let m31 = m(1, 0) * m(2, 1) * m(3, 3) + m(1, 1) * m(2, 3) * m(3, 0) + m(1, 3) * m(2, 0) * m(3, 1) - m(1, 0) * m(2, 3) * m(3, 1) - m(1, 1) * m(2, 0) * m(3, 3) - m(1, 3) * m(2, 1) * m(3, 0);
-		let m32 = m(0, 0) * m(2, 3) * m(3, 1) + m(0, 1) * m(2, 0) * m(3, 3) + m(0, 3) * m(2, 1) * m(3, 0) - m(0, 0) * m(2, 1) * m(3, 3) - m(0, 1) * m(2, 3) * m(3, 0) - m(0, 3) * m(2, 0) * m(3, 1);
-		let m33 = m(0, 0) * m(1, 1) * m(3, 3) + m(0, 1) * m(1, 3) * m(3, 0) + m(0, 3) * m(1, 0) * m(3, 1) - m(0, 0) * m(1, 3) * m(3, 1) - m(0, 1) * m(1, 0) * m(3, 3) - m(0, 3) * m(1, 1) * m(3, 0);
-		let m34 = m(0, 0) * m(1, 3) * m(2, 1) + m(0, 1) * m(1, 0) * m(2, 3) + m(0, 3) * m(1, 1) * m(2, 0) - m(0, 0) * m(1, 1) * m(2, 3) - m(0, 1) * m(1, 3) * m(2, 0) - m(0, 3) * m(1, 0) * m(2, 1);
-		
-		let m41 = m(1, 0) * m(2, 2) * m(3, 1) + m(1, 1) * m(2, 0) * m(3, 2) + m(1, 2) * m(2, 1) * m(3, 0) - m(1, 0) * m(2, 1) * m(3, 2) - m(1, 1) * m(2, 2) * m(3, 0) - m(1, 2) * m(2, 0) * m(3, 1);
-		let m42 = m(0, 0) * m(2, 1) * m(3, 2) + m(0, 1) * m(2, 2) * m(3, 0) + m(0, 2) * m(2, 0) * m(3, 1) - m(0, 0) * m(2, 2) * m(3, 1) - m(0, 1) * m(2, 0) * m(3, 2) - m(0, 2) * m(2, 1) * m(3, 0);
-		let m43 = m(0, 0) * m(1, 2) * m(3, 1) + m(0, 1) * m(1, 0) * m(3, 2) + m(0, 2) * m(1, 1) * m(3, 0) - m(0, 0) * m(1, 1) * m(3, 2) - m(0, 1) * m(1, 2) * m(3, 0) - m(0, 2) * m(1, 0) * m(3, 1);
-		let m44 = m(0, 0) * m(1, 1) * m(2, 2) + m(0, 1) * m(1, 2) * m(2, 0) + m(0, 2) * m(1, 0) * m(2, 1) - m(0, 0) * m(1, 2) * m(2, 1) - m(0, 1) * m(1, 0) * m(2, 2) - m(0, 2) * m(1, 1) * m(2, 0);
+		let m11 =
+			m(1, 1) * m(2, 2) * m(3, 3) + m(1, 2) * m(2, 3) * m(3, 1) + m(1, 3) * m(2, 1) * m(3, 2)
+				- m(1, 1) * m(2, 3) * m(3, 2)
+				- m(1, 2) * m(2, 1) * m(3, 3)
+				- m(1, 3) * m(2, 2) * m(3, 1);
+		let m12 =
+			m(0, 1) * m(2, 3) * m(3, 2) + m(0, 2) * m(2, 1) * m(3, 3) + m(0, 3) * m(2, 2) * m(3, 1)
+				- m(0, 1) * m(2, 2) * m(3, 3)
+				- m(0, 2) * m(2, 3) * m(3, 1)
+				- m(0, 3) * m(2, 1) * m(3, 2);
+		let m13 =
+			m(0, 1) * m(1, 2) * m(3, 3) + m(0, 2) * m(1, 3) * m(3, 1) + m(0, 3) * m(1, 1) * m(3, 2)
+				- m(0, 1) * m(1, 3) * m(3, 2)
+				- m(0, 2) * m(1, 1) * m(3, 3)
+				- m(0, 3) * m(1, 2) * m(3, 1);
+		let m14 =
+			m(0, 1) * m(1, 3) * m(2, 2) + m(0, 2) * m(1, 1) * m(2, 3) + m(0, 3) * m(1, 2) * m(2, 1)
+				- m(0, 1) * m(1, 2) * m(2, 3)
+				- m(0, 2) * m(1, 3) * m(2, 1)
+				- m(0, 3) * m(1, 1) * m(2, 2);
 
-		Self { data: [
-			[m11 * inv_det, m12 * inv_det, m13 * inv_det, m14 * inv_det],
-			[m21 * inv_det, m22 * inv_det, m23 * inv_det, m24 * inv_det],
-			[m31 * inv_det, m32 * inv_det, m33 * inv_det, m34 * inv_det],
-			[m41 * inv_det, m42 * inv_det, m43 * inv_det, m44 * inv_det],
-		]}
+		let m21 =
+			m(1, 0) * m(2, 3) * m(3, 2) + m(1, 2) * m(2, 0) * m(3, 3) + m(1, 3) * m(2, 2) * m(3, 0)
+				- m(1, 0) * m(2, 2) * m(3, 3)
+				- m(1, 2) * m(2, 3) * m(3, 0)
+				- m(1, 3) * m(2, 0) * m(3, 2);
+		let m22 =
+			m(0, 0) * m(2, 2) * m(3, 3) + m(0, 2) * m(2, 3) * m(3, 0) + m(0, 3) * m(2, 0) * m(3, 2)
+				- m(0, 0) * m(2, 3) * m(3, 2)
+				- m(0, 2) * m(2, 0) * m(3, 3)
+				- m(0, 3) * m(2, 2) * m(3, 0);
+		let m23 =
+			m(0, 0) * m(1, 3) * m(3, 2) + m(0, 2) * m(1, 0) * m(3, 3) + m(0, 3) * m(1, 2) * m(3, 0)
+				- m(0, 0) * m(1, 2) * m(3, 3)
+				- m(0, 2) * m(1, 3) * m(3, 0)
+				- m(0, 3) * m(1, 0) * m(3, 2);
+		let m24 =
+			m(0, 0) * m(1, 2) * m(2, 3) + m(0, 2) * m(1, 3) * m(2, 0) + m(0, 3) * m(1, 0) * m(2, 2)
+				- m(0, 0) * m(1, 3) * m(2, 2)
+				- m(0, 2) * m(1, 0) * m(2, 3)
+				- m(0, 3) * m(1, 2) * m(2, 0);
+
+		let m31 =
+			m(1, 0) * m(2, 1) * m(3, 3) + m(1, 1) * m(2, 3) * m(3, 0) + m(1, 3) * m(2, 0) * m(3, 1)
+				- m(1, 0) * m(2, 3) * m(3, 1)
+				- m(1, 1) * m(2, 0) * m(3, 3)
+				- m(1, 3) * m(2, 1) * m(3, 0);
+		let m32 =
+			m(0, 0) * m(2, 3) * m(3, 1) + m(0, 1) * m(2, 0) * m(3, 3) + m(0, 3) * m(2, 1) * m(3, 0)
+				- m(0, 0) * m(2, 1) * m(3, 3)
+				- m(0, 1) * m(2, 3) * m(3, 0)
+				- m(0, 3) * m(2, 0) * m(3, 1);
+		let m33 =
+			m(0, 0) * m(1, 1) * m(3, 3) + m(0, 1) * m(1, 3) * m(3, 0) + m(0, 3) * m(1, 0) * m(3, 1)
+				- m(0, 0) * m(1, 3) * m(3, 1)
+				- m(0, 1) * m(1, 0) * m(3, 3)
+				- m(0, 3) * m(1, 1) * m(3, 0);
+		let m34 =
+			m(0, 0) * m(1, 3) * m(2, 1) + m(0, 1) * m(1, 0) * m(2, 3) + m(0, 3) * m(1, 1) * m(2, 0)
+				- m(0, 0) * m(1, 1) * m(2, 3)
+				- m(0, 1) * m(1, 3) * m(2, 0)
+				- m(0, 3) * m(1, 0) * m(2, 1);
+
+		let m41 =
+			m(1, 0) * m(2, 2) * m(3, 1) + m(1, 1) * m(2, 0) * m(3, 2) + m(1, 2) * m(2, 1) * m(3, 0)
+				- m(1, 0) * m(2, 1) * m(3, 2)
+				- m(1, 1) * m(2, 2) * m(3, 0)
+				- m(1, 2) * m(2, 0) * m(3, 1);
+		let m42 =
+			m(0, 0) * m(2, 1) * m(3, 2) + m(0, 1) * m(2, 2) * m(3, 0) + m(0, 2) * m(2, 0) * m(3, 1)
+				- m(0, 0) * m(2, 2) * m(3, 1)
+				- m(0, 1) * m(2, 0) * m(3, 2)
+				- m(0, 2) * m(2, 1) * m(3, 0);
+		let m43 =
+			m(0, 0) * m(1, 2) * m(3, 1) + m(0, 1) * m(1, 0) * m(3, 2) + m(0, 2) * m(1, 1) * m(3, 0)
+				- m(0, 0) * m(1, 1) * m(3, 2)
+				- m(0, 1) * m(1, 2) * m(3, 0)
+				- m(0, 2) * m(1, 0) * m(3, 1);
+		let m44 =
+			m(0, 0) * m(1, 1) * m(2, 2) + m(0, 1) * m(1, 2) * m(2, 0) + m(0, 2) * m(1, 0) * m(2, 1)
+				- m(0, 0) * m(1, 2) * m(2, 1)
+				- m(0, 1) * m(1, 0) * m(2, 2)
+				- m(0, 2) * m(1, 1) * m(2, 0);
+
+		Self {
+			data: [
+				[m11 * inv_det, m12 * inv_det, m13 * inv_det, m14 * inv_det],
+				[m21 * inv_det, m22 * inv_det, m23 * inv_det, m24 * inv_det],
+				[m31 * inv_det, m32 * inv_det, m33 * inv_det, m34 * inv_det],
+				[m41 * inv_det, m42 * inv_det, m43 * inv_det, m44 * inv_det],
+			],
+		}
 	}
 }
 
@@ -466,51 +564,57 @@ impl<T: Number, const R: usize, const C: usize> Matrix<T, R, C> {
 
 impl<T: Float> Matrix3<T> {
 	pub fn from_diagonal(diagonal: Vector3<T>) -> Self {
-		Self { data: [
-			[diagonal.x, T::ZERO, T::ZERO],
-			[T::ZERO, diagonal.y, T::ZERO],
-			[T::ZERO, T::ZERO, diagonal.z],
-		]}
+		Self {
+			data: [
+				[diagonal.x, T::ZERO, T::ZERO],
+				[T::ZERO, diagonal.y, T::ZERO],
+				[T::ZERO, T::ZERO, diagonal.z],
+			],
+		}
 	}
 
 	pub fn from_axes(x: Vector3<T>, y: Vector3<T>, z: Vector3<T>) -> Self {
-		Self { data: [
-			[x.x, y.x, z.x],
-			[x.y, y.y, z.y],
-			[x.z, y.z, z.z],
-		]}
+		Self {
+			data: [[x.x, y.x, z.x], [x.y, y.y, z.y], [x.z, y.z, z.z]],
+		}
 	}
 
 	/// Creates a matrix from an array of 9 elements stored in row-major order.
 	/// This allows the code to be formatted as if it were a 3x3 matrix.
 	pub const fn from_array(array: [T; 9]) -> Self {
-		Self { data: [
-			[array[0], array[1], array[2]],
-			[array[3], array[4], array[5]],
-			[array[6], array[7], array[8]],
-		]}
+		Self {
+			data: [
+				[array[0], array[1], array[2]],
+				[array[3], array[4], array[5]],
+				[array[6], array[7], array[8]],
+			],
+		}
 	}
 }
 
 impl<T: Float> Matrix4<T> {
 	pub fn from_axes(x: Vector4<T>, y: Vector4<T>, z: Vector4<T>, w: Vector4<T>) -> Self {
-		Self { data: [
-			[x.x, y.x, z.x, w.x],
-			[x.y, y.y, z.y, w.y],
-			[x.z, y.z, z.z, w.z],
-			[x.w, y.w, z.w, w.w],
-		]}
+		Self {
+			data: [
+				[x.x, y.x, z.x, w.x],
+				[x.y, y.y, z.y, w.y],
+				[x.z, y.z, z.z, w.z],
+				[x.w, y.w, z.w, w.w],
+			],
+		}
 	}
 
 	/// Creates a matrix from an array of 16 elements stored in row-major order.
 	/// This allows the code to be formatted as if it were a 4x4 matrix.
 	pub const fn from_array(array: [T; 16]) -> Self {
-		Self { data: [
-			[array[ 0], array[ 1], array[ 2], array[ 3]],
-			[array[ 4], array[ 5], array[ 6], array[ 7]],
-			[array[ 8], array[ 9], array[10], array[11]],
-			[array[12], array[13], array[14], array[15]],
-		]}
+		Self {
+			data: [
+				[array[0], array[1], array[2], array[3]],
+				[array[4], array[5], array[6], array[7]],
+				[array[8], array[9], array[10], array[11]],
+				[array[12], array[13], array[14], array[15]],
+			],
+		}
 	}
 }
 
@@ -520,27 +624,27 @@ impl Matrix<f32, 3, 4> {
 			[1.0, 0.0, 0.0, 0.0],
 			[0.0, 1.0, 0.0, 0.0],
 			[0.0, 0.0, 1.0, 0.0],
-		]
+		],
 	};
 }
 
 impl<T: Copy> From<Matrix4<T>> for Matrix3<T> {
 	fn from(m: Matrix4<T>) -> Self {
-		Self { data: [
-			[m[0], m[1], m[ 2]],
-			[m[4], m[5], m[ 6]],
-			[m[8], m[9], m[10]],
-		]}
+		Self {
+			data: [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]],
+		}
 	}
 }
 
 impl<T: Copy> From<Matrix4<T>> for Matrix<T, 3, 4> {
 	fn from(m: Matrix4<T>) -> Self {
-		Self { data: [
-			[m[0], m[1], m[ 2], m[ 3]],
-			[m[4], m[5], m[ 6], m[ 7]],
-			[m[8], m[9], m[10], m[11]],
-		]}
+		Self {
+			data: [
+				[m[0], m[1], m[2], m[3]],
+				[m[4], m[5], m[6], m[7]],
+				[m[8], m[9], m[10], m[11]],
+			],
+		}
 	}
 }
 

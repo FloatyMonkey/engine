@@ -1,7 +1,7 @@
-use std::ops::Mul;
-use super::{Mat4, Vector2, Vector3};
 use super::num::Number;
+use super::{Mat4, Vector2, Vector3};
 use super::{UnitComplex, UnitQuaternion};
+use std::ops::Mul;
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Transform<T, R, S> {
@@ -21,19 +21,31 @@ impl<T: Number> Transform3<T> {
 	};
 
 	pub const fn from_translation(translation: Vector3<T>) -> Self {
-		Self { translation, ..Self::IDENTITY }
+		Self {
+			translation,
+			..Self::IDENTITY
+		}
 	}
 
 	pub const fn from_rotation(rotation: UnitQuaternion<T>) -> Self {
-		Self { rotation, ..Self::IDENTITY }
+		Self {
+			rotation,
+			..Self::IDENTITY
+		}
 	}
 
 	pub const fn from_scale(scale: Vector3<T>) -> Self {
-		Self { scale, ..Self::IDENTITY }
+		Self {
+			scale,
+			..Self::IDENTITY
+		}
 	}
 
 	pub const fn with_translation(self, translation: Vector3<T>) -> Self {
-		Self { translation, ..self }
+		Self {
+			translation,
+			..self
+		}
 	}
 
 	pub const fn with_rotation(self, rotation: UnitQuaternion<T>) -> Self {
@@ -51,7 +63,11 @@ impl Transform3 {
 		let rotation = self.rotation.inv();
 		let translation = rotation * -self.translation.cmul(scale);
 
-		Self { translation, rotation, scale }
+		Self {
+			translation,
+			rotation,
+			scale,
+		}
 	}
 
 	/// Translates, rotates and scales a point by this transform.
@@ -78,7 +94,11 @@ impl Mul for Transform3 {
 		let rotation = self.rotation * rhs.rotation;
 		let scale = self.scale.cmul(rhs.scale);
 
-		Self { translation, rotation, scale }
+		Self {
+			translation,
+			rotation,
+			scale,
+		}
 	}
 }
 
@@ -89,10 +109,22 @@ impl From<Transform3> for Mat4 {
 		let scale = transform.scale;
 
 		Mat4::from_array([
-			rotation[0] * scale.x, rotation[1] * scale.y, rotation[2] * scale.z, translation.x,
-			rotation[3] * scale.x, rotation[4] * scale.y, rotation[5] * scale.z, translation.y,
-			rotation[6] * scale.x, rotation[7] * scale.y, rotation[8] * scale.z, translation.z,
-			0.0, 0.0, 0.0, 1.0,
+			rotation[0] * scale.x,
+			rotation[1] * scale.y,
+			rotation[2] * scale.z,
+			translation.x,
+			rotation[3] * scale.x,
+			rotation[4] * scale.y,
+			rotation[5] * scale.z,
+			translation.y,
+			rotation[6] * scale.x,
+			rotation[7] * scale.y,
+			rotation[8] * scale.z,
+			translation.z,
+			0.0,
+			0.0,
+			0.0,
+			1.0,
 		])
 	}
 }

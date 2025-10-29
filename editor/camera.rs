@@ -34,13 +34,22 @@ impl EditorCamera {
 
 			let mut movement = Vec3::ZERO;
 
-			if ui.input(|i| i.key_down(egui::Key::Z)) { movement -= *Vec3::Z; } // TODO: Prevent dereferencing these
-			if ui.input(|i| i.key_down(egui::Key::S)) { movement += *Vec3::Z; }
-			if ui.input(|i| i.key_down(egui::Key::Q)) { movement -= *Vec3::X; }
-			if ui.input(|i| i.key_down(egui::Key::D)) { movement += *Vec3::X; }
+			if ui.input(|i| i.key_down(egui::Key::Z)) {
+				movement -= *Vec3::Z;
+			} // TODO: Prevent dereferencing these
+			if ui.input(|i| i.key_down(egui::Key::S)) {
+				movement += *Vec3::Z;
+			}
+			if ui.input(|i| i.key_down(egui::Key::Q)) {
+				movement -= *Vec3::X;
+			}
+			if ui.input(|i| i.key_down(egui::Key::D)) {
+				movement += *Vec3::X;
+			}
 
 			if movement != Vec3::ZERO {
-				transform.translation += transform.rotation * *movement.normalize() * dt * MOVE_SPEED;
+				transform.translation +=
+					transform.rotation * *movement.normalize() * dt * MOVE_SPEED;
 			}
 		}
 	}

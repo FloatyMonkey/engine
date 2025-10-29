@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 
-use ecs::{Entity, World};
 use crate::time::Time;
+use ecs::{Entity, World};
 
 use super::tabs;
 use super::windows;
 
 pub struct MyContext {
 	pub world: World,
-	pub selection: HashSet::<Entity>,
+	pub selection: HashSet<Entity>,
 	pub viewport_texture_srv: u32,
 }
 
@@ -21,18 +21,23 @@ pub struct Editor {
 impl Editor {
 	pub fn new() -> Self {
 		// TODO: Move earlier into main.rs
-		log::set_logger(&windows::Log {}).map(|()| log::set_max_level(log::LevelFilter::Trace)).unwrap();
+		log::set_logger(&windows::Log {})
+			.map(|()| log::set_max_level(log::LevelFilter::Trace))
+			.unwrap();
 
 		let egui_ctx = egui::Context::default();
 
 		egui_extras::install_image_loaders(&egui_ctx);
 
-		let default_font = egui::FontData::from_static(include_bytes!("../resources/Inter-Regular.ttf"));
+		let default_font =
+			egui::FontData::from_static(include_bytes!("../resources/Inter-Regular.ttf"));
 		let icon_font = egui::FontData::from_static(include_bytes!("../resources/icon.ttf"));
 
 		let mut fonts = egui::FontDefinitions::empty();
 
-		fonts.font_data.insert("Inter-Regular".to_owned(), default_font);
+		fonts
+			.font_data
+			.insert("Inter-Regular".to_owned(), default_font);
 		fonts.font_data.insert("icons".to_owned(), icon_font);
 
 		if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
@@ -68,9 +73,11 @@ impl Editor {
 
 		self.egui_ctx.clone().run(raw_input, |ctx| {
 			egui::TopBottomPanel::top("TopPanel")
-				.frame(egui::Frame::none()
-					.fill(egui::Color32::from_rgb(10, 10, 10))
-					.inner_margin(egui::Vec2::new(6.0, 3.0)))
+				.frame(
+					egui::Frame::none()
+						.fill(egui::Color32::from_rgb(10, 10, 10))
+						.inner_margin(egui::Vec2::new(6.0, 3.0)),
+				)
 				.show_separator_line(false)
 				.show(ctx, |ui| {
 					ui.horizontal(|ui| {
@@ -85,16 +92,18 @@ impl Editor {
 				});
 
 			egui::TopBottomPanel::bottom("BottomPanel")
-				.frame(egui::Frame::none()
-					.fill(egui::Color32::from_rgb(10, 10, 10))
-					.inner_margin(egui::Vec2::new(6.0, 3.0)))
+				.frame(
+					egui::Frame::none()
+						.fill(egui::Color32::from_rgb(10, 10, 10))
+						.inner_margin(egui::Vec2::new(6.0, 3.0)),
+				)
 				.show_separator_line(false)
 				.show(ctx, |ui| {
 					ui.horizontal(|ui| {
 						ui.label("0.1.0");
 					});
 				});
-			
+
 			egui::CentralPanel::default().show(ctx, |ui| {
 				let mut style = tabs::Style::from_egui(ui.style().as_ref());
 				style.padding.top = 0.0;
@@ -105,7 +114,8 @@ impl Editor {
 				let max_rect = self.egui_ctx.available_rect();
 				let clip_rect = self.egui_ctx.available_rect();
 
-				let mut ui = egui::Ui::new(self.egui_ctx.clone(), layer_id, id, max_rect, clip_rect);
+				let mut ui =
+					egui::Ui::new(self.egui_ctx.clone(), layer_id, id, max_rect, clip_rect);
 				tabs::show(&mut ui, id, &style, &mut self.tree, &mut self.context);
 			});
 		})

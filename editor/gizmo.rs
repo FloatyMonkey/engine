@@ -1,5 +1,5 @@
-use math::{Vec2, Vec3, UnitQuaternion, Unit};
 use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
+use math::{Unit, UnitQuaternion, Vec2, Vec3};
 
 #[repr(C)]
 struct Vertex {
@@ -105,22 +105,28 @@ impl Gizmo {
 		let pi = std::f32::consts::PI;
 		let res = 64;
 
-		let top_arc_x = arc_iter(radius, res, - pi / 2.0, pi / 2.0).map(|p| center + Vec3::new(0.0, p.x, p.y + cylinder_half_height));
-		let bottom_arc_x = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0).map(|p| center + Vec3::new(0.0, p.x, p.y - cylinder_half_height));
+		let top_arc_x = arc_iter(radius, res, -pi / 2.0, pi / 2.0)
+			.map(|p| center + Vec3::new(0.0, p.x, p.y + cylinder_half_height));
+		let bottom_arc_x = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0)
+			.map(|p| center + Vec3::new(0.0, p.x, p.y - cylinder_half_height));
 
 		let positions = top_arc_x.chain(bottom_arc_x);
 		self.line_loop(positions, color);
 
-		let top_arc_y = arc_iter(radius, res, - pi / 2.0, pi / 2.0).map(|p| center + Vec3::new(p.x, 0.0, p.y + cylinder_half_height));
-		let bottom_arc_y = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0).map(|p| center + Vec3::new(p.x, 0.0, p.y - cylinder_half_height));
+		let top_arc_y = arc_iter(radius, res, -pi / 2.0, pi / 2.0)
+			.map(|p| center + Vec3::new(p.x, 0.0, p.y + cylinder_half_height));
+		let bottom_arc_y = arc_iter(radius, res, pi / 2.0, 3.0 * pi / 2.0)
+			.map(|p| center + Vec3::new(p.x, 0.0, p.y - cylinder_half_height));
 
 		let positions = top_arc_y.chain(bottom_arc_y);
 		self.line_loop(positions, color);
 
-		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, cylinder_half_height));
+		let positions =
+			circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, cylinder_half_height));
 		self.line_loop(positions, color);
 
-		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -cylinder_half_height));
+		let positions =
+			circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -cylinder_half_height));
 		self.line_loop(positions, color);
 	}
 
@@ -132,10 +138,16 @@ impl Gizmo {
 		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, half_height));
 		self.line_loop(positions, color);
 
-		let positions = circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -half_height));
+		let positions =
+			circle_iter(radius, res).map(|p| center + Vec3::new(p.x, p.y, -half_height));
 		self.line_loop(positions, color);
 
-		for (a, b) in circle_iter(radius, 4).map(|p| ((center + Vec3::new(p.x, p.y, -half_height)), (center + Vec3::new(p.x, p.y, half_height)))) {
+		for (a, b) in circle_iter(radius, 4).map(|p| {
+			(
+				(center + Vec3::new(p.x, p.y, -half_height)),
+				(center + Vec3::new(p.x, p.y, half_height)),
+			)
+		}) {
 			self.line(a, b, color);
 		}
 	}
@@ -160,12 +172,18 @@ pub struct GizmoRenderer {
 }
 
 impl GizmoRenderer {
-	pub fn new(resolution: [u32; 2], device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
-		let vb = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+	pub fn new(
+		resolution: [u32; 2],
+		device: &mut gpu::Device,
+		shader_compiler: &gpu::ShaderCompiler,
+	) -> Self {
+		let vb = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<egui::epaint::Vertex>() * VERTEX_BUFFER_SIZE,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
 		let vertex_shader = shader_compiler.compile("shaders/editor/gizmo.slang", "main_vs");
 		let pixel_shader = shader_compiler.compile("shaders/editor/gizmo.slang", "main_ps");
@@ -181,18 +199,16 @@ impl GizmoRenderer {
 					gpu::DescriptorBinding::bindless_srv(1), // buffers
 					gpu::DescriptorBinding::bindless_srv(2), // textures
 				]),
-				static_samplers: Some(vec![
-					gpu::SamplerBinding {
-						shader_register: 0,
-						register_space: 0,
-						sampler_desc: gpu::SamplerDesc {
-							filter_min: gpu::FilterMode::Linear,
-							filter_mag: gpu::FilterMode::Linear,
-							filter_mip: gpu::FilterMode::Linear,
-							..Default::default()
-						},
+				static_samplers: Some(vec![gpu::SamplerBinding {
+					shader_register: 0,
+					register_space: 0,
+					sampler_desc: gpu::SamplerDesc {
+						filter_min: gpu::FilterMode::Linear,
+						filter_mag: gpu::FilterMode::Linear,
+						filter_mip: gpu::FilterMode::Linear,
+						..Default::default()
 					},
-				]),
+				}]),
 			},
 			rasterizer: gpu::RasterizerDesc::default(),
 			depth_stencil: gpu::DepthStencilDesc::default(),
@@ -213,16 +229,18 @@ impl GizmoRenderer {
 
 		let pipeline = device.create_graphics_pipeline(&pipeline_desc).unwrap();
 
-		let texture = device.create_texture(&gpu::TextureDesc {
-			width: resolution[0] as _,
-			height: resolution[1] as _,
-			depth: 1,
-			array_size: 1,
-			mip_levels: 1,
-			format: gpu::Format::RGBA8UNorm,
-			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::RENDER_TARGET,
-			layout: gpu::TextureLayout::ShaderResource,
-		}).unwrap();
+		let texture = device
+			.create_texture(&gpu::TextureDesc {
+				width: resolution[0] as _,
+				height: resolution[1] as _,
+				depth: 1,
+				array_size: 1,
+				mip_levels: 1,
+				format: gpu::Format::RGBA8UNorm,
+				usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::RENDER_TARGET,
+				layout: gpu::TextureLayout::ShaderResource,
+			})
+			.unwrap();
 
 		Self {
 			resolution,
@@ -232,7 +250,13 @@ impl GizmoRenderer {
 		}
 	}
 
-	pub fn render(&mut self, cmd: &mut gpu::CmdList, gizmo: &Gizmo, view_projection: &[[f32; 4]; 4], depth_texture: &gpu::Texture) {
+	pub fn render(
+		&mut self,
+		cmd: &mut gpu::CmdList,
+		gizmo: &Gizmo,
+		view_projection: &[[f32; 4]; 4],
+		depth_texture: &gpu::Texture,
+	) {
 		let map_vb = self.vb.cpu_ptr() as *mut Vertex;
 		unsafe {
 			std::ptr::copy_nonoverlapping(gizmo.vertices.as_ptr(), map_vb, gizmo.vertices.len());
@@ -257,7 +281,12 @@ impl GizmoRenderer {
 		cmd.render_pass_begin(&gpu::RenderPassDesc {
 			colors: &[gpu::RenderTarget {
 				texture: &self.texture,
-				load_op: gpu::LoadOp::Clear(gpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }),
+				load_op: gpu::LoadOp::Clear(gpu::Color {
+					r: 0.0,
+					g: 0.0,
+					b: 0.0,
+					a: 0.0,
+				}),
 				store_op: gpu::StoreOp::Store,
 			}],
 			depth_stencil: None,

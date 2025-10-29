@@ -117,7 +117,7 @@ impl From<Rect<u32>> for Rect<f32> {
 /// - D: Depth
 /// - S: Stencil
 /// - X: Unused
-/// 
+///
 /// The number after every component indicates how many bits it occupies.
 ///
 /// Each format also has a type specifier at the end:
@@ -132,7 +132,6 @@ pub enum Format {
 	Unknown,
 
 	// R Color
-
 	R8UNorm,
 	R8SNorm,
 	R8UInt,
@@ -149,7 +148,6 @@ pub enum Format {
 	R32Float,
 
 	// RG Color
-
 	RG8UNorm,
 	RG8SNorm,
 	RG8UInt,
@@ -166,13 +164,11 @@ pub enum Format {
 	RG32Float,
 
 	// RGB Color
-
 	RGB32UInt,
 	RGB32SInt,
 	RGB32Float,
 
 	// RGBA Color
-
 	RGBA8UNorm,
 	RGBA8SNorm,
 	RGBA8UInt,
@@ -374,7 +370,7 @@ pub struct DescriptorBinding {
 pub struct SamplerBinding {
 	pub shader_register: u32,
 	pub register_space: u32,
-	pub sampler_desc: SamplerDesc
+	pub sampler_desc: SamplerDesc,
 }
 
 #[derive(Default)]
@@ -633,7 +629,7 @@ pub struct ColorAttachment {
 pub struct GraphicsPipelineDesc<'a> {
 	pub vs: Option<&'a [u8]>,
 	pub ps: Option<&'a [u8]>,
-	
+
 	pub descriptor_layout: DescriptorLayout,
 	pub rasterizer: RasterizerDesc,
 	pub depth_stencil: DepthStencilDesc,
@@ -671,13 +667,9 @@ pub struct RenderPassDesc<'a, D: DeviceImpl> {
 }
 
 bitflags! {
-	pub struct StageFlags : u32 {
-		
-	}
+	pub struct StageFlags : u32 {}
 
-	pub struct AccessFlags : u32 {
-	
-	}
+	pub struct AccessFlags : u32 {}
 }
 
 pub struct GlobalBarrier {}
@@ -770,19 +762,43 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 
 	fn new(desc: &DeviceDesc) -> Self;
 
-	fn create_surface(&mut self, desc: &SurfaceDesc, window_handle: WindowHandle) -> Result<Self::Surface, Error>;
+	fn create_surface(
+		&mut self,
+		desc: &SurfaceDesc,
+		window_handle: WindowHandle,
+	) -> Result<Self::Surface, Error>;
+
 	fn create_cmd_list(&mut self, num_buffers: u32) -> Self::CmdList;
 	fn create_buffer(&mut self, desc: &BufferDesc) -> Result<Self::Buffer, Error>;
 	fn create_texture(&mut self, desc: &TextureDesc) -> Result<Self::Texture, Error>;
 	fn create_sampler(&mut self, desc: &SamplerDesc) -> Result<Self::Sampler, Error>;
-	fn create_acceleration_structure(&mut self, desc: &AccelerationStructureDesc<Self>) -> Result<Self::AccelerationStructure, Error>;
 
-	fn create_graphics_pipeline(&self, desc: &GraphicsPipelineDesc) -> Result<Self::GraphicsPipeline, Error>;
-	fn create_compute_pipeline(&self, desc: &ComputePipelineDesc) -> Result<Self::ComputePipeline, Error>;
-	fn create_raytracing_pipeline(&self, desc: &RaytracingPipelineDesc) -> Result<Self::RaytracingPipeline, Error>;
+	fn create_acceleration_structure(
+		&mut self,
+		desc: &AccelerationStructureDesc<Self>,
+	) -> Result<Self::AccelerationStructure, Error>;
+
+	fn create_graphics_pipeline(
+		&self,
+		desc: &GraphicsPipelineDesc,
+	) -> Result<Self::GraphicsPipeline, Error>;
+
+	fn create_compute_pipeline(
+		&self,
+		desc: &ComputePipelineDesc,
+	) -> Result<Self::ComputePipeline, Error>;
+
+	fn create_raytracing_pipeline(
+		&self,
+		desc: &RaytracingPipelineDesc,
+	) -> Result<Self::RaytracingPipeline, Error>;
 
 	// TODO: Only supports 2D texture UAVs
-	fn create_texture_view(&mut self, desc: &TextureViewDesc, texture: &Self::Texture) -> TextureView;
+	fn create_texture_view(
+		&mut self,
+		desc: &TextureViewDesc,
+		texture: &Self::Texture,
+	) -> TextureView;
 
 	fn submit(&self, cmd: &Self::CmdList);
 	fn queue_wait(&self);
@@ -790,7 +806,10 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 	fn adapter_info(&self) -> &AdapterInfo;
 	fn capabilities(&self) -> &Capabilities;
 
-	fn acceleration_structure_sizes(&self, desc: &AccelerationStructureBuildInputs) -> AccelerationStructureSizes;
+	fn acceleration_structure_sizes(
+		&self,
+		desc: &AccelerationStructureBuildInputs,
+	) -> AccelerationStructureSizes;
 }
 
 pub trait SurfaceImpl<D: DeviceImpl>: 'static + Sized {
@@ -881,16 +900,12 @@ pub trait CmdListImpl<D: DeviceImpl> {
 
 /// Converts a Sized type to a u8 slice.
 pub fn as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-	unsafe {
-		std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>())
-	}
+	unsafe { std::slice::from_raw_parts((p as *const T) as *const u8, size_of::<T>()) }
 }
 
 /// Converts a Sized slice to a u8 slice.
 pub fn slice_as_u8_slice<T: Sized>(p: &[T]) -> &[u8] {
-	unsafe {
-		std::slice::from_raw_parts(p.as_ptr() as *const u8, std::mem::size_of_val(p))
-	}
+	unsafe { std::slice::from_raw_parts(p.as_ptr() as *const u8, std::mem::size_of_val(p)) }
 }
 
 /// Aligns `value` to the specified by `alignment`, `value` must be a power of 2.
@@ -1024,61 +1039,61 @@ impl Format {
 	pub fn info(&self) -> FormatInfo {
 		let (components, block_size, block_dimensions) = match self {
 			Self::Unknown => (0, 0, [0, 0]),
-		
-			Self::R8UNorm  => (1, 1, [1, 1]),
-			Self::R8SNorm  => (1, 1, [1, 1]),
-			Self::R8UInt   => (1, 1, [1, 1]),
-			Self::R8SInt   => (1, 1, [1, 1]),
-		
+
+			Self::R8UNorm => (1, 1, [1, 1]),
+			Self::R8SNorm => (1, 1, [1, 1]),
+			Self::R8UInt => (1, 1, [1, 1]),
+			Self::R8SInt => (1, 1, [1, 1]),
+
 			Self::R16SNorm => (1, 2, [1, 1]),
 			Self::R16UNorm => (1, 2, [1, 1]),
-			Self::R16UInt  => (1, 2, [1, 1]),
-			Self::R16SInt  => (1, 2, [1, 1]),
+			Self::R16UInt => (1, 2, [1, 1]),
+			Self::R16SInt => (1, 2, [1, 1]),
 			Self::R16Float => (1, 2, [1, 1]),
-		
-			Self::R32UInt  => (1, 4, [1, 1]),
-			Self::R32SInt  => (1, 4, [1, 1]),
+
+			Self::R32UInt => (1, 4, [1, 1]),
+			Self::R32SInt => (1, 4, [1, 1]),
 			Self::R32Float => (1, 4, [1, 1]),
-		
-			Self::RG8UNorm  => (2, 2, [1, 1]),
-			Self::RG8SNorm  => (2, 2, [1, 1]),
-			Self::RG8UInt   => (2, 2, [1, 1]),
-			Self::RG8SInt   => (2, 2, [1, 1]),
+
+			Self::RG8UNorm => (2, 2, [1, 1]),
+			Self::RG8SNorm => (2, 2, [1, 1]),
+			Self::RG8UInt => (2, 2, [1, 1]),
+			Self::RG8SInt => (2, 2, [1, 1]),
 
 			Self::RG16UNorm => (2, 4, [1, 1]),
 			Self::RG16SNorm => (2, 4, [1, 1]),
-			Self::RG16UInt  => (2, 4, [1, 1]),
-			Self::RG16SInt  => (2, 4, [1, 1]),
+			Self::RG16UInt => (2, 4, [1, 1]),
+			Self::RG16SInt => (2, 4, [1, 1]),
 			Self::RG16Float => (2, 4, [1, 1]),
 
-			Self::RG32UInt  => (2, 8, [1, 1]),
-			Self::RG32SInt  => (2, 8, [1, 1]),
+			Self::RG32UInt => (2, 8, [1, 1]),
+			Self::RG32SInt => (2, 8, [1, 1]),
 			Self::RG32Float => (2, 8, [1, 1]),
 
-			Self::RGB32UInt  => (3, 12, [1, 1]),
-			Self::RGB32SInt  => (3, 12, [1, 1]),
+			Self::RGB32UInt => (3, 12, [1, 1]),
+			Self::RGB32SInt => (3, 12, [1, 1]),
 			Self::RGB32Float => (3, 12, [1, 1]),
 
-			Self::RGBA8UNorm  => (4, 4, [1, 1]),
-			Self::RGBA8SNorm  => (4, 4, [1, 1]),
-			Self::RGBA8UInt   => (4, 4, [1, 1]),
-			Self::RGBA8SInt   => (4, 4, [1, 1]),
+			Self::RGBA8UNorm => (4, 4, [1, 1]),
+			Self::RGBA8SNorm => (4, 4, [1, 1]),
+			Self::RGBA8UInt => (4, 4, [1, 1]),
+			Self::RGBA8SInt => (4, 4, [1, 1]),
 
 			Self::RGBA16UNorm => (4, 8, [1, 1]),
 			Self::RGBA16SNorm => (4, 8, [1, 1]),
-			Self::RGBA16UInt  => (4, 8, [1, 1]),
-			Self::RGBA16SInt  => (4, 8, [1, 1]),
+			Self::RGBA16UInt => (4, 8, [1, 1]),
+			Self::RGBA16SInt => (4, 8, [1, 1]),
 			Self::RGBA16Float => (4, 8, [1, 1]),
 
-			Self::RGBA32UInt  => (4, 16, [1, 1]),
-			Self::RGBA32SInt  => (4, 16, [1, 1]),
+			Self::RGBA32UInt => (4, 16, [1, 1]),
+			Self::RGBA32SInt => (4, 16, [1, 1]),
 			Self::RGBA32Float => (4, 16, [1, 1]),
 
 			Self::BGRA8UNorm => (4, 16, [1, 1]),
 
-			Self::D16UNorm          => (1, 2, [1, 1]),
-			Self::D24UNormS8UInt    => (2, 4, [1, 1]),
-			Self::D32Float          => (1, 4, [1, 1]),
+			Self::D16UNorm => (1, 2, [1, 1]),
+			Self::D24UNormS8UInt => (2, 4, [1, 1]),
+			Self::D32Float => (1, 4, [1, 1]),
 			Self::D32FloatS8UIntX24 => (2, 4, [1, 1]),
 		};
 
@@ -1299,14 +1314,19 @@ impl ShaderGroup {
 		}
 	}
 
-	pub fn procedural(name: &str, closest_hit: Option<u32>, any_hit: Option<u32>, intersection: u32) -> Self {
+	pub fn procedural(
+		name: &str,
+		closest_hit: Option<u32>,
+		any_hit: Option<u32>,
+		intersection: u32,
+	) -> Self {
 		Self {
 			ty: ShaderGroupType::Procedural,
 			name: name.to_string(),
 			general: None,
 			closest_hit,
 			any_hit,
-			intersection : Some(intersection),
+			intersection: Some(intersection),
 		}
 	}
 }
@@ -1314,11 +1334,13 @@ impl ShaderGroup {
 pub fn upload_buffer<D: DeviceImpl>(device: &mut D, buffer: &D::Buffer, data: &[u8]) {
 	let cmd = device.create_cmd_list(1);
 
-	let upload_buffer = device.create_buffer(&BufferDesc {
-		size: data.len(),
-		usage: BufferUsage::empty(),
-		memory: Memory::CpuToGpu,
-	}).unwrap();
+	let upload_buffer = device
+		.create_buffer(&BufferDesc {
+			size: data.len(),
+			usage: BufferUsage::empty(),
+			memory: Memory::CpuToGpu,
+		})
+		.unwrap();
 
 	unsafe {
 		std::ptr::copy_nonoverlapping(data.as_ptr(), upload_buffer.cpu_ptr(), data.len());
@@ -1331,7 +1353,12 @@ pub fn upload_buffer<D: DeviceImpl>(device: &mut D, buffer: &D::Buffer, data: &[
 	device.queue_wait();
 }
 
-pub fn upload_texture<D: DeviceImpl>(device: &mut D, texture: &D::Texture, desc: &TextureDesc, data: &[u8]) {
+pub fn upload_texture<D: DeviceImpl>(
+	device: &mut D,
+	texture: &D::Texture,
+	desc: &TextureDesc,
+	data: &[u8],
+) {
 	let size_bytes = desc.format.size(desc.width, desc.height, desc.depth) as usize;
 	assert_eq!(size_bytes, data.len());
 
@@ -1345,11 +1372,13 @@ pub fn upload_texture<D: DeviceImpl>(device: &mut D, texture: &D::Texture, desc:
 
 	let cmd = device.create_cmd_list(1);
 
-	let upload_buffer = device.create_buffer(&BufferDesc {
-		size: upload_size as usize,
-		usage: BufferUsage::empty(),
-		memory: Memory::CpuToGpu,
-	}).unwrap();
+	let upload_buffer = device
+		.create_buffer(&BufferDesc {
+			size: upload_size as usize,
+			usage: BufferUsage::empty(),
+			memory: Memory::CpuToGpu,
+		})
+		.unwrap();
 
 	unsafe {
 		let mut src_ptr = data.as_ptr();
@@ -1367,7 +1396,16 @@ pub fn upload_texture<D: DeviceImpl>(device: &mut D, texture: &D::Texture, desc:
 		new_layout: TextureLayout::CopyDst,
 	}]));
 
-	cmd.copy_buffer_to_texture(&upload_buffer, 0, upload_pitch as u32, texture, 0, 0, [0, 0, 0], [desc.width as u32, desc.height as u32, 1]);
+	cmd.copy_buffer_to_texture(
+		&upload_buffer,
+		0,
+		upload_pitch as u32,
+		texture,
+		0,
+		0,
+		[0, 0, 0],
+		[desc.width as u32, desc.height as u32, 1],
+	);
 
 	cmd.barriers(&Barriers::texture(&[TextureBarrier {
 		texture,

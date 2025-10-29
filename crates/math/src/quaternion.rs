@@ -1,9 +1,9 @@
-use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
-use super::{Dual, Unit};
 use super::num::{Float, FloatOps, Number};
+use super::{Dual, Unit};
 
-use super::matrix::{Vector3, Matrix3};
+use super::matrix::{Matrix3, Vector3};
 use super::unwind_radians;
 
 /// A quaternion. See [`UnitQuaternion`] for a quaternion that may be used to represent a rotation.
@@ -18,27 +18,48 @@ pub struct Quaternion<T> {
 
 impl<T: Number> Quaternion<T> {
 	pub const ZERO: Self = Self {
-		i: T::ZERO, j: T::ZERO, k: T::ZERO, w: T::ZERO
+		i: T::ZERO,
+		j: T::ZERO,
+		k: T::ZERO,
+		w: T::ZERO,
 	};
 
 	/// A quaternions multiplicative identity.
 	pub const IDENTITY: Self = Self {
-		i: T::ZERO, j: T::ZERO, k: T::ZERO, w: T::ONE
+		i: T::ZERO,
+		j: T::ZERO,
+		k: T::ZERO,
+		w: T::ONE,
 	};
 
 	/// Constructs a real quaternion.
 	pub const fn from_real(real: T) -> Self {
-		Self { i: T::ZERO, j: T::ZERO, k: T::ZERO, w: real }
+		Self {
+			i: T::ZERO,
+			j: T::ZERO,
+			k: T::ZERO,
+			w: real,
+		}
 	}
 
 	/// Constructs a pure quaternion.
 	pub fn from_imag(imag: Vector3<T>) -> Self {
-		Self { i: imag.x, j: imag.y, k: imag.z, w: T::ZERO }
+		Self {
+			i: imag.x,
+			j: imag.y,
+			k: imag.z,
+			w: T::ZERO,
+		}
 	}
 
 	/// Constructs a quaternion from its real/scalar and imaginary/vector parts.
 	pub fn from_parts(real: T, imag: Vector3<T>) -> Self {
-		Self { i: imag.x, j: imag.y, k: imag.z, w: real }
+		Self {
+			i: imag.x,
+			j: imag.y,
+			k: imag.z,
+			w: real,
+		}
 	}
 }
 
@@ -133,11 +154,7 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 	/// Returns the shortest equivalent of the rotation.
 	/// Ensures the quaternion is on the hemisphere closest to the identity quaternion.
 	pub fn abs(&self) -> Self {
-		if self.w < T::ZERO {
-			-*self
-		} else {
-			*self
-		}
+		if self.w < T::ZERO { -*self } else { *self }
 	}
 
 	/// Creates a new unit quaternion from a vector.
@@ -189,18 +206,30 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 		let z2z = z2 * self.k;
 
 		Matrix3::from_array([
-			T::ONE - (y2y + z2z), y2x - z2w, z2x + y2w,
-			y2x + z2w, T::ONE - (x2x + z2z), z2y - x2w,
-			z2x - y2w, z2y + x2w, T::ONE - (x2x + y2y),
+			T::ONE - (y2y + z2z),
+			y2x - z2w,
+			z2x + y2w,
+			y2x + z2w,
+			T::ONE - (x2x + z2z),
+			z2y - x2w,
+			z2x - y2w,
+			z2y + x2w,
+			T::ONE - (x2x + y2y),
 		])
 	}
 
 	/// The euler angles, returned in the form (roll, pitch, yaw).
 	pub fn euler(&self) -> (T, T, T) {
 		(
-			T::atan2(T::TWO * (self.j * self.k + self.w * self.i), self.w * self.w - self.i * self.i - self.j * self.j + self.k * self.k),
+			T::atan2(
+				T::TWO * (self.j * self.k + self.w * self.i),
+				self.w * self.w - self.i * self.i - self.j * self.j + self.k * self.k,
+			),
 			T::asin(-T::TWO * (self.i * self.k - self.w * self.j)),
-			T::atan2(T::TWO * (self.i * self.j + self.w * self.k), self.w * self.w + self.i * self.i - self.j * self.j - self.k * self.k),
+			T::atan2(
+				T::TWO * (self.i * self.j + self.w * self.k),
+				self.w * self.w + self.i * self.i - self.j * self.j - self.k * self.k,
+			),
 		)
 	}
 
@@ -237,7 +266,7 @@ impl<T: Float + FloatOps<T>> UnitQuaternion<T> {
 		let projection = self.imag().project_onto(twist_axis);
 
 		let twist = Quaternion::from_parts(self.real(), projection);
-		
+
 		let twist = if twist.length_sq() < T::SMALL_EPSILON {
 			Self::IDENTITY
 		} else {
@@ -272,7 +301,7 @@ impl<T: Number> DualQuaternion<T> {
 	pub const IDENTITY: Self = Self::new(Quaternion::IDENTITY, Quaternion::ZERO);
 }
 
-impl<T: Neg<Output=T>> Neg for Quaternion<T> {
+impl<T: Neg<Output = T>> Neg for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn neg(self) -> Self::Output {
@@ -285,7 +314,7 @@ impl<T: Neg<Output=T>> Neg for Quaternion<T> {
 	}
 }
 
-impl<T: Add<Output=T>> Add for Quaternion<T> {
+impl<T: Add<Output = T>> Add for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn add(self, rhs: Self) -> Self::Output {
@@ -298,7 +327,7 @@ impl<T: Add<Output=T>> Add for Quaternion<T> {
 	}
 }
 
-impl<T: Sub<Output=T>> Sub for Quaternion<T> {
+impl<T: Sub<Output = T>> Sub for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn sub(self, rhs: Self) -> Self::Output {
@@ -311,7 +340,7 @@ impl<T: Sub<Output=T>> Sub for Quaternion<T> {
 	}
 }
 
-impl<T: Mul<Output=T> + Copy> Mul<T> for Quaternion<T> {
+impl<T: Mul<Output = T> + Copy> Mul<T> for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn mul(self, rhs: T) -> Self::Output {
@@ -324,7 +353,7 @@ impl<T: Mul<Output=T> + Copy> Mul<T> for Quaternion<T> {
 	}
 }
 
-impl<T: Div<Output=T> + Copy> Div<T> for Quaternion<T> {
+impl<T: Div<Output = T> + Copy> Div<T> for Quaternion<T> {
 	type Output = Quaternion<T>;
 
 	fn div(self, rhs: T) -> Self::Output {

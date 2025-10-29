@@ -1,7 +1,7 @@
 use asset::AssetServer;
 use ecs::{Name, World};
-use math::{transform::Transform3, Vec3, UnitQuaternion, PI};
 use graphics::camera::Camera;
+use math::{PI, UnitQuaternion, Vec3, transform::Transform3};
 
 pub fn setup_scene(world: &mut World, assets: &mut AssetServer) {
 	usd::populate_world_from_usd("../assets/usd/ybot-scene.usdc", world, assets);

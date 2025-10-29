@@ -1,7 +1,7 @@
 use super::shapes::*;
 use crate::{Vec2, Vec3};
-use std::f32::consts::PI;
 use rand::Rng;
+use std::f32::consts::PI;
 
 pub trait ShapeSample {
 	/// Uniformly sample a point on the boundary of this shape.
@@ -56,7 +56,9 @@ impl ShapeSample for Capsule {
 			let z = rng.random_range(-self.half_length..=self.half_length);
 			Vec3::new(circle.x, circle.y, z)
 		} else {
-			let sphere = Sphere { radius: self.radius };
+			let sphere = Sphere {
+				radius: self.radius,
+			};
 			let point = sphere.sample_boundary(rng);
 			point + (Vec3::Z * self.half_length) * point.z.signum()
 		}
@@ -67,10 +69,15 @@ impl ShapeSample for Capsule {
 		let capsule_volume = tube_volume + 4.0 / 3.0 * PI * self.radius * self.radius * self.radius;
 
 		if rng.random_bool((tube_volume / capsule_volume) as f64) {
-			let cylinder = Cylinder { radius: self.radius, half_height: self.half_length };
+			let cylinder = Cylinder {
+				radius: self.radius,
+				half_height: self.half_length,
+			};
 			cylinder.sample_interior(rng)
 		} else {
-			let sphere = Sphere { radius: self.radius };
+			let sphere = Sphere {
+				radius: self.radius,
+			};
 			let point = sphere.sample_interior(rng);
 			point + (Vec3::Z * self.half_length) * point.z.signum()
 		}

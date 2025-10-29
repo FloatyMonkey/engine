@@ -14,7 +14,9 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		if surface.frame_fence_value[bb] != 0 {
 			unsafe {
 				self.command_allocators[bb].Reset().unwrap();
-				self.command_lists[bb].Reset(&self.command_allocators[bb], None).unwrap();
+				self.command_lists[bb]
+					.Reset(&self.command_allocators[bb], None)
+					.unwrap();
 			}
 		}
 
@@ -26,16 +28,10 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		}
 	}
 
-	fn copy_buffer(
-		&self,
-		src: &Buffer,
-		src_offset: u64,
-		dst: &Buffer,
-		dst_offset: u64,
-		size: u64,
-	) {
+	fn copy_buffer(&self, src: &Buffer, src_offset: u64, dst: &Buffer, dst_offset: u64, size: u64) {
 		unsafe {
-			self.cmd().CopyBufferRegion(&dst.resource, dst_offset, &src.resource, src_offset, size);
+			self.cmd()
+				.CopyBufferRegion(&dst.resource, dst_offset, &src.resource, src_offset, size);
 		}
 	}
 
@@ -61,7 +57,8 @@ impl gpu::CmdListImpl<Device> for CmdList {
 						// https://learn.microsoft.com/en-us/windows/win32/direct3d12/subresources#plane-slice
 						// subresource_index = mip_level + (array_slice + plane * desc.array_size) * desc.mip_levels
 						// Also update the other copy_texture functions
-						SubresourceIndex: dst_mip_level + dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
+						SubresourceIndex: dst_mip_level
+							+ dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
 					},
 				},
 				dst_offset[0],
@@ -71,7 +68,8 @@ impl gpu::CmdListImpl<Device> for CmdList {
 					pResource: std::mem::transmute_copy(&src.resource),
 					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: src_mip_level + src_array_slice * src.resource.GetDesc().MipLevels as u32,
+						SubresourceIndex: src_mip_level
+							+ src_array_slice * src.resource.GetDesc().MipLevels as u32,
 					},
 				},
 				Some(&map_box(&src_offset, &size)),
@@ -96,7 +94,8 @@ impl gpu::CmdListImpl<Device> for CmdList {
 					pResource: std::mem::transmute_copy(&dst.resource),
 					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: dst_mip_level + dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
+						SubresourceIndex: dst_mip_level
+							+ dst_array_slice * dst.resource.GetDesc().MipLevels as u32,
 					},
 				},
 				dst_offset[0],
@@ -159,7 +158,8 @@ impl gpu::CmdListImpl<Device> for CmdList {
 					pResource: std::mem::transmute_copy(&src.resource),
 					Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
 					Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-						SubresourceIndex: src_mip_level + src_array_slice * src.resource.GetDesc().MipLevels as u32,
+						SubresourceIndex: src_mip_level
+							+ src_array_slice * src.resource.GetDesc().MipLevels as u32,
 					},
 				},
 				Some(&map_box(&src_offset, &size)),
@@ -168,37 +168,41 @@ impl gpu::CmdListImpl<Device> for CmdList {
 	}
 
 	fn render_pass_begin(&self, desc: &gpu::RenderPassDesc<Device>) {
-		let rt = desc.colors.iter().map(|target| {
-			let (load_op, clear) = map_load_op(target.load_op);
-			let resource_desc = unsafe { target.texture.resource.GetDesc() };
+		let rt = desc
+			.colors
+			.iter()
+			.map(|target| {
+				let (load_op, clear) = map_load_op(target.load_op);
+				let resource_desc = unsafe { target.texture.resource.GetDesc() };
 
-			let begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
-				Type: load_op,
-				Anonymous: D3D12_RENDER_PASS_BEGINNING_ACCESS_0 {
-					Clear: D3D12_RENDER_PASS_BEGINNING_ACCESS_CLEAR_PARAMETERS {
-						ClearValue: D3D12_CLEAR_VALUE {
-							Format: resource_desc.Format,
-							Anonymous: D3D12_CLEAR_VALUE_0 {
-								Color: clear.into(),
+				let begin = D3D12_RENDER_PASS_BEGINNING_ACCESS {
+					Type: load_op,
+					Anonymous: D3D12_RENDER_PASS_BEGINNING_ACCESS_0 {
+						Clear: D3D12_RENDER_PASS_BEGINNING_ACCESS_CLEAR_PARAMETERS {
+							ClearValue: D3D12_CLEAR_VALUE {
+								Format: resource_desc.Format,
+								Anonymous: D3D12_CLEAR_VALUE_0 {
+									Color: clear.into(),
+								},
 							},
 						},
 					},
-				},
-			};
+				};
 
-			let end = D3D12_RENDER_PASS_ENDING_ACCESS {
-				Type: map_store_op(target.store_op),
-				Anonymous: D3D12_RENDER_PASS_ENDING_ACCESS_0 {
-					Resolve: Default::default(),
-				},
-			};
+				let end = D3D12_RENDER_PASS_ENDING_ACCESS {
+					Type: map_store_op(target.store_op),
+					Anonymous: D3D12_RENDER_PASS_ENDING_ACCESS_0 {
+						Resolve: Default::default(),
+					},
+				};
 
-			D3D12_RENDER_PASS_RENDER_TARGET_DESC {
-				cpuDescriptor: target.texture.rtv.unwrap(),
-				BeginningAccess: begin,
-				EndingAccess: end,
-			}
-		}).collect::<Vec<_>>();
+				D3D12_RENDER_PASS_RENDER_TARGET_DESC {
+					cpuDescriptor: target.texture.rtv.unwrap(),
+					BeginningAccess: begin,
+					EndingAccess: end,
+				}
+			})
+			.collect::<Vec<_>>();
 
 		let ds = desc.depth_stencil.as_ref().map(|target| {
 			let (load_op, clear) = map_load_op(target.load_op);
@@ -262,7 +266,11 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		});
 
 		unsafe {
-			self.cmd().BeginRenderPass(Some(rt.as_slice()), ds.map(|ds| &ds as *const _), D3D12_RENDER_PASS_FLAG_NONE);
+			self.cmd().BeginRenderPass(
+				Some(rt.as_slice()),
+				ds.map(|ds| &ds as *const _),
+				D3D12_RENDER_PASS_FLAG_NONE,
+			);
 		}
 	}
 
@@ -273,41 +281,53 @@ impl gpu::CmdListImpl<Device> for CmdList {
 	}
 
 	fn barriers(&self, barriers: &gpu::Barriers<Device>) {
-		let global_barriers = barriers.global.iter().map(|_| D3D12_GLOBAL_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-			AccessAfter: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-		}).collect::<Vec<_>>();
+		let global_barriers = barriers
+			.global
+			.iter()
+			.map(|_| D3D12_GLOBAL_BARRIER {
+				SyncBefore: D3D12_BARRIER_SYNC_ALL,
+				SyncAfter: D3D12_BARRIER_SYNC_ALL,
+				AccessBefore: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+				AccessAfter: D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+			})
+			.collect::<Vec<_>>();
 
-		let buffer_barriers = barriers.buffer.iter().map(|barrier| D3D12_BUFFER_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
-			AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
-			pResource: unsafe { std::mem::transmute_copy(&barrier.buffer.resource) },
-			Offset: 0,
-			Size: u64::MAX,
-		}).collect::<Vec<_>>();
+		let buffer_barriers = barriers
+			.buffer
+			.iter()
+			.map(|barrier| D3D12_BUFFER_BARRIER {
+				SyncBefore: D3D12_BARRIER_SYNC_ALL,
+				SyncAfter: D3D12_BARRIER_SYNC_ALL,
+				AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
+				AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
+				pResource: unsafe { std::mem::transmute_copy(&barrier.buffer.resource) },
+				Offset: 0,
+				Size: u64::MAX,
+			})
+			.collect::<Vec<_>>();
 
-		let texture_barriers = barriers.texture.iter().map(|barrier| D3D12_TEXTURE_BARRIER {
-			SyncBefore: D3D12_BARRIER_SYNC_ALL,
-			SyncAfter: D3D12_BARRIER_SYNC_ALL,
-			AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
-			AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
-			LayoutBefore: map_texture_layout(barrier.old_layout),
-			LayoutAfter: map_texture_layout(barrier.new_layout),
-			pResource: unsafe { std::mem::transmute_copy(&barrier.texture.resource) },
-			Subresources: D3D12_BARRIER_SUBRESOURCE_RANGE {
-				IndexOrFirstMipLevel: 0xffffffff, // All subresources
-				NumMipLevels: 0,
-				FirstArraySlice: 0,
-				NumArraySlices: 0,
-				FirstPlane: 0,
-				NumPlanes: 0,
-			},
-			Flags: D3D12_TEXTURE_BARRIER_FLAG_NONE,
-		}).collect::<Vec<_>>();
+		let texture_barriers = barriers
+			.texture
+			.iter()
+			.map(|barrier| D3D12_TEXTURE_BARRIER {
+				SyncBefore: D3D12_BARRIER_SYNC_ALL,
+				SyncAfter: D3D12_BARRIER_SYNC_ALL,
+				AccessBefore: D3D12_BARRIER_ACCESS_COMMON,
+				AccessAfter: D3D12_BARRIER_ACCESS_COMMON,
+				LayoutBefore: map_texture_layout(barrier.old_layout),
+				LayoutAfter: map_texture_layout(barrier.new_layout),
+				pResource: unsafe { std::mem::transmute_copy(&barrier.texture.resource) },
+				Subresources: D3D12_BARRIER_SUBRESOURCE_RANGE {
+					IndexOrFirstMipLevel: 0xffffffff, // All subresources
+					NumMipLevels: 0,
+					FirstArraySlice: 0,
+					NumArraySlices: 0,
+					FirstPlane: 0,
+					NumPlanes: 0,
+				},
+				Flags: D3D12_TEXTURE_BARRIER_FLAG_NONE,
+			})
+			.collect::<Vec<_>>();
 
 		let barrier_groups = [
 			D3D12_BARRIER_GROUP {
@@ -360,7 +380,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			right: rect.right as i32,
 			bottom: rect.bottom as i32,
 		};
-		
+
 		unsafe {
 			self.cmd().RSSetScissorRects(&[dx_rect]);
 		}
@@ -421,9 +441,14 @@ impl gpu::CmdListImpl<Device> for CmdList {
 	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
 		assert_eq!(offset % 4, 0);
 		assert_eq!(data.len() % 4, 0);
-		
+
 		unsafe {
-			self.cmd().SetGraphicsRoot32BitConstants(0, data.len() as u32 / 4, data.as_ptr() as *const _, offset / 4);
+			self.cmd().SetGraphicsRoot32BitConstants(
+				0,
+				data.len() as u32 / 4,
+				data.as_ptr() as *const _,
+				offset / 4,
+			);
 		}
 	}
 
@@ -432,19 +457,35 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		assert_eq!(data.len() % 4, 0);
 
 		unsafe {
-			self.cmd().SetComputeRoot32BitConstants(0, data.len() as u32 / 4, data.as_ptr() as *const _, offset / 4);
+			self.cmd().SetComputeRoot32BitConstants(
+				0,
+				data.len() as u32 / 4,
+				data.as_ptr() as *const _,
+				offset / 4,
+			);
 		}
 	}
 
 	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
 		unsafe {
-			self.cmd().DrawInstanced(vertices.len() as u32, instances.len() as u32, vertices.start, instances.start);
+			self.cmd().DrawInstanced(
+				vertices.len() as u32,
+				instances.len() as u32,
+				vertices.start,
+				instances.start,
+			);
 		}
 	}
 
 	fn draw_indexed(&self, indices: Range<u32>, base_vertex: i32, instances: Range<u32>) {
 		unsafe {
-			self.cmd().DrawIndexedInstanced(indices.len() as u32, instances.len() as u32, indices.start, base_vertex, instances.start);
+			self.cmd().DrawIndexedInstanced(
+				indices.len() as u32,
+				instances.len() as u32,
+				indices.start,
+				base_vertex,
+				instances.start,
+			);
 		}
 	}
 
@@ -456,24 +497,32 @@ impl gpu::CmdListImpl<Device> for CmdList {
 
 	fn dispatch_rays(&self, desc: &gpu::DispatchRaysDesc) {
 		let dx_desc = D3D12_DISPATCH_RAYS_DESC {
-			RayGenerationShaderRecord: desc.raygen.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
+			RayGenerationShaderRecord: desc.raygen.as_ref().map_or(Default::default(), |t| {
+				D3D12_GPU_VIRTUAL_ADDRESS_RANGE {
+					StartAddress: t.ptr.0,
+					SizeInBytes: t.size as _,
+				}
 			}),
-			MissShaderTable: desc.miss.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
+			MissShaderTable: desc.miss.as_ref().map_or(Default::default(), |t| {
+				D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
+					StartAddress: t.ptr.0,
+					SizeInBytes: t.size as _,
+					StrideInBytes: t.stride as _,
+				}
 			}),
-			HitGroupTable: desc.hit_group.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
+			HitGroupTable: desc.hit_group.as_ref().map_or(Default::default(), |t| {
+				D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
+					StartAddress: t.ptr.0,
+					SizeInBytes: t.size as _,
+					StrideInBytes: t.stride as _,
+				}
 			}),
-			CallableShaderTable: desc.callable.as_ref().map_or(Default::default(), |t| D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
-				StartAddress: t.ptr.0,
-				SizeInBytes: t.size as _,
-				StrideInBytes: t.stride as _,
+			CallableShaderTable: desc.callable.as_ref().map_or(Default::default(), |t| {
+				D3D12_GPU_VIRTUAL_ADDRESS_RANGE_AND_STRIDE {
+					StartAddress: t.ptr.0,
+					SizeInBytes: t.size as _,
+					StrideInBytes: t.stride as _,
+				}
 			}),
 			Width: desc.size[0],
 			Height: desc.size[1],
@@ -493,25 +542,30 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		let dx_desc = D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC {
 			DestAccelerationStructureData: unsafe { desc.dst.resource.GetGPUVirtualAddress() },
 			Inputs: info.desc,
-			SourceAccelerationStructureData: desc.src.map_or(0, |b| unsafe { b.resource.GetGPUVirtualAddress() }),
+			SourceAccelerationStructureData: desc
+				.src
+				.map_or(0, |b| unsafe { b.resource.GetGPUVirtualAddress() }),
 			ScratchAccelerationStructureData: desc.scratch_data.0,
 		};
 
 		unsafe {
-			self.cmd().BuildRaytracingAccelerationStructure(&dx_desc, None)
+			self.cmd()
+				.BuildRaytracingAccelerationStructure(&dx_desc, None)
 		}
 	}
 
 	fn debug_marker(&self, name: &str, color: gpu::Color<u8>) {
 		if let Some(pix) = &self.pix {
-			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
+			let color =
+				0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
 			pix.set_marker_on_command_list(self.cmd(), color as u64, name);
 		}
 	}
 
 	fn debug_event_push(&self, name: &str, color: gpu::Color<u8>) {
 		if let Some(pix) = &self.pix {
-			let color = 0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
+			let color =
+				0xff000000 | (color.r as u32) << 16 | (color.g as u32) << 8 | color.b as u32;
 			pix.begin_event_on_command_list(self.cmd(), color as u64, name);
 		}
 	}

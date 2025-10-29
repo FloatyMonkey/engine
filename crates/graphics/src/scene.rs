@@ -1,11 +1,11 @@
-use asset::{Asset, UntypedAssetId, AssetId, AssetServer};
-use ecs::World;
-use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl, AccelerationStructureImpl};
-use math::{Vec3, Mat3x4, Mat4, transform::Transform3};
-use geometry::mesh::Mesh;
 use super::acceleration_structure::{Blas, Tlas};
 use super::camera::Camera;
 use super::env_map::ImportanceMap;
+use asset::{Asset, AssetId, AssetServer, UntypedAssetId};
+use ecs::World;
+use geometry::mesh::Mesh;
+use gpu::{self, AccelerationStructureImpl, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
+use math::{Mat3x4, Mat4, Vec3, transform::Transform3};
 
 pub struct Renderable {
 	pub mesh: AssetId<Mesh>,
@@ -95,23 +95,34 @@ pub struct Image {
 impl Image {
 	pub fn new(width: u32, height: u32, data: Vec<[f32; 4]>) -> Self {
 		assert_eq!((width * height) as usize, data.len());
-		Self { width, height, data }
+		Self {
+			width,
+			height,
+			data,
+		}
 	}
 
 	pub fn from_file(path: impl AsRef<std::path::Path>) -> Self
-		where
-			Self: Sized {
+	where
+		Self: Sized,
+	{
 		exr::prelude::read_first_rgba_layer_from_file(
-				path,
-				|resolution, _| Image::new(
+			path,
+			|resolution, _| {
+				Image::new(
 					resolution.width() as u32,
 					resolution.height() as u32,
 					vec![[0.0, 0.0, 0.0, 0.0]; resolution.width() * resolution.height()],
-				),
-				|image, position, (r, g, b, a): (f32, f32, f32, f32)| {
-					image.data[image.width as usize * position.y() + position.x()] = [r, g, b, a];
-				},
-			).unwrap().layer_data.channel_data.pixels
+				)
+			},
+			|image, position, (r, g, b, a): (f32, f32, f32, f32)| {
+				image.data[image.width as usize * position.y() + position.x()] = [r, g, b, a];
+			},
+		)
+		.unwrap()
+		.layer_data
+		.channel_data
+		.pixels
 	}
 }
 
@@ -125,25 +136,43 @@ struct GpuMeshData {
 
 impl GpuMeshData {
 	fn from_mesh(device: &mut gpu::Device, mesh: &Mesh) -> Self {
-		let vertices: Vec<Vertex> = mesh.vertices.iter().map(|v| Vertex { position: v.p, normal: v.n }).collect();
+		let vertices: Vec<Vertex> = mesh
+			.vertices
+			.iter()
+			.map(|v| Vertex {
+				position: v.p,
+				normal: v.n,
+			})
+			.collect();
 		let indices: Vec<u32> = mesh.indices.iter().map(|i| *i as u32).collect();
 
-		let vertex_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<Vertex>() * vertices.len(),
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let vertex_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<Vertex>() * vertices.len(),
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
-		let index_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<u32>() * indices.len(),
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let index_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<u32>() * indices.len(),
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 
 		gpu::upload_buffer(device, &vertex_buffer, gpu::slice_as_u8_slice(&vertices));
 		gpu::upload_buffer(device, &index_buffer, gpu::slice_as_u8_slice(&indices));
 
-		let blas = Blas::create(device, &vertex_buffer, &index_buffer, vertices.len(), indices.len(), size_of::<Vertex>());
+		let blas = Blas::create(
+			device,
+			&vertex_buffer,
+			&index_buffer,
+			vertices.len(),
+			indices.len(),
+			size_of::<Vertex>(),
+		);
 
 		Self {
 			vertex_buffer,
@@ -171,17 +200,21 @@ impl Scene {
 	pub fn new(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
 		let tlas = Tlas::create(device, MAX_INSTANCES);
 
-		let instance_data_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<Instance>() * MAX_INSTANCES,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let instance_data_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<Instance>() * MAX_INSTANCES,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
-		let light_data_buffer = device.create_buffer(&gpu::BufferDesc {
-			size: size_of::<GpuLight>() * MAX_LIGHTS,
-			usage: gpu::BufferUsage::SHADER_RESOURCE,
-			memory: gpu::Memory::CpuToGpu,
-		}).unwrap();
+		let light_data_buffer = device
+			.create_buffer(&gpu::BufferDesc {
+				size: size_of::<GpuLight>() * MAX_LIGHTS,
+				usage: gpu::BufferUsage::SHADER_RESOURCE,
+				memory: gpu::Memory::CpuToGpu,
+			})
+			.unwrap();
 
 		let importance_map = ImportanceMap::setup(device, shader_compiler);
 
@@ -199,7 +232,13 @@ impl Scene {
 		}
 	}
 
-	pub fn update(&mut self, world: &mut World, assets: &AssetServer, device: &mut gpu::Device, cmd: &mut gpu::CmdList) {
+	pub fn update(
+		&mut self,
+		world: &mut World,
+		assets: &AssetServer,
+		device: &mut gpu::Device,
+		cmd: &mut gpu::CmdList,
+	) {
 		// CAMERA
 		// TODO: Handle properly when there's no camera in the scene.
 		if let Some((transform, camera)) = world.query::<(&Transform3, &Camera)>().iter().next() {
@@ -213,12 +252,20 @@ impl Scene {
 		// light_count contains the number of all lights
 		// infinite_light_count only contains the number of infinite lights
 
-		let lights = unsafe { std::slice::from_raw_parts_mut(self.light_data_buffer.cpu_ptr() as *mut GpuLight, MAX_LIGHTS) };
+		let lights = unsafe {
+			std::slice::from_raw_parts_mut(
+				self.light_data_buffer.cpu_ptr() as *mut GpuLight,
+				MAX_LIGHTS,
+			)
+		};
 		let mut light_index = 0;
 		let mut infinite_light_count = 0;
 
 		for light in &world.query::<&DomeLight>() {
-			let env_map_srv_index = self.get_texture_from_cache(&light.image, device, assets).srv_index().unwrap();
+			let env_map_srv_index = self
+				.get_texture_from_cache(&light.image, device, assets)
+				.srv_index()
+				.unwrap();
 
 			// TODO: Currently only supports single dome light
 			self.importance_map.update(cmd, env_map_srv_index);
@@ -235,8 +282,8 @@ impl Scene {
 		}
 
 		for (transform, light) in &world.query::<(&Transform3, &RectLight)>() {
-			let x = transform.rotation *  Vec3::X * transform.scale.x * light.width;
-			let y = transform.rotation *  Vec3::Y * transform.scale.y * light.height;
+			let x = transform.rotation * Vec3::X * transform.scale.x * light.width;
+			let y = transform.rotation * Vec3::Y * transform.scale.y * light.height;
 			let z = transform.rotation * -Vec3::Z * transform.scale.z.signum();
 
 			let area = light.width * light.height;
@@ -271,8 +318,18 @@ impl Scene {
 
 		let instance_descriptor_size = gpu::AccelerationStructure::instance_descriptor_size();
 
-		let instance_data = unsafe { std::slice::from_raw_parts_mut(self.instance_data_buffer.cpu_ptr() as *mut Instance, MAX_INSTANCES) };
-		let instance_descriptors = unsafe { std::slice::from_raw_parts_mut(self.tlas.instance_buffer.cpu_ptr(), MAX_INSTANCES * instance_descriptor_size) };
+		let instance_data = unsafe {
+			std::slice::from_raw_parts_mut(
+				self.instance_data_buffer.cpu_ptr() as *mut Instance,
+				MAX_INSTANCES,
+			)
+		};
+		let instance_descriptors = unsafe {
+			std::slice::from_raw_parts_mut(
+				self.tlas.instance_buffer.cpu_ptr(),
+				MAX_INSTANCES * instance_descriptor_size,
+			)
+		};
 
 		let mut instance_index = 0;
 
@@ -294,14 +351,19 @@ impl Scene {
 				bottom_level: mesh_data.blas.accel.gpu_ptr(),
 			};
 
-			gpu::AccelerationStructure::write_instance_descriptor(&instance_desc, &mut instance_descriptors[instance_index * instance_descriptor_size..]);
+			gpu::AccelerationStructure::write_instance_descriptor(
+				&instance_desc,
+				&mut instance_descriptors[instance_index * instance_descriptor_size..],
+			);
 
 			instance_index += 1;
 		}
 
-		self.tlas.build_inputs.entries = gpu::AccelerationStructureEntries::Instances(
-			gpu::AccelerationStructureInstances { data: self.tlas.instance_buffer.gpu_ptr(), count: instance_index }
-		);
+		self.tlas.build_inputs.entries =
+			gpu::AccelerationStructureEntries::Instances(gpu::AccelerationStructureInstances {
+				data: self.tlas.instance_buffer.gpu_ptr(),
+				count: instance_index,
+			});
 
 		// ACCELERATION STRUCTURES
 
@@ -310,7 +372,12 @@ impl Scene {
 		cmd.barriers(&gpu::Barriers::global()); // Global barrier to ensure the TLAS is visible to the raytracing pipeline
 	}
 
-	fn get_texture_from_cache(&mut self, asset: &AssetId<Image>, device: &mut gpu::Device, assets: &AssetServer) -> &gpu::Texture {
+	fn get_texture_from_cache(
+		&mut self,
+		asset: &AssetId<Image>,
+		device: &mut gpu::Device,
+		assets: &AssetServer,
+	) -> &gpu::Texture {
 		self.texture_cache.entry(asset.id()).or_insert_with(|| {
 			let image = assets.get(asset).unwrap();
 
@@ -326,13 +393,24 @@ impl Scene {
 			};
 
 			let texture = device.create_texture(&texture_desc).unwrap();
-			gpu::upload_texture(device, &texture, &texture_desc, gpu::slice_as_u8_slice(&image.data));
+			gpu::upload_texture(
+				device,
+				&texture,
+				&texture_desc,
+				gpu::slice_as_u8_slice(&image.data),
+			);
 
 			texture
 		})
 	}
 
-	fn get_mesh_from_cache(&mut self, asset: &AssetId<Mesh>, device: &mut gpu::Device, cmd: &gpu::CmdList, assets: &AssetServer) -> &GpuMeshData {
+	fn get_mesh_from_cache(
+		&mut self,
+		asset: &AssetId<Mesh>,
+		device: &mut gpu::Device,
+		cmd: &gpu::CmdList,
+		assets: &AssetServer,
+	) -> &GpuMeshData {
 		self.mesh_cache.entry(asset.id()).or_insert_with(|| {
 			let mesh = assets.get(asset).unwrap();
 			let mut gpu_mesh_data = GpuMeshData::from_mesh(device, mesh);

@@ -1,7 +1,7 @@
-use std::ops::Mul;
 use super::matrix::{Vector2, Vector3};
 use super::num::Number;
 use super::{UnitComplex, UnitQuaternion};
+use std::ops::Mul;
 
 pub struct Isometry<T, R> {
 	pub translation: T,
@@ -21,15 +21,24 @@ impl<T: Number> Isometry3<T> {
 	};
 
 	pub const fn from_translation(translation: Vector3<T>) -> Self {
-		Self { translation, ..Self::IDENTITY }
+		Self {
+			translation,
+			..Self::IDENTITY
+		}
 	}
 
 	pub const fn from_rotation(rotation: UnitQuaternion<T>) -> Self {
-		Self { rotation, ..Self::IDENTITY }
+		Self {
+			rotation,
+			..Self::IDENTITY
+		}
 	}
 
 	pub const fn with_translation(self, translation: Vector3<T>) -> Self {
-		Self { translation, ..self }
+		Self {
+			translation,
+			..self
+		}
 	}
 
 	pub const fn with_rotation(self, rotation: UnitQuaternion<T>) -> Self {
@@ -42,7 +51,10 @@ impl Isometry3 {
 		let rotation = self.rotation.inv();
 		let translation = rotation * -self.translation;
 
-		Self { translation, rotation }
+		Self {
+			translation,
+			rotation,
+		}
 	}
 
 	/// Translates and rotates a point by this isometry.
@@ -75,6 +87,9 @@ impl Mul for Isometry3 {
 		let translation = self.rotation * rhs.translation + self.translation;
 		let rotation = self.rotation * rhs.rotation;
 
-		Self { translation, rotation }
+		Self {
+			translation,
+			rotation,
+		}
 	}
 }

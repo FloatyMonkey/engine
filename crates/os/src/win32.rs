@@ -1,15 +1,18 @@
 use windows::{
-	core::*,
-	Win32::Foundation::*,
 	Win32::Foundation::BOOL,
+	Win32::Foundation::*,
+	Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute},
 	Win32::Graphics::Gdi::{
-		ClientToScreen, EnumDisplayMonitors, GetMonitorInfoW, MonitorFromWindow, ScreenToClient, ValidateRect,
-		HDC, HMONITOR, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST
+		ClientToScreen, EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR,
+		MONITOR_DEFAULTTONEAREST, MONITORINFOEXW, MonitorFromWindow, ScreenToClient, ValidateRect,
 	},
-	Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE},
-	Win32::System::LibraryLoader::*, Win32::UI::Controls::*, Win32::UI::HiDpi::*,
-	Win32::UI::Input::KeyboardAndMouse::*, Win32::UI::WindowsAndMessaging::*,
 	Win32::System::Com::CoInitialize,
+	Win32::System::LibraryLoader::*,
+	Win32::UI::Controls::*,
+	Win32::UI::HiDpi::*,
+	Win32::UI::Input::KeyboardAndMouse::*,
+	Win32::UI::WindowsAndMessaging::*,
+	core::*,
 };
 
 use std::ffi::{OsStr, OsString};
@@ -81,12 +84,20 @@ impl Drop for Window {
 impl Drop for App {
 	fn drop(&mut self) {
 		unsafe {
-			UnregisterClassW(PCWSTR(self.window_class_wide.as_ptr()), Some(self.hinstance)).unwrap();
+			UnregisterClassW(
+				PCWSTR(self.window_class_wide.as_ptr()),
+				Some(self.hinstance),
+			)
+			.unwrap();
 		}
 	}
 }
 
-fn adjust_window_rect(rect: &super::Rect<i32>, ws: WINDOW_STYLE, wsex: WINDOW_EX_STYLE) -> super::Rect<i32> {
+fn adjust_window_rect(
+	rect: &super::Rect<i32>,
+	ws: WINDOW_STYLE,
+	wsex: WINDOW_EX_STYLE,
+) -> super::Rect<i32> {
 	let mut rc = RECT {
 		left: rect.x,
 		top: rect.y,
@@ -105,7 +116,11 @@ fn adjust_window_rect(rect: &super::Rect<i32>, ws: WINDOW_STYLE, wsex: WINDOW_EX
 }
 
 pub fn encode_wide(string: impl AsRef<OsStr>) -> Vec<u16> {
-	string.as_ref().encode_wide().chain(std::iter::once(0)).collect()
+	string
+		.as_ref()
+		.encode_wide()
+		.chain(std::iter::once(0))
+		.collect()
 }
 
 pub fn decode_wide(mut wide_c_string: &[u16]) -> OsString {
@@ -147,7 +162,7 @@ impl super::App for App {
 			App {
 				window_class_wide,
 				hinstance: instance.into(),
-				mouse_pos: super::Point{ x: 0, y: 0 },
+				mouse_pos: super::Point { x: 0, y: 0 },
 				cursor: super::Cursor::Arrow,
 				proc_data: ProcData::new(),
 			}
@@ -175,16 +190,19 @@ impl super::App for App {
 				None,
 				Some(self.hinstance),
 				Some(self as *const _ as _), // TODO: Ptr might break
-			).unwrap();
+			)
+			.unwrap();
 
 			let enable_dark_mode = true.into();
-			DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &enable_dark_mode as *const BOOL as *const _, size_of::<BOOL>() as _).unwrap();
-
-			Window {
+			DwmSetWindowAttribute(
 				hwnd,
-				ws,
-				wsex,
-			}
+				DWMWA_USE_IMMERSIVE_DARK_MODE,
+				&enable_dark_mode as *const BOOL as *const _,
+				size_of::<BOOL>() as _,
+			)
+			.unwrap();
+
+			Window { hwnd, ws, wsex }
 		}
 	}
 
@@ -192,7 +210,9 @@ impl super::App for App {
 		self.proc_data.events.clear();
 
 		let mut mouse_pos = POINT::default();
-		unsafe { GetCursorPos(&mut mouse_pos).unwrap(); }
+		unsafe {
+			GetCursorPos(&mut mouse_pos).unwrap();
+		}
 		self.mouse_pos = super::Point {
 			x: mouse_pos.x,
 			y: mouse_pos.y,
@@ -225,7 +245,12 @@ impl super::App for App {
 	fn enumerate_monitors() -> Vec<super::MonitorInfo> {
 		let mut monitors: Vec<super::MonitorInfo> = Vec::new();
 		unsafe {
-			let _ = EnumDisplayMonitors(None, None, Some(monitor_enum_proc), LPARAM(&mut monitors as *mut _ as _));
+			let _ = EnumDisplayMonitors(
+				None,
+				None,
+				Some(monitor_enum_proc),
+				LPARAM(&mut monitors as *mut _ as _),
+			);
 		}
 		monitors
 	}
@@ -236,7 +261,9 @@ impl super::App for App {
 		}
 		self.cursor = *cursor;
 		unsafe {
-			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR::default()), |c| LoadCursorW(Some(HINSTANCE::default()), c)) {
+			if let Ok(cursor) = map_cursor(cursor).map_or(Ok(HCURSOR::default()), |c| {
+				LoadCursorW(Some(HINSTANCE::default()), c)
+			}) {
 				SetCursor(Some(cursor));
 			}
 		}
@@ -247,18 +274,24 @@ impl super::Window for Window {
 	fn title(&self) -> String {
 		let length = unsafe { GetWindowTextLengthW(self.hwnd) } + 1;
 		let mut buffer = vec![0; length as usize];
-		unsafe { GetWindowTextW(self.hwnd, &mut buffer); }
+		unsafe {
+			GetWindowTextW(self.hwnd, &mut buffer);
+		}
 		decode_wide(&buffer).to_string_lossy().to_string()
 	}
 
 	fn set_title(&self, title: &str) {
 		let title = encode_wide(title);
-		unsafe { SetWindowTextW(self.hwnd, PCWSTR(title.as_ptr())).unwrap(); }
+		unsafe {
+			SetWindowTextW(self.hwnd, PCWSTR(title.as_ptr())).unwrap();
+		}
 	}
 
 	fn position(&self) -> super::Point<i32> {
 		let mut pos = POINT { x: 0, y: 0 };
-		unsafe { let _ = ClientToScreen(self.hwnd, &mut pos); }
+		unsafe {
+			let _ = ClientToScreen(self.hwnd, &mut pos);
+		}
 		super::Point { x: pos.x, y: pos.y }
 	}
 
@@ -278,7 +311,9 @@ impl super::Window for Window {
 
 	fn size(&self) -> super::Size<u32> {
 		let mut rect = RECT::default();
-		unsafe { GetClientRect(self.hwnd, &mut rect).unwrap(); }
+		unsafe {
+			GetClientRect(self.hwnd, &mut rect).unwrap();
+		}
 		super::Size {
 			x: (rect.right - rect.left) as u32,
 			y: (rect.bottom - rect.top) as u32,
@@ -295,7 +330,16 @@ impl super::Window for Window {
 		let flags = SWP_NOZORDER | SWP_NOMOVE | SWP_NOACTIVATE;
 		unsafe {
 			AdjustWindowRectEx(&mut rect, self.ws, false, self.wsex).unwrap();
-			SetWindowPos(self.hwnd, None, 0, 0, rect.right - rect.left, rect.bottom - rect.top, flags).unwrap();
+			SetWindowPos(
+				self.hwnd,
+				None,
+				0,
+				0,
+				rect.right - rect.left,
+				rect.bottom - rect.top,
+				flags,
+			)
+			.unwrap();
 		}
 	}
 
@@ -304,7 +348,9 @@ impl super::Window for Window {
 	}
 
 	fn minimize(&self) {
-		unsafe { let _ = ShowWindow(self.hwnd, SW_MINIMIZE); }
+		unsafe {
+			let _ = ShowWindow(self.hwnd, SW_MINIMIZE);
+		}
 	}
 
 	fn is_maximized(&self) -> bool {
@@ -312,7 +358,9 @@ impl super::Window for Window {
 	}
 
 	fn maximize(&self) {
-		unsafe { let _ = ShowWindow(self.hwnd, SW_MAXIMIZE); }
+		unsafe {
+			let _ = ShowWindow(self.hwnd, SW_MAXIMIZE);
+		}
 	}
 
 	fn is_focused(&self) -> bool {
@@ -333,16 +381,19 @@ impl super::Window for Window {
 			x: mouse_pos.x,
 			y: mouse_pos.y,
 		};
-		unsafe { let _ = ScreenToClient(self.hwnd, &mut mp); }
+		unsafe {
+			let _ = ScreenToClient(self.hwnd, &mut mp);
+		}
 		super::Point { x: mp.x, y: mp.y }
 	}
 
 	fn scale_factor(&self) -> f32 {
 		let monitor = unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
-		
+
 		let mut x_dpi: u32 = 0;
 		let mut y_dpi: u32 = 0;
-		if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi) }.is_err() {
+		if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi) }.is_err()
+		{
 			return 1.0;
 		}
 
@@ -354,7 +405,12 @@ impl super::Window for Window {
 	}
 }
 
-unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn wndproc(
+	window: HWND,
+	message: u32,
+	wparam: WPARAM,
+	lparam: LPARAM,
+) -> LRESULT {
 	if message == WM_CREATE {
 		let create_struct = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
 		unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create_struct.lpCreateParams as _) };
@@ -378,12 +434,15 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			proc_data.mouse_hwnd = window;
 			if !proc_data.mouse_tracked {
 				// Call TrackMouseEvent to receive WM_MOUSELEAVE events
-				unsafe { TrackMouseEvent(&mut TRACKMOUSEEVENT {
-					cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
-					dwFlags: TME_LEAVE,
-					hwndTrack: window,
-					dwHoverTime: HOVER_DEFAULT,
-				}).unwrap() };
+				unsafe {
+					TrackMouseEvent(&mut TRACKMOUSEEVENT {
+						cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+						dwFlags: TME_LEAVE,
+						hwndTrack: window,
+						dwHoverTime: HOVER_DEFAULT,
+					})
+					.unwrap()
+				};
 				proc_data.mouse_tracked = true;
 			}
 			LRESULT(0)
@@ -395,50 +454,72 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 		}
 		WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => {
 			proc_data.mouse_down[0] = true;
-			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Left, pressed: true });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Left,
+				pressed: true,
+			});
 			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_RBUTTONDOWN | WM_RBUTTONDBLCLK => {
 			proc_data.mouse_down[1] = true;
-			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Right, pressed: true });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Right,
+				pressed: true,
+			});
 			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_MBUTTONDOWN | WM_MBUTTONDBLCLK => {
 			proc_data.mouse_down[2] = true;
-			proc_data.events.push(super::Event::MouseButton { button: super::MouseButton::Middle, pressed: true });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Middle,
+				pressed: true,
+			});
 			proc_data.set_capture(window);
 			LRESULT(0)
 		}
 		WM_LBUTTONUP => {
 			proc_data.mouse_down[0] = false;
-			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Left, pressed: false });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Left,
+				pressed: false,
+			});
 			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_RBUTTONUP => {
 			proc_data.mouse_down[1] = false;
-			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Right, pressed: false });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Right,
+				pressed: false,
+			});
 			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_MBUTTONUP => {
 			proc_data.mouse_down[2] = false;
-			proc_data.events.push(super::Event::MouseButton{ button: super::MouseButton::Middle, pressed: false });
+			proc_data.events.push(super::Event::MouseButton {
+				button: super::MouseButton::Middle,
+				pressed: false,
+			});
 			proc_data.release_capture(window);
 			LRESULT(0)
 		}
 		WM_MOUSEWHEEL => {
 			let value = (wparam.0 >> 16) as i16;
 			let value = value as f32 / WHEEL_DELTA as f32;
-			proc_data.events.push(super::Event::MouseWheel { delta: [0.0, value] });
+			proc_data.events.push(super::Event::MouseWheel {
+				delta: [0.0, value],
+			});
 			LRESULT(0)
 		}
 		WM_MOUSEHWHEEL => {
 			let value = (wparam.0 >> 16) as i16;
 			let value = value as f32 / WHEEL_DELTA as f32;
-			proc_data.events.push(super::Event::MouseWheel { delta: [value, 0.0] });
+			proc_data.events.push(super::Event::MouseWheel {
+				delta: [value, 0.0],
+			});
 			LRESULT(0)
 		}
 		WM_PAINT => {
@@ -447,7 +528,9 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 		}
 		WM_CHAR => {
 			if wparam.0 > 0 && wparam.0 < 0x10000 {
-				proc_data.events.push(super::Event::Text { character: char::from_u32(wparam.0 as u32).unwrap() });
+				proc_data.events.push(super::Event::Text {
+					character: char::from_u32(wparam.0 as u32).unwrap(),
+				});
 			}
 			LRESULT(0)
 		}
@@ -457,14 +540,19 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 			let vk = VIRTUAL_KEY(wparam.0 as u16);
 
 			if let Some(key) = map_key(vk) {
-				proc_data.events.push(super::Event::Key { key, pressed: down });
+				proc_data
+					.events
+					.push(super::Event::Key { key, pressed: down });
 			}
 
 			LRESULT(0)
 		}
 		WM_SETCURSOR => {
 			if (lparam.0 & 0xffff) as u32 == HTCLIENT {
-				if let Ok(cursor) = map_cursor(&app.cursor).map_or(Ok(HCURSOR::default()), |c| unsafe { LoadCursorW(Some(HINSTANCE::default()), c) }) {
+				if let Ok(cursor) = map_cursor(&app.cursor)
+					.map_or(Ok(HCURSOR::default()), |c| unsafe {
+						LoadCursorW(Some(HINSTANCE::default()), c)
+					}) {
 					unsafe { SetCursor(Some(cursor)) };
 				}
 				LRESULT(1)
@@ -476,7 +564,12 @@ unsafe extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lp
 	}
 }
 
-unsafe extern "system" fn monitor_enum_proc(monitor: HMONITOR, _hdc: HDC, _lprect: *mut RECT, lparam: LPARAM) -> BOOL {
+unsafe extern "system" fn monitor_enum_proc(
+	monitor: HMONITOR,
+	_hdc: HDC,
+	_lprect: *mut RECT,
+	lparam: LPARAM,
+) -> BOOL {
 	let monitors = unsafe { &mut *(lparam.0 as *mut Vec<super::MonitorInfo>) };
 
 	let mut info: MONITORINFOEXW = unsafe { std::mem::zeroed() };
@@ -488,7 +581,11 @@ unsafe extern "system" fn monitor_enum_proc(monitor: HMONITOR, _hdc: HDC, _lprec
 
 	let mut x_dpi: u32 = 0;
 	let mut y_dpi: u32 = 0;
-	let dpi_scale = if unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi) }.is_ok() {
+	let dpi_scale = if unsafe {
+		GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x_dpi, &mut y_dpi)
+	}
+	.is_ok()
+	{
 		(x_dpi as f32) / 96.0
 	} else {
 		1.0
@@ -513,16 +610,16 @@ unsafe extern "system" fn monitor_enum_proc(monitor: HMONITOR, _hdc: HDC, _lprec
 
 fn map_cursor(cursor: &super::Cursor) -> Option<PCWSTR> {
 	Some(match cursor {
-		super::Cursor::None       => return None,
-		super::Cursor::Arrow      => IDC_ARROW,
-		super::Cursor::Crosshair  => IDC_CROSS,
-		super::Cursor::Hand       => IDC_HAND,
-		super::Cursor::Help       => IDC_HELP,
-		super::Cursor::Text       => IDC_IBEAM,
-		super::Cursor::Wait       => IDC_WAIT,
-		super::Cursor::ResizeAll  => IDC_SIZEALL,
-		super::Cursor::ResizeEw   => IDC_SIZEWE,
-		super::Cursor::ResizeNs   => IDC_SIZENS,
+		super::Cursor::None => return None,
+		super::Cursor::Arrow => IDC_ARROW,
+		super::Cursor::Crosshair => IDC_CROSS,
+		super::Cursor::Hand => IDC_HAND,
+		super::Cursor::Help => IDC_HELP,
+		super::Cursor::Text => IDC_IBEAM,
+		super::Cursor::Wait => IDC_WAIT,
+		super::Cursor::ResizeAll => IDC_SIZEALL,
+		super::Cursor::ResizeEw => IDC_SIZEWE,
+		super::Cursor::ResizeNs => IDC_SIZENS,
 		super::Cursor::ResizeNeSw => IDC_SIZENESW,
 		super::Cursor::ResizeNwSe => IDC_SIZENWSE,
 		super::Cursor::NotAllowed => IDC_NO,

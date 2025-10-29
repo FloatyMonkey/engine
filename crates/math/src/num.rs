@@ -1,6 +1,9 @@
-use core::ops::{Mul, Add, Sub, Div, Rem, Neg, Shl, Shr, BitOr, BitAnd, BitXor};
-use core::ops::{MulAssign, AddAssign, SubAssign, DivAssign, RemAssign, ShlAssign, ShrAssign, BitOrAssign, BitAndAssign, BitXorAssign};
 use core::cmp::{PartialEq, PartialOrd};
+use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Shl, Shr, Sub};
+use core::ops::{
+	AddAssign, BitAndAssign, BitOrAssign, BitXorAssign, DivAssign, MulAssign, RemAssign, ShlAssign,
+	ShrAssign, SubAssign,
+};
 
 /// Forward a method to an inherent method or a base trait method.
 macro_rules! forward {
@@ -12,7 +15,10 @@ macro_rules! forward {
 	)*};
 }
 
-pub trait Cast<T: Number> where Self: Sized {
+pub trait Cast<T: Number>
+where
+	Self: Sized,
+{
 	fn from_f64(v: f64) -> Self;
 	fn as_f64(&self) -> f64;
 }
@@ -22,38 +28,37 @@ pub fn cast<T: Number, U: Number>(v: T) -> U {
 }
 
 pub trait NumOps<Rhs = Self, Output = Self>:
-	Add<Rhs, Output = Output> +
-	Sub<Rhs, Output = Output> +
-	Mul<Rhs, Output = Output> +
-	Div<Rhs, Output = Output> +
-	Rem<Rhs, Output = Output>
-{}
+	Add<Rhs, Output = Output>
+	+ Sub<Rhs, Output = Output>
+	+ Mul<Rhs, Output = Output>
+	+ Div<Rhs, Output = Output>
+	+ Rem<Rhs, Output = Output>
+{
+}
 
-impl<T, Rhs, Output> NumOps<Rhs, Output> for T where T:
-	Add<Rhs, Output = Output> +
-	Sub<Rhs, Output = Output> +
-	Mul<Rhs, Output = Output> +
-	Div<Rhs, Output = Output> +
-	Rem<Rhs, Output = Output>
-{}
+impl<T, Rhs, Output> NumOps<Rhs, Output> for T where
+	T: Add<Rhs, Output = Output>
+		+ Sub<Rhs, Output = Output>
+		+ Mul<Rhs, Output = Output>
+		+ Div<Rhs, Output = Output>
+		+ Rem<Rhs, Output = Output>
+{
+}
 
 pub trait NumAssignOps<Rhs = Self>:
-	AddAssign<Rhs> +
-	SubAssign<Rhs> +
-	MulAssign<Rhs> +
-	DivAssign<Rhs> +
-	RemAssign<Rhs>
-{}
+	AddAssign<Rhs> + SubAssign<Rhs> + MulAssign<Rhs> + DivAssign<Rhs> + RemAssign<Rhs>
+{
+}
 
-impl<T, Rhs> NumAssignOps<Rhs> for T where T:
-	AddAssign<Rhs> +
-	SubAssign<Rhs> +
-	MulAssign<Rhs> +
-	DivAssign<Rhs> +
-	RemAssign<Rhs>
-{}
+impl<T, Rhs> NumAssignOps<Rhs> for T where
+	T: AddAssign<Rhs> + SubAssign<Rhs> + MulAssign<Rhs> + DivAssign<Rhs> + RemAssign<Rhs>
+{
+}
 
-pub trait Base<T: Number>: Copy + NumOps<T, T> + NumAssignOps<T> + where Self: Sized {
+pub trait Base<T: Number>: Copy + NumOps<T, T> + NumAssignOps<T>
+where
+	Self: Sized,
+{
 	const ZERO: Self;
 	const ONE: Self;
 	const TWO: Self;
@@ -62,7 +67,7 @@ pub trait Base<T: Number>: Copy + NumOps<T, T> + NumAssignOps<T> + where Self: S
 	const MAX: Self;
 }
 
-pub trait Number: Base<Self> + Cast<Self> + Default + PartialEq + PartialOrd  {}
+pub trait Number: Base<Self> + Cast<Self> + Default + PartialEq + PartialOrd {}
 
 pub trait NumberOps<T: Number> {
 	fn min(a: Self, b: Self) -> Self;
@@ -101,7 +106,7 @@ macro_rules! number_impl {
 				*self as f64
 			}
 		}
-	}
+	};
 }
 
 number_impl!(u8);
@@ -119,11 +124,11 @@ number_impl!(isize);
 number_impl!(f32);
 number_impl!(f64);
 
-pub trait SignedNumber: Number + Neg<Output=Self> {
+pub trait SignedNumber: Number + Neg<Output = Self> {
 	const MINUS_ONE: Self;
 }
 
-pub trait SignedNumberOps<T: SignedNumber>: Neg<Output=Self> {
+pub trait SignedNumberOps<T: SignedNumber>: Neg<Output = Self> {
 	fn signum(self) -> Self;
 	fn abs(self) -> Self;
 }
@@ -140,7 +145,7 @@ macro_rules! signed_number_impl {
 				Self::abs(self) -> Self;
 			}
 		}
-	}
+	};
 }
 
 signed_number_impl!(i8, -1);
@@ -151,12 +156,19 @@ signed_number_impl!(i128, -1);
 signed_number_impl!(f32, -1.0);
 signed_number_impl!(f64, -1.0);
 
-pub trait Integer: Number +
-	Shl<Output=Self> + ShlAssign +
-	Shr<Output=Self> + ShrAssign +
-	BitOr<Output=Self> + BitOrAssign +
-	BitAnd<Output=Self> + BitAndAssign +
-	BitXor<Output=Self> + BitXorAssign {
+pub trait Integer:
+	Number
+	+ Shl<Output = Self>
+	+ ShlAssign
+	+ Shr<Output = Self>
+	+ ShrAssign
+	+ BitOr<Output = Self>
+	+ BitOrAssign
+	+ BitAnd<Output = Self>
+	+ BitAndAssign
+	+ BitXor<Output = Self>
+	+ BitXorAssign
+{
 }
 
 pub trait IntegerOps<T: Integer> {
@@ -165,15 +177,14 @@ pub trait IntegerOps<T: Integer> {
 
 macro_rules! integer_impl {
 	($t:ident) => {
-		impl Integer for $t {
-		}
+		impl Integer for $t {}
 
 		impl IntegerOps<$t> for $t {
 			forward! {
 				Self::pow(self, exp: u32) -> Self;
 			}
 		}
-	}
+	};
 }
 
 integer_impl!(u8);
@@ -191,7 +202,10 @@ pub trait Float: SignedNumber {
 	const SMALL_EPSILON: Self;
 }
 
-pub trait FloatOps<T: Float>: where Self: Sized {
+pub trait FloatOps<T: Float>
+where
+	Self: Sized,
+{
 	fn acos(self) -> Self;
 	fn approx(self, b: Self, eps: T) -> bool;
 	fn asin(self) -> Self;
@@ -273,7 +287,7 @@ macro_rules! float_impl {
 				Self::trunc(self) -> Self;
 			}
 		}
-	}
+	};
 }
 
 float_impl!(f32);

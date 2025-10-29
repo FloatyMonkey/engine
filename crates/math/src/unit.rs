@@ -27,7 +27,7 @@ impl<T> Deref for Unit<T> {
 	}
 }
 
-impl<T: Neg<Output=T>> Neg for Unit<T> {
+impl<T: Neg<Output = T>> Neg for Unit<T> {
 	type Output = Unit<T>;
 
 	fn neg(self) -> Self::Output {

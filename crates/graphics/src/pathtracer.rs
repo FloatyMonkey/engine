@@ -1,6 +1,9 @@
-use gpu::{self, AccelerationStructureImpl, BufferImpl, CmdListImpl, DeviceImpl, RaytracingPipelineImpl, TextureImpl};
 use super::camera::GpuCamera;
 use super::scene;
+use gpu::{
+	self, AccelerationStructureImpl, BufferImpl, CmdListImpl, DeviceImpl, RaytracingPipelineImpl,
+	TextureImpl,
+};
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 #[repr(C)]
@@ -36,12 +39,25 @@ impl PathTracer {
 
 		let shader_raygen = shader_compiler.compile("shaders/pathtracer/kernel.slang", "raygen");
 		let shader_miss = shader_compiler.compile("shaders/pathtracer/kernel.slang", "miss");
-		let shader_closesthit = shader_compiler.compile("shaders/pathtracer/kernel.slang", "closesthit");
+		let shader_closesthit =
+			shader_compiler.compile("shaders/pathtracer/kernel.slang", "closesthit");
 
 		let libraries = vec![
-			gpu::ShaderLibrary { ty: gpu::ShaderType::Raygen, entry: "raygen".to_string(), shader: shader_raygen },
-			gpu::ShaderLibrary { ty: gpu::ShaderType::Miss, entry: "miss".to_string(), shader: shader_miss },
-			gpu::ShaderLibrary { ty: gpu::ShaderType::ClosestHit, entry: "closesthit".to_string(), shader: shader_closesthit },
+			gpu::ShaderLibrary {
+				ty: gpu::ShaderType::Raygen,
+				entry: "raygen".to_string(),
+				shader: shader_raygen,
+			},
+			gpu::ShaderLibrary {
+				ty: gpu::ShaderType::Miss,
+				entry: "miss".to_string(),
+				shader: shader_miss,
+			},
+			gpu::ShaderLibrary {
+				ty: gpu::ShaderType::ClosestHit,
+				entry: "closesthit".to_string(),
+				shader: shader_closesthit,
+			},
 		];
 
 		let groups = vec![
@@ -62,18 +78,16 @@ impl PathTracer {
 				gpu::DescriptorBinding::bindless_uav(5), // RWTextures 2D Float4
 				gpu::DescriptorBinding::bindless_uav(6), // RWTextures 2D Float
 			]),
-			static_samplers: Some(vec![
-				gpu::SamplerBinding {
-					shader_register: 0,
-					register_space: 0,
-					sampler_desc: gpu::SamplerDesc {
-						filter_min: gpu::FilterMode::Linear,
-						filter_mag: gpu::FilterMode::Linear,
-						filter_mip: gpu::FilterMode::Linear,
-						..Default::default()
-					},
+			static_samplers: Some(vec![gpu::SamplerBinding {
+				shader_register: 0,
+				register_space: 0,
+				sampler_desc: gpu::SamplerDesc {
+					filter_min: gpu::FilterMode::Linear,
+					filter_mag: gpu::FilterMode::Linear,
+					filter_mip: gpu::FilterMode::Linear,
+					..Default::default()
 				},
-			]),
+			}]),
 		};
 
 		let pipeline_desc = gpu::RaytracingPipelineDesc {
@@ -101,38 +115,44 @@ impl PathTracer {
 		pipeline.write_shader_identifier(1, &mut shader_table_data[table_alignment..]);
 		pipeline.write_shader_identifier(2, &mut shader_table_data[table_alignment * 2..]);
 
-		let shader_table = device.create_buffer(&gpu::BufferDesc {
-			size: shader_table_data.len(),
-			usage: gpu::BufferUsage::empty(),
-			memory: gpu::Memory::GpuOnly,
-		}).unwrap();
+		let shader_table = device
+			.create_buffer(&gpu::BufferDesc {
+				size: shader_table_data.len(),
+				usage: gpu::BufferUsage::empty(),
+				memory: gpu::Memory::GpuOnly,
+			})
+			.unwrap();
 		gpu::upload_buffer(device, &shader_table, &shader_table_data);
 
 		// Create the output texture
 
 		let resolution = [1920_u32, 1080_u32]; // TODO: Hardcoded
 
-		let color_pass_texture = device.create_texture(&gpu::TextureDesc {
-			width: resolution[0] as _,
-			height: resolution[1] as _,
-			depth: 1,
-			array_size: 1,
-			mip_levels: 1,
-			format: gpu::Format::RGBA32Float,
-			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::ShaderResource,
-		}).unwrap();
+		let color_pass_texture = device
+			.create_texture(&gpu::TextureDesc {
+				width: resolution[0] as _,
+				height: resolution[1] as _,
+				depth: 1,
+				array_size: 1,
+				mip_levels: 1,
+				format: gpu::Format::RGBA32Float,
+				usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
+				layout: gpu::TextureLayout::ShaderResource,
+			})
+			.unwrap();
 
-		let depth_pass_texture = device.create_texture(&gpu::TextureDesc {
-			width: resolution[0] as _,
-			height: resolution[1] as _,
-			depth: 1,
-			array_size: 1,
-			mip_levels: 1,
-			format: gpu::Format::R32Float,
-			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::ShaderResource,
-		}).unwrap();
+		let depth_pass_texture = device
+			.create_texture(&gpu::TextureDesc {
+				width: resolution[0] as _,
+				height: resolution[1] as _,
+				depth: 1,
+				array_size: 1,
+				mip_levels: 1,
+				format: gpu::Format::R32Float,
+				usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
+				layout: gpu::TextureLayout::ShaderResource,
+			})
+			.unwrap();
 
 		Self {
 			pipeline,
@@ -200,7 +220,8 @@ impl PathTracer {
 				texture: &self.color_pass_texture,
 				old_layout: gpu::TextureLayout::ShaderResource,
 				new_layout: gpu::TextureLayout::UnorderedAccess,
-			}, gpu::TextureBarrier {
+			},
+			gpu::TextureBarrier {
 				texture: &self.depth_pass_texture,
 				old_layout: gpu::TextureLayout::ShaderResource,
 				new_layout: gpu::TextureLayout::UnorderedAccess,
@@ -216,7 +237,8 @@ impl PathTracer {
 				texture: &self.color_pass_texture,
 				old_layout: gpu::TextureLayout::UnorderedAccess,
 				new_layout: gpu::TextureLayout::ShaderResource,
-			}, gpu::TextureBarrier {
+			},
+			gpu::TextureBarrier {
 				texture: &self.depth_pass_texture,
 				old_layout: gpu::TextureLayout::UnorderedAccess,
 				new_layout: gpu::TextureLayout::ShaderResource,
@@ -240,7 +262,11 @@ pub struct Compositor {
 }
 
 impl Compositor {
-	pub fn new(res: [u32; 2], device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
+	pub fn new(
+		res: [u32; 2],
+		device: &mut gpu::Device,
+		shader_compiler: &gpu::ShaderCompiler,
+	) -> Self {
 		let shader = shader_compiler.compile("shaders/compositor.slang", "main");
 
 		let descriptor_layout = gpu::DescriptorLayout {
@@ -254,21 +280,25 @@ impl Compositor {
 			static_samplers: None,
 		};
 
-		let pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs: &shader,
-			descriptor_layout: &descriptor_layout,
-		}).unwrap();
+		let pipeline = device
+			.create_compute_pipeline(&gpu::ComputePipelineDesc {
+				cs: &shader,
+				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
 
-		let texture = device.create_texture(&gpu::TextureDesc {
-			width: res[0] as _,
-			height: res[1] as _,
-			depth: 1,
-			array_size: 1,
-			mip_levels: 1,
-			format: gpu::Format::RGBA32Float,
-			usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
-			layout: gpu::TextureLayout::ShaderResource,
-		}).unwrap();
+		let texture = device
+			.create_texture(&gpu::TextureDesc {
+				width: res[0] as _,
+				height: res[1] as _,
+				depth: 1,
+				array_size: 1,
+				mip_levels: 1,
+				format: gpu::Format::RGBA32Float,
+				usage: gpu::TextureUsage::SHADER_RESOURCE | gpu::TextureUsage::UNORDERED_ACCESS,
+				layout: gpu::TextureLayout::ShaderResource,
+			})
+			.unwrap();
 
 		Self {
 			res,
@@ -277,11 +307,16 @@ impl Compositor {
 		}
 	}
 
-	pub fn process(&mut self, cmd: &mut gpu::CmdList, input: &gpu::Texture, overlay: &gpu::Texture) {
+	pub fn process(
+		&mut self,
+		cmd: &mut gpu::CmdList,
+		input: &gpu::Texture,
+		overlay: &gpu::Texture,
+	) {
 		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-				texture: &self.texture,
-				old_layout: gpu::TextureLayout::ShaderResource,
-				new_layout: gpu::TextureLayout::UnorderedAccess,
+			texture: &self.texture,
+			old_layout: gpu::TextureLayout::ShaderResource,
+			new_layout: gpu::TextureLayout::UnorderedAccess,
 		}]));
 
 		cmd.set_compute_pipeline(&self.pipeline);
@@ -299,9 +334,9 @@ impl Compositor {
 		cmd.barriers(&gpu::Barriers::global());
 
 		cmd.barriers(&gpu::Barriers::texture(&[gpu::TextureBarrier {
-				texture: &self.texture,
-				old_layout: gpu::TextureLayout::UnorderedAccess,
-				new_layout: gpu::TextureLayout::ShaderResource,
+			texture: &self.texture,
+			old_layout: gpu::TextureLayout::UnorderedAccess,
+			new_layout: gpu::TextureLayout::ShaderResource,
 		}]));
 	}
 

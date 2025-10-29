@@ -40,7 +40,9 @@ impl Measure for Capsule {
 
 impl Measure for Cuboid {
 	fn area(&self) -> f32 {
-		8.0 * (self.half_size.x * self.half_size.y + self.half_size.y * self.half_size.z + self.half_size.x * self.half_size.z)
+		8.0 * (self.half_size.x * self.half_size.y
+			+ self.half_size.y * self.half_size.z
+			+ self.half_size.x * self.half_size.z)
 	}
 
 	fn volume(&self) -> f32 {
@@ -91,7 +93,10 @@ mod tests {
 
 	#[test]
 	fn cylinder() {
-		let cylinder = Cylinder { radius: 2.0, half_height: 1.5 };
+		let cylinder = Cylinder {
+			radius: 2.0,
+			half_height: 1.5,
+		};
 
 		assert_eq!(cylinder.area(), 62.831856, "Incorrect area");
 		assert_eq!(cylinder.volume(), 37.699112, "Incorrect volume");
@@ -99,7 +104,10 @@ mod tests {
 
 	#[test]
 	fn capsule() {
-		let capsule = Capsule { radius: 2.0, half_length: 1.5 };
+		let capsule = Capsule {
+			radius: 2.0,
+			half_length: 1.5,
+		};
 
 		assert_eq!(capsule.area(), 87.9646, "Incorrect area");
 		assert_eq!(capsule.volume(), 71.20944, "Incorrect volume");
@@ -107,7 +115,9 @@ mod tests {
 
 	#[test]
 	fn cuboid() {
-		let cuboid = Cuboid { half_size: Vec3::new(1.0, 1.5, 2.0) };
+		let cuboid = Cuboid {
+			half_size: Vec3::new(1.0, 1.5, 2.0),
+		};
 
 		assert_eq!(cuboid.area(), 52.0, "Incorrect area");
 		assert_eq!(cuboid.volume(), 24.0, "Incorrect volume");

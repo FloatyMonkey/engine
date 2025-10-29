@@ -43,12 +43,19 @@ impl ShaderCompiler {
 		let module = session.load_module(file).unwrap();
 		let entry_point = module.find_entry_point_by_name(entry_point_name).unwrap();
 
-		let program = session.create_composite_component_type(&[
-			module.downcast().clone(), entry_point.downcast().clone(),
-		]).unwrap();
+		let program = session
+			.create_composite_component_type(&[
+				module.downcast().clone(),
+				entry_point.downcast().clone(),
+			])
+			.unwrap();
 
 		let linked_program = program.link().unwrap();
 
-		linked_program.entry_point_code(0, 0).unwrap().as_slice().to_vec()
+		linked_program
+			.entry_point_code(0, 0)
+			.unwrap()
+			.as_slice()
+			.to_vec()
 	}
 }

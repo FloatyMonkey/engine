@@ -13,7 +13,8 @@ pub fn cylinder(radius: f32, height: f32, resolution: usize, segments: usize, ca
 	let mut mesh = MeshBuilder::new();
 
 	let vertex_count = resolution * (segments + 1) + if caps { 2 } else { 0 };
-	let edge_count = resolution * (segments + 1) + resolution * segments + if caps { 2 * resolution } else { 0 };
+	let edge_count =
+		resolution * (segments + 1) + resolution * segments + if caps { 2 * resolution } else { 0 };
 	let face_count = resolution * segments + if caps { 2 * resolution } else { 0 };
 
 	mesh.reserve(vertex_count, edge_count, face_count);

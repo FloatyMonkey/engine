@@ -67,11 +67,21 @@ impl State {
 }
 
 fn top_rounding(rounding: Rounding) -> Rounding {
-	Rounding { nw: rounding.nw, ne: rounding.ne, sw: 0.0, se: 0.0 }
+	Rounding {
+		nw: rounding.nw,
+		ne: rounding.ne,
+		sw: 0.0,
+		se: 0.0,
+	}
 }
 
 fn bottom_rounding(rounding: Rounding) -> Rounding {
-	Rounding { nw: 0.0, ne: 0.0, sw: rounding.sw, se: rounding.se }
+	Rounding {
+		nw: 0.0,
+		ne: 0.0,
+		sw: rounding.sw,
+		se: rounding.se,
+	}
 }
 
 pub fn show<Context>(
@@ -85,7 +95,8 @@ pub fn show<Context>(
 
 	let mut rect = ui.max_rect();
 
-	ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(10, 10, 10));
+	ui.painter()
+		.rect_filled(rect, 0.0, Color32::from_rgb(10, 10, 10));
 
 	if tree.is_empty() || tree[NodeIndex::root()].is_none() {
 		return;
@@ -127,7 +138,12 @@ pub fn show<Context>(
 				tree[tree_index.right()].set_rect(bottom);
 			}
 
-			Node::Leaf { rect, tabs, active, viewport } => {
+			Node::Leaf {
+				rect,
+				tabs,
+				active,
+				viewport,
+			} => {
 				let rect = *rect;
 				ui.set_clip_rect(rect);
 
@@ -141,7 +157,11 @@ pub fn show<Context>(
 
 				// tabs
 				ui.scope(|ui| {
-					ui.painter().rect_filled(tabbar, top_rounding(style.tab_rounding), style.tabbar_background);
+					ui.painter().rect_filled(
+						tabbar,
+						top_rounding(style.tab_rounding),
+						style.tabbar_background,
+					);
 
 					let mut ui = ui.child_ui(tabbar, Default::default());
 					ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -202,7 +222,11 @@ pub fn show<Context>(
 
 					*viewport = rect;
 
-					ui.painter().rect_filled(rect, bottom_rounding(style.tab_rounding), style.background);
+					ui.painter().rect_filled(
+						rect,
+						bottom_rounding(style.tab_rounding),
+						style.background,
+					);
 
 					let mut ui = ui.child_ui(rect, Default::default());
 					tab.ui(&mut ui, context);
@@ -215,7 +239,10 @@ pub fn show<Context>(
 						hover_data = Some(HoverData {
 							rect,
 							dst: tree_index,
-							tabs: tabs_response.rect.contains(pointer_pos).then_some(tabs_response.rect),
+							tabs: tabs_response
+								.rect
+								.contains(pointer_pos)
+								.then_some(tabs_response.rect),
 							pointer: pointer_pos,
 						});
 					}
@@ -237,9 +264,10 @@ pub fn show<Context>(
 
 			if ui.input(|i| i.pointer.any_released()) {
 				if let Node::Leaf { active, .. } = &mut tree[src]
-					&& *active >= tab_index {
-						*active = active.saturating_sub(1);
-					}
+					&& *active >= tab_index
+				{
+					*active = active.saturating_sub(1);
+				}
 
 				let tab = tree[src].remove_tab(tab_index).unwrap();
 
@@ -252,9 +280,10 @@ pub fn show<Context>(
 				tree.remove_empty_leaf();
 				for node in tree.iter_mut() {
 					if let Node::Leaf { tabs, active, .. } = node
-						&& *active >= tabs.len() {
-							*active = 0;
-						}
+						&& *active >= tabs.len()
+					{
+						*active = 0;
+					}
 				}
 			}
 		}
@@ -319,8 +348,8 @@ impl Style {
 		Self {
 			selection: style.visuals.selection.bg_fill.linear_multiply(0.5),
 
-			background: Color32::from_gray(0x24),// style.visuals.window_fill(),
-			tabbar_background: Color32::from_gray(0x15),//style.visuals.faint_bg_color,
+			background: Color32::from_gray(0x24), // style.visuals.window_fill(),
+			tabbar_background: Color32::from_gray(0x15), //style.visuals.faint_bg_color,
 
 			tab_text: style.visuals.widgets.active.fg_stroke.color,
 
@@ -351,8 +380,16 @@ impl Style {
 		}
 
 		let midpoint = rect.min.x + rect.width() * *fraction;
-		separator.min.x = map_to_pixel(midpoint - self.separator_size * 0.5, pixels_per_point, f32::round);
-		separator.max.x = map_to_pixel(midpoint + self.separator_size * 0.5, pixels_per_point, f32::round);
+		separator.min.x = map_to_pixel(
+			midpoint - self.separator_size * 0.5,
+			pixels_per_point,
+			f32::round,
+		);
+		separator.max.x = map_to_pixel(
+			midpoint + self.separator_size * 0.5,
+			pixels_per_point,
+			f32::round,
+		);
 
 		(
 			rect.intersect(Rect::everything_right_of(separator.max.x)),
@@ -384,8 +421,16 @@ impl Style {
 		}
 
 		let midpoint = rect.min.y + rect.height() * *fraction;
-		separator.min.y = map_to_pixel(midpoint - self.separator_size * 0.5, pixels_per_point, f32::round);
-		separator.max.y = map_to_pixel(midpoint + self.separator_size * 0.5, pixels_per_point, f32::round);
+		separator.min.y = map_to_pixel(
+			midpoint - self.separator_size * 0.5,
+			pixels_per_point,
+			f32::round,
+		);
+		separator.max.y = map_to_pixel(
+			midpoint + self.separator_size * 0.5,
+			pixels_per_point,
+			f32::round,
+		);
 
 		(
 			rect.intersect(Rect::everything_below(separator.max.y)),
@@ -415,7 +460,8 @@ impl Style {
 			tab.min.x += px;
 			tab.max.x -= px;
 			tab.min.y += px;
-			ui.painter().rect_filled(tab, top_rounding(self.tab_rounding), self.background);
+			ui.painter()
+				.rect_filled(tab, top_rounding(self.tab_rounding), self.background);
 		}
 
 		let pos = egui::Align2::LEFT_CENTER

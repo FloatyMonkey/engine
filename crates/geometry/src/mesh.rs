@@ -47,21 +47,21 @@ impl MeshBuilder {
 
 	pub fn add_vertex(&mut self, coords: [f32; 3]) -> usize {
 		let index = self.mesh.vertices.len();
-		self.mesh.vertices.push(Vertex { p: Vec3::new(coords[0], coords[1], coords[2]), n: Vec3::ZERO });
+		self.mesh.vertices.push(Vertex {
+			p: Vec3::new(coords[0], coords[1], coords[2]),
+			n: Vec3::ZERO,
+		});
 		index
 	}
 
 	pub fn add_triangle(&mut self, v0: usize, v1: usize, v2: usize) {
-		self.mesh.indices.extend_from_slice(&[
-			v0, v1, v2
-		]);
+		self.mesh.indices.extend_from_slice(&[v0, v1, v2]);
 	}
 
 	pub fn add_quad(&mut self, v0: usize, v1: usize, v2: usize, v3: usize) {
-		self.mesh.indices.extend_from_slice(&[
-			v0, v1, v2,
-			v0, v2, v3,
-		]);
+		self.mesh
+			.indices
+			.extend_from_slice(&[v0, v1, v2, v0, v2, v3]);
 	}
 
 	pub fn build(self) -> Mesh {

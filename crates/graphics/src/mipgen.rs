@@ -1,4 +1,4 @@
-use gpu::{self, DeviceImpl, TextureImpl, CmdListImpl};
+use gpu::{self, CmdListImpl, DeviceImpl, TextureImpl};
 
 #[repr(C)]
 struct PushConstants {
@@ -24,24 +24,24 @@ impl MipGen {
 				gpu::DescriptorBinding::bindless_srv(1),
 				gpu::DescriptorBinding::bindless_uav(2),
 			]),
-			static_samplers: Some(vec![
-				gpu::SamplerBinding {
-					shader_register: 0,
-					register_space: 0,
-					sampler_desc: gpu::SamplerDesc {
-						filter_min: gpu::FilterMode::Linear,
-						filter_mag: gpu::FilterMode::Linear,
-						filter_mip: gpu::FilterMode::Linear,
-						..Default::default()
-					},
+			static_samplers: Some(vec![gpu::SamplerBinding {
+				shader_register: 0,
+				register_space: 0,
+				sampler_desc: gpu::SamplerDesc {
+					filter_min: gpu::FilterMode::Linear,
+					filter_mag: gpu::FilterMode::Linear,
+					filter_mip: gpu::FilterMode::Linear,
+					..Default::default()
 				},
-			]),
+			}]),
 		};
 
-		let compute_pipeline = device.create_compute_pipeline(&gpu::ComputePipelineDesc {
-			cs: &shader,
-			descriptor_layout: &descriptor_layout,
-		}).unwrap();
+		let compute_pipeline = device
+			.create_compute_pipeline(&gpu::ComputePipelineDesc {
+				cs: &shader,
+				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
 
 		Self {
 			mipgen_pipeline: compute_pipeline,

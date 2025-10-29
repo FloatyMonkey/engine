@@ -4,15 +4,15 @@ pub struct Time {
 }
 
 impl Default for Time {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl Time {
 	pub fn new() -> Self {
 		let now = std::time::Instant::now();
-		
+
 		Time {
 			start: now,
 			delta: now.duration_since(now),

@@ -3,12 +3,12 @@ use super::super::mesh::{Mesh, MeshBuilder};
 pub fn grid(size_x: f32, size_y: f32, vertices_x: usize, vertices_y: usize) -> Mesh {
 	assert!(vertices_x >= 2);
 	assert!(vertices_y >= 2);
-	
+
 	let mut mesh = MeshBuilder::new();
 
 	let faces_x = vertices_x - 1;
 	let faces_y = vertices_y - 1;
-	
+
 	let vertex_count = vertices_x * vertices_y;
 	let edge_count = faces_x * vertices_y + faces_y * vertices_x;
 	let face_count = faces_x * faces_y;
@@ -22,7 +22,11 @@ pub fn grid(size_x: f32, size_y: f32, vertices_x: usize, vertices_y: usize) -> M
 
 	for y in 0..vertices_y {
 		for x in 0..vertices_x {
-			mesh.add_vertex([x as f32 * delta_x - shift_x, y as f32 * delta_y - shift_y, 0.0]);
+			mesh.add_vertex([
+				x as f32 * delta_x - shift_x,
+				y as f32 * delta_y - shift_y,
+				0.0,
+			]);
 		}
 	}
 

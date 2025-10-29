@@ -1,4 +1,4 @@
-use math::{transform::Transform3, Mat4, Vec3};
+use math::{Mat4, Vec3, transform::Transform3};
 
 #[derive(Clone, Copy)]
 pub struct Camera {
@@ -44,10 +44,22 @@ impl Camera {
 		let inv_z = far_clip / (near_clip - far_clip);
 
 		Mat4::from_array([
-			inv_x, 0.0, 0.0, 0.0,
-			0.0, inv_y, 0.0, 0.0,
-			0.0, 0.0, inv_z, near_clip * inv_z,
-			0.0, 0.0, -1.0, 0.0,
+			inv_x,
+			0.0,
+			0.0,
+			0.0,
+			0.0,
+			inv_y,
+			0.0,
+			0.0,
+			0.0,
+			0.0,
+			inv_z,
+			near_clip * inv_z,
+			0.0,
+			0.0,
+			-1.0,
+			0.0,
 		])
 	}
 }
@@ -82,7 +94,16 @@ impl GpuCamera {
 			0.0
 		};
 
-		Self { u: *u, scale_u, v: *v, scale_v, w: *w, scale_w, position, aperture_radius }
+		Self {
+			u: *u,
+			scale_u,
+			v: *v,
+			scale_v,
+			w: *w,
+			scale_w,
+			position,
+			aperture_radius,
+		}
 	}
 }
 

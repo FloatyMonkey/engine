@@ -1,6 +1,6 @@
+use crate::editor::MyContext;
 use crate::icons;
 use crate::tabs;
-use crate::editor::MyContext;
 
 type GlobalLog = Vec<String>;
 static LOG: std::sync::Mutex<GlobalLog> = std::sync::Mutex::new(Vec::new());
@@ -32,7 +32,7 @@ impl ConsoleTab {
 	pub fn new() -> Self {
 		ConsoleTab {
 			name: format!("{} Console", icons::CONSOLE),
-			auto_scroll: true
+			auto_scroll: true,
 		}
 	}
 }
@@ -46,7 +46,7 @@ impl tabs::Tab<MyContext> for ConsoleTab {
 		let log = &mut LOG.lock().unwrap();
 
 		let dropped_entries = log.len().saturating_sub(10000);
-        drop(log.drain(..dropped_entries));
+		drop(log.drain(..dropped_entries));
 
 		ui.push_id("console_tab", |ui| {
 			egui::Frame::none().inner_margin(4.0).show(ui, |ui| {

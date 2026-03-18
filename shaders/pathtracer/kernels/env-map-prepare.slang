@@ -1,6 +1,6 @@
 import math;
 
-cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	uint env_map_id;
 	uint importance_map_id;
 
@@ -10,10 +10,10 @@ cbuffer ConstantBuffer : register(b0) {
 	float inv_samples;
 }
 
-Texture2D<float4> textures_2d_float4[] : register(t0, space1);
-RWTexture2D<float> rw_textures_2d_float[] : register(u0, space2);
+[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space1);
+[[vk::binding(0, 2)]] RWTexture2D<float> rw_textures_2d_float[] : register(u0, space2);
 
-SamplerState linear_sampler : register(s0, space0);
+[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
 
 [shader("compute")]
 [numthreads(16, 16, 1)]

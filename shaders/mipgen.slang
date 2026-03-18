@@ -1,16 +1,16 @@
 import math;
 
-cbuffer ConstantBuffer : register(b0) {
-	uint output_id;
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	uint2 output_res;
+	uint output_id;
 	uint input_id;
 	uint input_mip;
 }
 
-Texture2D<float> textures_2d_float[] : register(t0, space1);
-RWTexture2D<float> rw_textures_2d_float[] : register(u0, space2);
+[[vk::binding(0, 1)]] Texture2D<float> textures_2d_float[] : register(t0, space1);
+[[vk::binding(0, 2)]] RWTexture2D<float> rw_textures_2d_float[] : register(u0, space2);
 
-SamplerState linear_sampler : register(s0, space0);
+[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
 
 [shader("compute")]
 [numthreads(16, 16, 1)]

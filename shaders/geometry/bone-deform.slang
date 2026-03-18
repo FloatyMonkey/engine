@@ -1,4 +1,4 @@
-cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	uint num_vertices;
 
 	uint in_vertices;
@@ -9,8 +9,8 @@ cbuffer ConstantBuffer : register(b0) {
 	uint bone_matrices;
 }
 
-ByteAddressBuffer buffers[] : register(t0, space1);
-RWByteAddressBuffer rw_buffers[] : register(u0, space2);
+[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
+[[vk::binding(0, 0)]] RWByteAddressBuffer rw_buffers[] : register(u0, space2);
 
 struct Vertex {
 	float3 position;

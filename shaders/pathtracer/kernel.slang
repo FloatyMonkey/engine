@@ -9,14 +9,14 @@ import spectrum;
 import bxdfs.diffuse;
 import bxdfs.conductor;
 
-ByteAddressBuffer buffers[] : register(t0, space1);
-RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2);
-Texture2D<float4> textures_2d_float4[] : register(t0, space3);
-Texture2D<float> textures_2d_float[] : register(t0, space4);
-RWTexture2D<float4> rw_textures_2d_float4[] : register(u0, space5);
-RWTexture2D<float4> rw_textures_2d_float[] : register(u0, space6);
+[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
+[[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2);
+[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space3);
+[[vk::binding(0, 1)]] Texture2D<float> textures_2d_float[] : register(t0, space4);
+[[vk::binding(0, 2)]] RWTexture2D<float4> rw_textures_2d_float4[] : register(u0, space5);
+[[vk::binding(0, 2)]] RWTexture2D<float4> rw_textures_2d_float[] : register(u0, space6);
 
-SamplerState linear_sampler : register(s0, space0);
+[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
 
 static const uint INVALID_ID = 0xffffffff;
 
@@ -39,7 +39,7 @@ struct GpuCamera {
 	float aperture_radius;
 }
 
-cbuffer ConstantBuffer : register(b0, space0) {
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0, space0) {
 	GpuCamera camera;
 	uint tlas_index;
 	uint color_pass_index;

@@ -6,6 +6,8 @@ use ecs::{Entity, World};
 use super::tabs;
 use super::windows;
 
+const EDITOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub struct MyContext {
 	pub world: World,
 	pub selection: HashSet<Entity>,
@@ -100,7 +102,15 @@ impl Editor {
 				.show_separator_line(false)
 				.show(ctx, |ui| {
 					ui.horizontal(|ui| {
-						ui.label("0.1.0");
+						ui.label(format!("v{}", EDITOR_VERSION));
+
+						let backend = match gpu::BACKEND {
+							gpu::Backend::D3D12 => "D3D12",
+							gpu::Backend::Vulkan => "Vulkan",
+						};
+
+						ui.separator();
+						ui.label(backend);
 					});
 				});
 

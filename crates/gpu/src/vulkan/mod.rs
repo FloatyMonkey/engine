@@ -166,15 +166,13 @@ fn map_buffer_usage_flags(usage: super::BufferUsage) -> vk::BufferUsageFlags {
 		vk_flags |= vk::BufferUsageFlags::INDEX_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::SHADER_RESOURCE) {
-		vk_flags |= vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER;
+		vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::UNORDERED_ACCESS) {
-		vk_flags |= vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER;
+		vk_flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
 	}
 	if usage.contains(super::BufferUsage::ACCELERATION_STRUCTURE) {
-		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR;
 		vk_flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR;
-		vk_flags |= vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR; // TODO: Why is this here?
 	}
 
 	vk_flags
@@ -357,6 +355,33 @@ fn map_store_op(store_op: super::StoreOp) -> vk::AttachmentStoreOp {
 	}
 }
 
+fn map_image_aspect(format: super::Format) -> vk::ImageAspectFlags {
+	match format {
+		super::Format::D16UNorm | super::Format::D32Float => vk::ImageAspectFlags::DEPTH,
+		super::Format::D24UNormS8UInt | super::Format::D32FloatS8UIntX24 => {
+			vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+		}
+		_ => vk::ImageAspectFlags::COLOR,
+	}
+}
+
+fn map_image_view_type(desc: &super::TextureDesc) -> vk::ImageViewType {
+	if desc.depth > 1 {
+		return vk::ImageViewType::TYPE_3D;
+	}
+	if desc.array_size > 1 {
+		return if desc.height > 1 {
+			vk::ImageViewType::TYPE_2D_ARRAY
+		} else {
+			vk::ImageViewType::TYPE_1D_ARRAY
+		};
+	}
+	if desc.height > 1 {
+		return vk::ImageViewType::TYPE_2D;
+	}
+	vk::ImageViewType::TYPE_1D
+}
+
 pub struct Surface {
 	swapchain_ext: ash::khr::swapchain::Device,
 
@@ -365,28 +390,29 @@ pub struct Surface {
 	acquire_semaphores: Vec<vk::Semaphore>,
 	next_semaphore: vk::Semaphore,
 	bb_index: usize,
+
+	device: ash::Device,
+	queue: vk::Queue,
+	render_finished_semaphores: Vec<vk::Semaphore>,
+	size: [u32; 2],
 }
 
 impl super::SurfaceImpl<Device> for Surface {
 	fn update(&mut self, device: &mut Device, size: [u32; 2]) {
-		todo!()
-	}
+		unsafe { self.device.queue_wait_idle(self.queue) }.unwrap();
 
-	fn wait_for_last_frame(&mut self) {
-		todo!()
-	}
+		self.size = size;
+		// TODO: Recreate swapchain
 
-	fn acquire(&mut self) -> &Texture {
 		let (index, _suboptimal) = unsafe {
-			self.swapchain_ext
-				.acquire_next_image(
-					self.swapchain,
-					u64::MAX,
-					self.next_semaphore,
-					vk::Fence::null(),
-				)
-				.unwrap()
-		};
+			self.swapchain_ext.acquire_next_image(
+				self.swapchain,
+				u64::MAX,
+				self.next_semaphore,
+				vk::Fence::null(),
+			)
+		}
+		.unwrap();
 
 		std::mem::swap(
 			&mut self.acquire_semaphores[index as usize],
@@ -394,13 +420,20 @@ impl super::SurfaceImpl<Device> for Surface {
 		);
 
 		self.bb_index = index as usize;
-		&self.textures[index as usize]
+	}
+
+	fn wait_for_last_frame(&mut self) {
+		unsafe { self.device.queue_wait_idle(self.queue) }.unwrap();
+	}
+
+	fn acquire(&mut self) -> &Texture {
+		&self.textures[self.bb_index]
 	}
 
 	fn present(&mut self, device: &Device) {
 		let swapchains = [self.swapchain];
 		let image_indices = [self.bb_index as u32];
-		let wait_semaphores = [todo!()];
+		let wait_semaphores = [self.render_finished_semaphores[self.bb_index]];
 
 		let present_info = vk::PresentInfoKHR::default()
 			.swapchains(&swapchains)
@@ -418,19 +451,19 @@ impl super::SurfaceImpl<Device> for Surface {
 pub struct Buffer {
 	buffer: vk::Buffer,
 	allocation: allocator::Allocation,
-	srv_index: Option<usize>,
-	uav_index: Option<usize>,
+	srv_index: Option<u32>,
+	uav_index: Option<u32>,
 	cpu_ptr: *mut u8,
 	gpu_ptr: u64,
 }
 
 impl super::BufferImpl<Device> for Buffer {
 	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+		self.srv_index
 	}
 
 	fn uav_index(&self) -> Option<u32> {
-		self.uav_index.map(|i| i as u32)
+		self.uav_index
 	}
 
 	fn cpu_ptr(&self) -> *mut u8 {
@@ -444,11 +477,16 @@ impl super::BufferImpl<Device> for Buffer {
 
 pub struct Texture {
 	image: vk::Image,
-	allocation: allocator::Allocation,
+	allocation: Option<allocator::Allocation>,
 	srv_index: Option<usize>,
 	uav_index: Option<usize>,
 	rtv: Option<vk::ImageView>,
 	dsv: Option<vk::ImageView>,
+	width: u32,
+	height: u32,
+	format: vk::Format,
+	aspect_mask: vk::ImageAspectFlags,
+	block_size: u32,
 }
 
 impl super::TextureImpl<Device> for Texture {
@@ -533,15 +571,19 @@ impl super::ComputePipelineImpl<Device> for ComputePipeline {}
 
 pub struct RaytracingPipeline {
 	pipeline: vk::Pipeline,
+	shader_group_handle_size: usize,
+	identifiers: Vec<u8>,
 }
 
 impl super::RaytracingPipelineImpl<Device> for RaytracingPipeline {
 	fn shader_identifier_size(&self) -> usize {
-		todo!()
+		self.shader_group_handle_size
 	}
 
 	fn write_shader_identifier(&self, group_index: usize, slice: &mut [u8]) {
-		todo!()
+		let size = self.shader_group_handle_size;
+		let src = &self.identifiers[group_index * size..(group_index + 1) * size];
+		slice[..size].copy_from_slice(src);
 	}
 }
 
@@ -605,6 +647,66 @@ fn pick_physical_device_and_queue_family_indices(
 		}))
 }
 
+fn transition_image_layout(
+	device: &ash::Device,
+	command_pool: vk::CommandPool,
+	queue: vk::Queue,
+	image: vk::Image,
+	old_layout: vk::ImageLayout,
+	new_layout: vk::ImageLayout,
+	aspect_mask: vk::ImageAspectFlags,
+	mip_levels: u32,
+	array_layers: u32,
+) {
+	let cmd_buf = unsafe {
+		device.allocate_command_buffers(
+			&vk::CommandBufferAllocateInfo::default()
+				.command_pool(command_pool)
+				.level(vk::CommandBufferLevel::PRIMARY)
+				.command_buffer_count(1),
+		)
+	}
+	.unwrap()[0];
+
+	unsafe {
+		device.begin_command_buffer(
+			cmd_buf,
+			&vk::CommandBufferBeginInfo::default()
+				.flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+		)
+	}
+	.unwrap();
+
+	let barrier = vk::ImageMemoryBarrier2::default()
+		.old_layout(old_layout)
+		.new_layout(new_layout)
+		.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+		.image(image)
+		.subresource_range(vk::ImageSubresourceRange {
+			aspect_mask,
+			base_mip_level: 0,
+			level_count: mip_levels,
+			base_array_layer: 0,
+			layer_count: array_layers,
+		})
+		.src_stage_mask(vk::PipelineStageFlags2::NONE)
+		.dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+		.src_access_mask(vk::AccessFlags2::NONE)
+		.dst_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE);
+
+	let dependency_info =
+		vk::DependencyInfo::default().image_memory_barriers(std::slice::from_ref(&barrier));
+	unsafe { device.cmd_pipeline_barrier2(cmd_buf, &dependency_info) };
+
+	unsafe { device.end_command_buffer(cmd_buf) }.unwrap();
+
+	let submit_info = vk::SubmitInfo::default().command_buffers(std::slice::from_ref(&cmd_buf));
+	unsafe { device.queue_submit(queue, &[submit_info], vk::Fence::null()) }.unwrap();
+	unsafe { device.queue_wait_idle(queue) }.unwrap();
+	unsafe { device.free_command_buffers(command_pool, std::slice::from_ref(&cmd_buf)) };
+}
+
 pub struct Device {
 	adapter_info: super::AdapterInfo,
 	capabilities: super::Capabilities,
@@ -616,10 +718,13 @@ pub struct Device {
 	allocator: allocator::Allocator,
 	graphics_queue: vk::Queue,
 	command_pool: vk::CommandPool,
-	//rt_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+	shader_group_handle_size: usize,
 	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
 	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
 	debug_utils_ext: Option<ash::ext::debug_utils::Instance>,
+
+	bindless_manager: BindlessManager,
+	pipeline_layout: vk::PipelineLayout,
 }
 
 impl super::DeviceImpl for Device {
@@ -726,7 +831,7 @@ impl super::DeviceImpl for Device {
 			vk::KHR_DEFERRED_HOST_OPERATIONS_NAME, // Required by AccelerationStructure
 			vk::KHR_ACCELERATION_STRUCTURE_NAME,
 			vk::KHR_RAY_TRACING_PIPELINE_NAME,
-			//vk::KHR_RAY_QUERY_NAME,
+			vk::KHR_RAY_QUERY_NAME,
 			vk::KHR_SWAPCHAIN_NAME, // TODO: Conditionally enable
 		];
 
@@ -745,16 +850,21 @@ impl super::DeviceImpl for Device {
 
 			let mut vulkan11_features = vk::PhysicalDeviceVulkan11Features::default()
 				.variable_pointers(true)
-				.variable_pointers_storage_buffer(true);
+				.variable_pointers_storage_buffer(true)
+				.shader_draw_parameters(true);
 
 			let mut vulkan12_features = vk::PhysicalDeviceVulkan12Features::default()
 				.shader_int8(true)
 				.buffer_device_address(true)
 				.vulkan_memory_model(true)
 				.runtime_descriptor_array(true)
-				.shader_sampled_image_array_non_uniform_indexing(true)
 				.shader_storage_buffer_array_non_uniform_indexing(true)
+				.shader_sampled_image_array_non_uniform_indexing(true)
 				.shader_storage_image_array_non_uniform_indexing(true)
+				.descriptor_binding_storage_buffer_update_after_bind(true)
+				.descriptor_binding_sampled_image_update_after_bind(true)
+				.descriptor_binding_storage_image_update_after_bind(true)
+				.descriptor_binding_partially_bound(true)
 				.descriptor_indexing(true);
 
 			let mut vulkan13_features = vk::PhysicalDeviceVulkan13Features::default()
@@ -762,11 +872,15 @@ impl super::DeviceImpl for Device {
 				.synchronization2(true); // TODO: Actually use this
 
 			let mut as_feature = vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default()
-				.acceleration_structure(true);
+				.acceleration_structure(true)
+				.descriptor_binding_acceleration_structure_update_after_bind(true);
 
 			let mut raytracing_pipeline =
 				vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default()
 					.ray_tracing_pipeline(true);
+
+			let mut ray_query_feature =
+				vk::PhysicalDeviceRayQueryFeaturesKHR::default().ray_query(true);
 
 			let queue_create_infos = [queue_create_info];
 			let device_extension_names_ptrs = device_extension_names.map(|n| n.as_ptr());
@@ -778,6 +892,7 @@ impl super::DeviceImpl for Device {
 				.push_next(&mut vulkan13_features)
 				.push_next(&mut as_feature)
 				.push_next(&mut raytracing_pipeline)
+				.push_next(&mut ray_query_feature)
 				.queue_create_infos(&queue_create_infos)
 				.enabled_extension_names(&device_extension_names_ptrs);
 
@@ -833,8 +948,13 @@ impl super::DeviceImpl for Device {
 		};
 
 		let capabilities = super::Capabilities {
-			raytracing: true, // TODO: Hardcoded
+			raytracing: true, // TODO: Hardcoded, check for features
 		};
+
+		let shader_group_handle_size = rt_pipeline_properties.shader_group_handle_size as usize;
+
+		let bindless_manager = BindlessManager::new(&device);
+		let pipeline_layout = create_pipeline_layout(&device, &bindless_manager);
 
 		Self {
 			adapter_info,
@@ -846,10 +966,12 @@ impl super::DeviceImpl for Device {
 			allocator,
 			graphics_queue,
 			command_pool,
+			shader_group_handle_size,
 			acceleration_structure_ext,
 			ray_tracing_pipeline_ext,
 			debug_utils_ext,
-			//rt_pipeline_properties,
+			bindless_manager,
+			pipeline_layout,
 		}
 	}
 
@@ -900,22 +1022,63 @@ impl super::DeviceImpl for Device {
 		let textures = swapchain_images
 			.iter()
 			.map(|image| {
-				// TODO: todo!("Image views");
+				let view_info = vk::ImageViewCreateInfo::default()
+					.image(*image)
+					.view_type(vk::ImageViewType::TYPE_2D)
+					.format(map_format(desc.format))
+					.subresource_range(vk::ImageSubresourceRange {
+						aspect_mask: vk::ImageAspectFlags::COLOR,
+						base_mip_level: 0,
+						level_count: 1,
+						base_array_layer: 0,
+						layer_count: 1,
+					});
+
+				let rtv = unsafe { self.device.create_image_view(&view_info, None) }.unwrap();
 
 				Texture {
 					image: *image,
-					allocation: unsafe { std::mem::zeroed() }, // TODO: Terrible, fix this
+					allocation: None,
 					srv_index: None,
 					uav_index: None,
-					rtv: None,
+					rtv: Some(rtv),
 					dsv: None,
+					width: desc.size[0],
+					height: desc.size[1],
+					format: map_format(desc.format),
+					aspect_mask: vk::ImageAspectFlags::COLOR,
+					block_size: desc.format.block_size(),
 				}
 			})
 			.collect::<Vec<Texture>>();
 
+		// Swapchain images start in UNDEFINED layout; transition them to PRESENT_SRC_KHR so
+		// the first-frame barrier (Present -> RenderTarget) sees the expected old layout.
+		for image in &swapchain_images {
+			transition_image_layout(
+				&self.device,
+				self.command_pool,
+				self.graphics_queue,
+				*image,
+				vk::ImageLayout::UNDEFINED,
+				vk::ImageLayout::PRESENT_SRC_KHR,
+				vk::ImageAspectFlags::COLOR,
+				1,
+				1,
+			);
+		}
+
 		let acquire_semaphores = swapchain_images
 			.iter()
-			.map(|image| {
+			.map(|_image| {
+				let semaphore_create_info = vk::SemaphoreCreateInfo::default();
+				unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
+			})
+			.collect::<Vec<vk::Semaphore>>();
+
+		let render_finished_semaphores = swapchain_images
+			.iter()
+			.map(|_image| {
 				let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 				unsafe { self.device.create_semaphore(&semaphore_create_info, None) }.unwrap()
 			})
@@ -933,6 +1096,10 @@ impl super::DeviceImpl for Device {
 			acquire_semaphores,
 			next_semaphore,
 			bb_index: 0,
+			device: self.device.clone(),
+			queue: self.graphics_queue,
+			render_finished_semaphores,
+			size: desc.size,
 		})
 	}
 
@@ -948,6 +1115,18 @@ impl super::DeviceImpl for Device {
 		}
 		.unwrap();
 
+		for &cmd_buf in &command_buffers {
+			unsafe {
+				self.device
+					.begin_command_buffer(
+						cmd_buf,
+						&vk::CommandBufferBeginInfo::default()
+							.flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+					)
+					.unwrap();
+			}
+		}
+
 		CmdList {
 			bb_index: 0,
 			command_buffers,
@@ -955,11 +1134,18 @@ impl super::DeviceImpl for Device {
 			acceleration_structure_ext: self.acceleration_structure_ext.clone(),
 			ray_tracing_pipeline_ext: self.ray_tracing_pipeline_ext.clone(),
 			debug_utils_ext: None, // TODO: pass this in
+			pipeline_layout: self.pipeline_layout,
+			descriptor_sets: self.bindless_manager.descriptor_sets,
+			image_available_semaphore: vk::Semaphore::null(),
+			render_finished_semaphore: vk::Semaphore::null(),
 		}
 	}
 
 	fn create_buffer(&mut self, desc: &super::BufferDesc) -> Result<Self::Buffer, super::Error> {
-		let default_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS; // TODO: Hardcoded default flags
+		// All buffers get device address, AS build input, and SBT usage by default to mirror D3D12 semantics
+		let default_flags = vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+			| vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
+			| vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR;
 
 		let buffer_info = vk::BufferCreateInfo::default()
 			.size(desc.size as _)
@@ -989,26 +1175,48 @@ impl super::DeviceImpl for Device {
 		}
 		.unwrap();
 
-		let mapped_ptr = allocation
+		let cpu_ptr = allocation
 			.mapped_ptr()
 			.map_or(std::ptr::null_mut(), |ptr| ptr.as_ptr() as _);
 
-		let device_address = unsafe {
+		let gpu_ptr = unsafe {
 			self.device
 				.get_buffer_device_address(&vk::BufferDeviceAddressInfo::default().buffer(buffer))
 		};
 
+		let srv_uav_index = desc
+			.usage
+			.intersects(super::BufferUsage::SHADER_RESOURCE | super::BufferUsage::UNORDERED_ACCESS)
+			.then(|| {
+				self.bindless_manager
+					.register_buffer_uav(&self.device, buffer)
+			});
+
+		let srv_index = desc
+			.usage
+			.contains(super::BufferUsage::SHADER_RESOURCE)
+			.then(|| srv_uav_index)
+			.flatten();
+
+		let uav_index = desc
+			.usage
+			.intersects(super::BufferUsage::UNORDERED_ACCESS)
+			.then(|| srv_uav_index)
+			.flatten();
+
 		Ok(Buffer {
 			buffer,
 			allocation,
-			srv_index: None, // TODO
-			uav_index: None,
-			cpu_ptr: mapped_ptr,
-			gpu_ptr: device_address,
+			srv_index,
+			uav_index,
+			cpu_ptr,
+			gpu_ptr,
 		})
 	}
 
 	fn create_texture(&mut self, desc: &super::TextureDesc) -> Result<Self::Texture, super::Error> {
+		// TODO: Try to also set Initial Layout to UNDEFINED in D3D12 -> create_texture -> CreateCommittedResource3
+		// This way we can maybe remove the TextureLayout from the TextureDesc struct
 		let create_info = vk::ImageCreateInfo::default()
 			.image_type(map_image_type(desc))
 			.format(map_format(desc.format))
@@ -1023,7 +1231,7 @@ impl super::DeviceImpl for Device {
 			.tiling(vk::ImageTiling::OPTIMAL)
 			.usage(map_image_usage_flags(desc.usage))
 			.sharing_mode(vk::SharingMode::EXCLUSIVE)
-			.initial_layout(map_image_layout(desc.layout));
+			.initial_layout(vk::ImageLayout::UNDEFINED);
 
 		let image = unsafe { self.device.create_image(&create_info, None) }.unwrap();
 
@@ -1044,31 +1252,80 @@ impl super::DeviceImpl for Device {
 		}
 		.unwrap();
 
+		let vk_format = map_format(desc.format);
+		let aspect_mask = map_image_aspect(desc.format);
+		let view_type = map_image_view_type(desc);
+
+		let initial_layout = map_image_layout(desc.layout);
+		if initial_layout != vk::ImageLayout::UNDEFINED {
+			transition_image_layout(
+				&self.device,
+				self.command_pool,
+				self.graphics_queue,
+				image,
+				vk::ImageLayout::UNDEFINED,
+				initial_layout,
+				aspect_mask,
+				desc.mip_levels,
+				desc.array_size,
+			);
+		}
+
+		let make_view = |mip_base: u32, mip_count: u32, aspect: vk::ImageAspectFlags| {
+			let view_info = vk::ImageViewCreateInfo::default()
+				.image(image)
+				.view_type(view_type)
+				.format(vk_format)
+				.subresource_range(vk::ImageSubresourceRange {
+					aspect_mask: aspect,
+					base_mip_level: mip_base,
+					level_count: mip_count,
+					base_array_layer: 0,
+					layer_count: desc.array_size,
+				});
+			unsafe { self.device.create_image_view(&view_info, None) }.unwrap()
+		};
+
+		let srv_index = desc
+			.usage
+			.contains(super::TextureUsage::SHADER_RESOURCE)
+			.then(|| {
+				let view = make_view(0, desc.mip_levels, aspect_mask);
+				self.bindless_manager
+					.register_texture_srv(&self.device, view) as usize
+			});
+
+		let uav_index = desc
+			.usage
+			.contains(super::TextureUsage::UNORDERED_ACCESS)
+			.then(|| {
+				let view = make_view(0, 1, aspect_mask);
+				self.bindless_manager
+					.register_texture_uav(&self.device, view) as usize
+			});
+
 		let rtv = desc
 			.usage
 			.contains(super::TextureUsage::RENDER_TARGET)
-			.then(|| {
-				let create_info = vk::ImageViewCreateInfo::default();
-				todo!();
-				unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
-			});
+			.then(|| make_view(0, 1, vk::ImageAspectFlags::COLOR));
 
 		let dsv = desc
 			.usage
 			.contains(super::TextureUsage::DEPTH_STENCIL)
-			.then(|| {
-				let create_info = vk::ImageViewCreateInfo::default();
-				todo!();
-				unsafe { self.device.create_image_view(&create_info, None) }.unwrap()
-			});
+			.then(|| make_view(0, 1, aspect_mask & vk::ImageAspectFlags::DEPTH));
 
 		Ok(Texture {
 			image,
-			allocation,
-			srv_index: todo!(),
-			uav_index: todo!(),
+			allocation: Some(allocation),
+			srv_index,
+			uav_index,
 			rtv,
 			dsv,
+			width: desc.width as u32,
+			height: desc.height as u32,
+			format: vk_format,
+			aspect_mask,
+			block_size: desc.format.block_size(),
 		})
 	}
 
@@ -1098,6 +1355,9 @@ impl super::DeviceImpl for Device {
 
 		let sampler = unsafe { self.device.create_sampler(&create_info, None) }.unwrap();
 
+		self.bindless_manager
+			.register_sampler(&self.device, sampler);
+
 		Ok(Sampler { sampler })
 	}
 
@@ -1124,7 +1384,15 @@ impl super::DeviceImpl for Device {
 		}
 		.unwrap();
 
-		let srv_index = todo!();
+		let srv_index = if matches!(desc.ty, super::AccelerationStructureType::TopLevel) {
+			Some(
+				self.bindless_manager
+					.register_acceleration_structure(&self.device, acceleration_structure)
+					as usize,
+			)
+		} else {
+			None
+		};
 
 		let gpu_ptr = unsafe {
 			self.acceleration_structure_ext
@@ -1148,40 +1416,45 @@ impl super::DeviceImpl for Device {
 		let mut shader_modules = Vec::new();
 		let mut shader_stages = Vec::new();
 
+		let vs_entry_name;
+		let ps_entry_name;
+
 		if let Some(shader) = desc.vs {
 			let create_info = vk::ShaderModuleCreateInfo {
-				code_size: shader.len(),
-				p_code: shader.as_ptr() as *const u32,
+				code_size: shader.1.len(),
+				p_code: shader.1.as_ptr() as *const u32,
 				..Default::default()
 			};
 
 			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
 
 			shader_modules.push(module);
+			vs_entry_name = CString::new(shader.0).unwrap();
 
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::VERTEX)
 				.module(module)
-				.name(c"main");
+				.name(vs_entry_name.as_c_str());
 
 			shader_stages.push(stage);
 		}
 
 		if let Some(shader) = desc.ps {
 			let create_info = vk::ShaderModuleCreateInfo {
-				code_size: shader.len(),
-				p_code: shader.as_ptr() as *const u32,
+				code_size: shader.1.len(),
+				p_code: shader.1.as_ptr() as *const u32,
 				..Default::default()
 			};
 
 			let module = unsafe { self.device.create_shader_module(&create_info, None) }.unwrap();
 
 			shader_modules.push(module);
+			ps_entry_name = CString::new(shader.0).unwrap();
 
 			let stage = vk::PipelineShaderStageCreateInfo::default()
 				.stage(vk::ShaderStageFlags::FRAGMENT)
 				.module(module)
-				.name(c"main");
+				.name(ps_entry_name.as_c_str());
 
 			shader_stages.push(stage);
 		}
@@ -1291,7 +1564,7 @@ impl super::DeviceImpl for Device {
 
 		let create_info = vk::GraphicsPipelineCreateInfo::default()
 			.stages(&shader_stages)
-			// TODO: layout
+			.layout(self.pipeline_layout)
 			.vertex_input_state(&vertex_input_state)
 			.input_assembly_state(&input_assembly_state)
 			.viewport_state(&viewport_state)
@@ -1320,8 +1593,8 @@ impl super::DeviceImpl for Device {
 		desc: &super::ComputePipelineDesc,
 	) -> Result<Self::ComputePipeline, super::Error> {
 		let shader_module_create_info = vk::ShaderModuleCreateInfo {
-			p_code: desc.cs.as_ptr() as _,
-			code_size: desc.cs.len(),
+			p_code: desc.cs.1.as_ptr() as _,
+			code_size: desc.cs.1.len(),
 			..Default::default()
 		};
 
@@ -1330,15 +1603,16 @@ impl super::DeviceImpl for Device {
 				.create_shader_module(&shader_module_create_info, None)
 		}
 		.unwrap();
+		let entry_name = CString::new(desc.cs.0).unwrap();
 
 		let shader_stage = vk::PipelineShaderStageCreateInfo::default()
 			.stage(vk::ShaderStageFlags::COMPUTE)
 			.module(shader_module)
-			.name(c"main");
+			.name(entry_name.as_c_str());
 
 		let create_info = vk::ComputePipelineCreateInfo::default()
 			.stage(shader_stage)
-			.layout(todo!());
+			.layout(self.pipeline_layout);
 
 		let pipeline = unsafe {
 			self.device
@@ -1424,7 +1698,7 @@ impl super::DeviceImpl for Device {
 			.stages(&stages)
 			.groups(&groups)
 			.max_pipeline_ray_recursion_depth(desc.max_trace_recursion_depth)
-			.layout(todo!());
+			.layout(self.pipeline_layout);
 
 		let pipeline = unsafe {
 			self.ray_tracing_pipeline_ext.create_ray_tracing_pipelines(
@@ -1440,7 +1714,25 @@ impl super::DeviceImpl for Device {
 			unsafe { self.device.destroy_shader_module(module, None) };
 		}
 
-		Ok(RaytracingPipeline { pipeline })
+		let group_count = groups.len();
+		let handle_size = self.shader_group_handle_size;
+
+		let identifiers = unsafe {
+			self.ray_tracing_pipeline_ext
+				.get_ray_tracing_shader_group_handles(
+					pipeline,
+					0,
+					group_count as u32,
+					handle_size * group_count,
+				)
+				.unwrap()
+		};
+
+		Ok(RaytracingPipeline {
+			pipeline,
+			shader_group_handle_size: handle_size,
+			identifiers,
+		})
 	}
 
 	fn create_texture_view(
@@ -1448,7 +1740,25 @@ impl super::DeviceImpl for Device {
 		desc: &super::TextureViewDesc,
 		texture: &Self::Texture,
 	) -> super::TextureView {
-		todo!()
+		let view_info = vk::ImageViewCreateInfo::default()
+			.image(texture.image)
+			.view_type(vk::ImageViewType::TYPE_2D)
+			.format(texture.format)
+			.subresource_range(vk::ImageSubresourceRange {
+				aspect_mask: texture.aspect_mask,
+				base_mip_level: desc.first_mip_level,
+				level_count: desc.mip_level_count,
+				base_array_layer: 0,
+				layer_count: 1,
+			});
+
+		let view = unsafe { self.device.create_image_view(&view_info, None) }.unwrap();
+
+		let index = self
+			.bindless_manager
+			.register_texture_uav(&self.device, view);
+
+		super::TextureView { index }
 	}
 
 	fn submit(&self, cmd: &Self::CmdList) {
@@ -1458,11 +1768,34 @@ impl super::DeviceImpl for Device {
 
 		let command_buffers = [command_buffer];
 
-		let submit_infos = vk::SubmitInfo::default().command_buffers(&command_buffers);
+		let wait_semaphores: Vec<vk::Semaphore> =
+			if cmd.image_available_semaphore != vk::Semaphore::null() {
+				vec![cmd.image_available_semaphore]
+			} else {
+				vec![]
+			};
+
+		let wait_stages: Vec<vk::PipelineStageFlags> = wait_semaphores
+			.iter()
+			.map(|_| vk::PipelineStageFlags::ALL_COMMANDS)
+			.collect();
+
+		let signal_semaphores: Vec<vk::Semaphore> =
+			if cmd.render_finished_semaphore != vk::Semaphore::null() {
+				vec![cmd.render_finished_semaphore]
+			} else {
+				vec![]
+			};
+
+		let submit_info = vk::SubmitInfo::default()
+			.wait_semaphores(&wait_semaphores)
+			.wait_dst_stage_mask(&wait_stages)
+			.command_buffers(&command_buffers)
+			.signal_semaphores(&signal_semaphores);
 
 		unsafe {
 			self.device
-				.queue_submit(self.graphics_queue, &[submit_infos], vk::Fence::null())
+				.queue_submit(self.graphics_queue, &[submit_info], vk::Fence::null())
 		}
 		.unwrap();
 	}
@@ -1513,6 +1846,11 @@ pub struct CmdList {
 	acceleration_structure_ext: ash::khr::acceleration_structure::Device,
 	ray_tracing_pipeline_ext: ash::khr::ray_tracing_pipeline::Device,
 	debug_utils_ext: Option<ash::ext::debug_utils::Device>,
+
+	pipeline_layout: vk::PipelineLayout,
+	descriptor_sets: [vk::DescriptorSet; 5],
+	image_available_semaphore: vk::Semaphore,
+	render_finished_semaphore: vk::Semaphore,
 }
 
 struct AccelerationStructureInfo<'a> {
@@ -1664,4 +2002,268 @@ impl<'a> AccelerationStructureInfo<'a> {
 			_geometry: geometries.into_boxed_slice(),
 		}
 	}
+}
+
+const MAX_BINDLESS_RESOURCES: u32 = 1024; // TODO: Increase!
+
+struct BindlessManager {
+	descriptor_pool: vk::DescriptorPool,
+	descriptor_set_layouts: [vk::DescriptorSetLayout; 5],
+	descriptor_sets: [vk::DescriptorSet; 5],
+
+	storage_buffer_index: u32,
+	sampled_image_index: u32,
+	storage_image_index: u32,
+	acceleration_structure_index: u32,
+	sampler_index: u32,
+
+	default_samplers: Vec<vk::Sampler>,
+}
+
+impl BindlessManager {
+	fn new(device: &ash::Device) -> Self {
+		let pool_sizes = [
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::STORAGE_BUFFER,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::SAMPLED_IMAGE,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::STORAGE_IMAGE,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+			vk::DescriptorPoolSize {
+				ty: vk::DescriptorType::SAMPLER,
+				descriptor_count: MAX_BINDLESS_RESOURCES,
+			},
+		];
+
+		let pool_info = vk::DescriptorPoolCreateInfo::default()
+			.pool_sizes(&pool_sizes)
+			.max_sets(5)
+			.flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND);
+
+		let descriptor_pool = unsafe { device.create_descriptor_pool(&pool_info, None).unwrap() };
+
+		let descriptor_types = [
+			vk::DescriptorType::STORAGE_BUFFER,
+			vk::DescriptorType::SAMPLED_IMAGE,
+			vk::DescriptorType::STORAGE_IMAGE,
+			vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+			vk::DescriptorType::SAMPLER,
+		];
+
+		let descriptor_layouts = descriptor_types
+			.iter()
+			.map(|&ty| {
+				let bindings = [vk::DescriptorSetLayoutBinding::default()
+					.binding(0)
+					.descriptor_type(ty)
+					.descriptor_count(MAX_BINDLESS_RESOURCES)
+					.stage_flags(vk::ShaderStageFlags::ALL)];
+
+				let binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
+					| vk::DescriptorBindingFlags::UPDATE_AFTER_BIND];
+
+				let mut layout_flags_info =
+					vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
+						.binding_flags(&binding_flags);
+
+				let layout_info = vk::DescriptorSetLayoutCreateInfo::default()
+					.bindings(&bindings)
+					.flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+					.push_next(&mut layout_flags_info);
+
+				unsafe {
+					device
+						.create_descriptor_set_layout(&layout_info, None)
+						.unwrap()
+				}
+			})
+			.collect::<Vec<_>>();
+
+		let alloc_info = vk::DescriptorSetAllocateInfo::default()
+			.descriptor_pool(descriptor_pool)
+			.set_layouts(&descriptor_layouts);
+
+		let descriptor_sets = unsafe { device.allocate_descriptor_sets(&alloc_info).unwrap() };
+
+		let mut manager = Self {
+			descriptor_pool,
+			descriptor_set_layouts: descriptor_layouts.try_into().unwrap(),
+			descriptor_sets: descriptor_sets.try_into().unwrap(),
+
+			storage_buffer_index: 0,
+			sampled_image_index: 0,
+			storage_image_index: 0,
+			acceleration_structure_index: 0,
+			sampler_index: 0,
+
+			default_samplers: Vec::new(),
+		};
+
+		// All shaders declare [[vk::binding(0, 4)]] SamplerState linear_sampler, which
+		// maps to array element 0 of the bindless sampler set. Register it here so it is
+		// always available regardless of which pipelines have been created.
+		let linear_sampler_info = vk::SamplerCreateInfo::default()
+			.min_filter(vk::Filter::LINEAR)
+			.mag_filter(vk::Filter::LINEAR)
+			.mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+			.address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+			.max_lod(1000.0);
+		let linear_sampler = unsafe { device.create_sampler(&linear_sampler_info, None).unwrap() };
+		manager.register_sampler(device, linear_sampler);
+		manager.default_samplers.push(linear_sampler);
+
+		manager
+	}
+
+	fn register_buffer_uav(&mut self, device: &ash::Device, buffer: vk::Buffer) -> u32 {
+		if self.storage_buffer_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Storage Buffers");
+		}
+
+		let buffer_info = vk::DescriptorBufferInfo::default()
+			.buffer(buffer)
+			.offset(0)
+			.range(vk::WHOLE_SIZE);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[0])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.storage_buffer_index)
+			.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+			.buffer_info(std::slice::from_ref(&buffer_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = self.storage_buffer_index;
+		self.storage_buffer_index += 1;
+		assigned_index
+	}
+
+	fn register_texture_srv(&mut self, device: &ash::Device, image_view: vk::ImageView) -> u32 {
+		if self.sampled_image_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Textures");
+		}
+
+		let image_info = vk::DescriptorImageInfo::default()
+			.image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+			.image_view(image_view);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[1])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.sampled_image_index)
+			.descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+			.image_info(std::slice::from_ref(&image_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = self.sampled_image_index;
+		self.sampled_image_index += 1;
+		assigned_index
+	}
+
+	fn register_texture_uav(&mut self, device: &ash::Device, image_view: vk::ImageView) -> u32 {
+		if self.storage_image_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Storage Images");
+		}
+
+		let image_info = vk::DescriptorImageInfo::default()
+			.image_layout(vk::ImageLayout::GENERAL)
+			.image_view(image_view);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[2])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.storage_image_index)
+			.descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+			.image_info(std::slice::from_ref(&image_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = self.storage_image_index;
+		self.storage_image_index += 1;
+		assigned_index
+	}
+
+	fn register_acceleration_structure(
+		&mut self,
+		device: &ash::Device,
+		accel_struct: vk::AccelerationStructureKHR,
+	) -> u32 {
+		if self.acceleration_structure_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Acceleration Structures");
+		}
+
+		let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::default()
+			.acceleration_structures(std::slice::from_ref(&accel_struct));
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[3])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.acceleration_structure_index)
+			.descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+			.push_next(&mut accel_info);
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		let assigned_index = self.acceleration_structure_index;
+		self.acceleration_structure_index += 1;
+		assigned_index
+	}
+
+	fn register_sampler(&mut self, device: &ash::Device, sampler: vk::Sampler) {
+		if self.sampler_index >= MAX_BINDLESS_RESOURCES {
+			panic!("Exceeded MAX_BINDLESS_RESOURCES for Samplers");
+		}
+
+		let sampler_info = vk::DescriptorImageInfo::default().sampler(sampler);
+
+		let write_set = vk::WriteDescriptorSet::default()
+			.dst_set(self.descriptor_sets[4])
+			.dst_binding(0)
+			.descriptor_count(1)
+			.dst_array_element(self.sampler_index)
+			.descriptor_type(vk::DescriptorType::SAMPLER)
+			.image_info(std::slice::from_ref(&sampler_info));
+
+		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+		self.sampler_index += 1;
+	}
+
+	fn destroy(&self, device: &ash::Device) {
+		unsafe {
+			for &sampler in &self.default_samplers {
+				device.destroy_sampler(sampler, None);
+			}
+			device.destroy_descriptor_pool(self.descriptor_pool, None);
+		}
+	}
+}
+
+fn create_pipeline_layout(device: &ash::Device, bindless: &BindlessManager) -> vk::PipelineLayout {
+	let push_constant_ranges = [vk::PushConstantRange {
+		stage_flags: vk::ShaderStageFlags::ALL,
+		offset: 0,
+		size: 128, // TODO: Hardcoded guaranteed minimum size
+	}];
+
+	let layout_info = vk::PipelineLayoutCreateInfo::default()
+		.set_layouts(&bindless.descriptor_set_layouts)
+		.push_constant_ranges(&push_constant_ranges);
+
+	let layout = unsafe { device.create_pipeline_layout(&layout_info, None).unwrap() };
+
+	layout
 }

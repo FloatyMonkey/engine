@@ -9,7 +9,25 @@ impl CmdList {
 
 impl gpu::CmdListImpl<Device> for CmdList {
 	fn reset(&mut self, device: &Device, surface: &Surface) {
-		todo!()
+		self.bb_index = surface.bb_index;
+		self.image_available_semaphore = surface.acquire_semaphores[surface.bb_index];
+		self.render_finished_semaphore = surface.render_finished_semaphores[surface.bb_index];
+
+		let cmd = self.command_buffers[self.bb_index];
+
+		unsafe {
+			self.device
+				.reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())
+				.unwrap();
+
+			self.device
+				.begin_command_buffer(
+					cmd,
+					&vk::CommandBufferBeginInfo::default()
+						.flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+				)
+				.unwrap();
+		}
 	}
 
 	fn copy_buffer(&self, src: &Buffer, src_offset: u64, dst: &Buffer, dst_offset: u64, size: u64) {
@@ -48,14 +66,14 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 				&[vk::ImageCopy {
 					src_subresource: vk::ImageSubresourceLayers {
-						aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+						aspect_mask: src.aspect_mask,
 						mip_level: src_mip_level,
 						base_array_layer: src_array_slice,
 						layer_count: 1,
 					},
 					src_offset: map_offset(&src_offset),
 					dst_subresource: vk::ImageSubresourceLayers {
-						aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+						aspect_mask: dst.aspect_mask,
 						mip_level: dst_mip_level,
 						base_array_layer: dst_array_slice,
 						layer_count: 1,
@@ -78,6 +96,12 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		dst_offset: [u32; 3],
 		size: [u32; 3],
 	) {
+		let buffer_row_length = if dst.block_size > 0 {
+			src_bytes_per_row / dst.block_size
+		} else {
+			0
+		};
+
 		unsafe {
 			self.device.cmd_copy_buffer_to_image(
 				self.cmd(),
@@ -86,10 +110,10 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 				&[vk::BufferImageCopy {
 					buffer_offset: src_offset,
-					buffer_row_length: src_bytes_per_row,
+					buffer_row_length,
 					buffer_image_height: 0,
 					image_subresource: vk::ImageSubresourceLayers {
-						aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+						aspect_mask: dst.aspect_mask,
 						mip_level: dst_mip_level,
 						base_array_layer: dst_array_slice,
 						layer_count: 1,
@@ -112,6 +136,12 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		dst_bytes_per_row: u32,
 		size: [u32; 3],
 	) {
+		let buffer_row_length = if src.block_size > 0 {
+			dst_bytes_per_row / src.block_size
+		} else {
+			0
+		};
+
 		unsafe {
 			self.device.cmd_copy_image_to_buffer(
 				self.cmd(),
@@ -120,10 +150,10 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				dst.buffer,
 				&[vk::BufferImageCopy {
 					buffer_offset: dst_offset,
-					buffer_row_length: dst_bytes_per_row,
+					buffer_row_length,
 					buffer_image_height: 0,
 					image_subresource: vk::ImageSubresourceLayers {
-						aspect_mask: vk::ImageAspectFlags::COLOR, // TODO: Correct aspects
+						aspect_mask: src.aspect_mask,
 						mip_level: src_mip_level,
 						base_array_layer: src_array_slice,
 						layer_count: 1,
@@ -143,7 +173,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				let (load_op, clear) = map_load_op(target.load_op);
 				vk::RenderingAttachmentInfo::default()
 					.image_view(target.texture.rtv.unwrap())
-					.image_layout(vk::ImageLayout::GENERAL) // TODO: COLOR_ATTACHMENT_OPTIMAL or others
+					.image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
 					.load_op(load_op)
 					.store_op(map_store_op(target.store_op))
 					.clear_value(vk::ClearValue {
@@ -158,7 +188,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			let (load_op, clear) = map_load_op(target.load_op);
 			vk::RenderingAttachmentInfo::default()
 				.image_view(target.texture.dsv.unwrap())
-				.image_layout(vk::ImageLayout::GENERAL) // TODO: DEPTH_STENCIL_ATTACHMENT_OPTIMAL or others
+				.image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
 				.load_op(load_op)
 				.store_op(map_store_op(target.store_op))
 				.clear_value(vk::ClearValue {
@@ -169,8 +199,20 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				})
 		});
 
+		let (width, height) = desc
+			.colors
+			.first()
+			.map(|t| t.texture)
+			.or_else(|| desc.depth_stencil.as_ref().map(|t| t.texture))
+			.map(|t| (t.width, t.height))
+			.unwrap_or((0, 0));
+
 		let mut vk_info = vk::RenderingInfo::default()
 			.layer_count(1)
+			.render_area(vk::Rect2D {
+				offset: vk::Offset2D { x: 0, y: 0 },
+				extent: vk::Extent2D { width, height },
+			})
 			.color_attachments(&color_attachments);
 
 		if let Some(ref depth_stencil) = depth_stencil {
@@ -193,13 +235,28 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		let memory_barriers = barriers
 			.global
 			.iter()
-			.map(|barrier| vk::MemoryBarrier2::default())
+			.map(|_barrier| {
+				vk::MemoryBarrier2::default()
+					.src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.src_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+					.dst_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+			})
 			.collect::<Vec<_>>();
 
 		let buffer_memory_barriers = barriers
 			.buffer
 			.iter()
-			.map(|barrier| vk::BufferMemoryBarrier2::default().buffer(barrier.buffer.buffer))
+			.map(|barrier| {
+				vk::BufferMemoryBarrier2::default()
+					.buffer(barrier.buffer.buffer)
+					.src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.src_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+					.dst_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+					.offset(0)
+					.size(vk::WHOLE_SIZE)
+			})
 			.collect::<Vec<_>>();
 
 		let image_memory_barriers = barriers
@@ -210,6 +267,17 @@ impl gpu::CmdListImpl<Device> for CmdList {
 					.old_layout(map_image_layout(barrier.old_layout))
 					.new_layout(map_image_layout(barrier.new_layout))
 					.image(barrier.texture.image)
+					.src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+					.src_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+					.dst_access_mask(vk::AccessFlags2::MEMORY_READ | vk::AccessFlags2::MEMORY_WRITE)
+					.subresource_range(vk::ImageSubresourceRange {
+						aspect_mask: barrier.texture.aspect_mask,
+						base_mip_level: 0,
+						level_count: vk::REMAINING_MIP_LEVELS,
+						base_array_layer: 0,
+						layer_count: vk::REMAINING_ARRAY_LAYERS,
+					})
 			})
 			.collect::<Vec<_>>();
 
@@ -222,8 +290,6 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			self.device
 				.cmd_pipeline_barrier2(self.cmd(), &dependency_info);
 		}
-
-		panic!("Not fully implemented");
 	}
 
 	fn set_viewport(&self, rect: &gpu::Rect<f32>, depth: Range<f32>) {
@@ -249,7 +315,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			},
 			extent: vk::Extent2D {
 				width: (rect.right - rect.left),
-				height: (rect.top - rect.bottom),
+				height: (rect.bottom - rect.top),
 			},
 		};
 
@@ -291,6 +357,15 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::PipelineBindPoint::GRAPHICS,
 				pipeline.pipeline,
 			);
+
+			self.device.cmd_bind_descriptor_sets(
+				self.cmd(),
+				vk::PipelineBindPoint::GRAPHICS,
+				self.pipeline_layout,
+				0,
+				&self.descriptor_sets,
+				&[],
+			);
 		}
 	}
 
@@ -300,6 +375,15 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				self.cmd(),
 				vk::PipelineBindPoint::COMPUTE,
 				pipeline.pipeline,
+			);
+
+			self.device.cmd_bind_descriptor_sets(
+				self.cmd(),
+				vk::PipelineBindPoint::COMPUTE,
+				self.pipeline_layout,
+				0,
+				&self.descriptor_sets,
+				&[],
 			);
 		}
 	}
@@ -311,33 +395,40 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::PipelineBindPoint::RAY_TRACING_KHR,
 				pipeline.pipeline,
 			);
+
+			self.device.cmd_bind_descriptor_sets(
+				self.cmd(),
+				vk::PipelineBindPoint::RAY_TRACING_KHR,
+				self.pipeline_layout,
+				0,
+				&self.descriptor_sets,
+				&[],
+			);
 		}
 	}
 
 	fn graphics_push_constants(&self, offset: u32, data: &[u8]) {
-		/*unsafe {
+		unsafe {
 			self.device.cmd_push_constants(
 				self.cmd(),
 				self.pipeline_layout,
-				vk::ShaderStageFlags::ALL_GRAPHICS,
-				0,
+				vk::ShaderStageFlags::ALL,
+				offset,
 				data,
 			);
-		}*/
-		todo!()
+		}
 	}
 
 	fn compute_push_constants(&self, offset: u32, data: &[u8]) {
-		/*unsafe {
+		unsafe {
 			self.device.cmd_push_constants(
 				self.cmd(),
 				self.pipeline_layout,
-				vk::ShaderStageFlags::COMPUTE,
-				0,
+				vk::ShaderStageFlags::ALL,
+				offset,
 				data,
 			);
-		}*/
-		todo!()
+		}
 	}
 
 	fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
@@ -347,7 +438,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vertices.len() as u32,
 				instances.len() as u32,
 				vertices.start,
-				vertices.start,
+				instances.start,
 			);
 		}
 	}

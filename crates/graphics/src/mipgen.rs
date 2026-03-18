@@ -2,8 +2,8 @@ use gpu::{self, CmdListImpl, DeviceImpl, TextureImpl};
 
 #[repr(C)]
 struct PushConstants {
-	output_id: u32,
 	output_res: [u32; 2],
+	output_id: u32,
 	input_id: u32,
 	input_mip: u32,
 }
@@ -38,7 +38,7 @@ impl MipGen {
 
 		let compute_pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
-				cs: &shader,
+				cs: ("main", &shader),
 				descriptor_layout: &descriptor_layout,
 			})
 			.unwrap();

@@ -18,7 +18,8 @@ impl ShaderCompiler {
 
 		let session_options = slang::CompilerOptions::default()
 			.optimization(slang::OptimizationLevel::High)
-			.matrix_layout_row(true);
+			.matrix_layout_row(true)
+			.vulkan_use_entry_point_name(true);
 
 		let target_desc = slang::TargetDesc::default()
 			.format(match self.backend {

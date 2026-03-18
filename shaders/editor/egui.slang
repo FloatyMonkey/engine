@@ -1,13 +1,13 @@
-cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	float2 screen_size;
 	uint vb_index;
 	uint texture_index;
 }
 
-ByteAddressBuffer buffers[] : register(t0, space1);
-Texture2D<float4> textures_2d_float4[] : register(t0, space2);
+[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
+[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space2);
 
-SamplerState linear_sampler : register(s0);
+[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0);
 
 func unpack_float4(u: uint) -> float4 {
 	float4 f;

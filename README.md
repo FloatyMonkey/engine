@@ -7,8 +7,9 @@ Early stage of a new game engine, focusing on fully path-traced graphics.
 ## Notable Features
 
 - Fully path-traced graphics.
-- Graphics API abstraction with DirectX 12 backend and Vulkan in progress.
-- Loads OpenUSD scenes using [openusd-rs](https://github.com/floatymonkey/openusd-rs), our work in progress pure Rust implementation of OpenUSD.
+- Custom graphics API abstraction with DirectX 12 and Vulkan backends.
+- Shaders written in Slang and compiled using [slang-rs](https://github.com/floatymonkey/slang-rs), our Rust bindings for the Slang compiler.
+- Loads OpenUSD scenes using [openusd-rs](https://github.com/floatymonkey/openusd-rs), our work-in-progress pure Rust implementation of OpenUSD.
 
 ## Credits
 

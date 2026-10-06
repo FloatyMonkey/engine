@@ -9,14 +9,7 @@ import spectrum;
 import bxdfs.diffuse;
 import bxdfs.conductor;
 
-[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
-[[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structures[] : register(t0, space2);
-[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space3);
-[[vk::binding(0, 1)]] Texture2D<float> textures_2d_float[] : register(t0, space4);
-[[vk::binding(0, 2)]] RWTexture2D<float4> rw_textures_2d_float4[] : register(u0, space5);
-[[vk::binding(0, 2)]] RWTexture2D<float4> rw_textures_2d_float[] : register(u0, space6);
-
-[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
+import bindless;
 
 static const uint INVALID_ID = 0xffffffff;
 
@@ -50,6 +43,7 @@ struct GpuCamera {
 	uint infinite_light_count;
 	uint seed;
 	float accumulation_factor;
+	uint sampler_index;
 }
 
 struct Vertex {
@@ -108,9 +102,9 @@ func lens(pixel: uint2, resolution: uint2, inout sg: PCG32si) -> Ray {
 
 [shader("raygeneration")]
 func raygen() {
-	let tlas = acceleration_structures[tlas_index];
-	let color_pass_tex = rw_textures_2d_float4[color_pass_index];
-	let depth_pass_tex = rw_textures_2d_float[depth_pass_index];
+	let tlas = get_acceleration_structure(tlas_index);
+	let color_pass_tex = get_rw_texture2d_float4(color_pass_index);
+	let depth_pass_tex = get_rw_texture2d_float4(depth_pass_index);
 
 	let rand_seed = DispatchRaysIndex().x + DispatchRaysDimensions().x * DispatchRaysIndex().y;
 
@@ -163,11 +157,11 @@ struct ShadingCtx {
 
 	static func init(attributes: BuiltInTriangleIntersectionAttributes) -> ShadingCtx {
 		// Load mesh data
-		let instance_data_buffer = buffers[instance_data_index];
+		let instance_data_buffer = get_buffer(instance_data_index);
 		let instance_data = instance_data_buffer.Load<Instance>(InstanceIndex() * sizeof(Instance));
 
-		let vertex_buffer = buffers[NonUniformResourceIndex(instance_data.vertex_buffer_id)];
-		let index_buffer = buffers[NonUniformResourceIndex(instance_data.index_buffer_id)];
+		let vertex_buffer = get_buffer(NonUniformResourceIndex(instance_data.vertex_buffer_id));
+		let index_buffer = get_buffer(NonUniformResourceIndex(instance_data.index_buffer_id));
 
 		let indices = index_buffer.Load<uint3>(PrimitiveIndex() * sizeof(uint3));
 
@@ -202,7 +196,7 @@ func sample_light<S: SampleGenerator>(position: float3, inout sg: S, out light_p
 	let light_index = min(uint(sample_next_1d(sg) * light_count), light_count - 1);
 	let sampled_light_pmf = 1.0 / light_count;
 
-	let light_data_buffer = buffers[light_data_index];
+	let light_data_buffer = get_buffer(light_data_index);
 	let light_type = LightType(light_data_buffer.Load<uint>(light_index * LIGHT_SIZE));
 
 	var ls: LightLiSample;
@@ -211,8 +205,9 @@ func sample_light<S: SampleGenerator>(position: float3, inout sg: S, out light_p
 		case LightType.Dome: {
 			let light_data = light_data_buffer.Load<DomeLightData>(light_index * LIGHT_SIZE + 4);
 
-			let env_map = textures_2d_float4[light_data.env_map_id];
-			let importance_map = textures_2d_float[light_data.importance_map_id];
+			let env_map = get_texture2d_float4(light_data.env_map_id);
+			let importance_map = get_texture2d_float(light_data.importance_map_id);
+			let linear_sampler = get_sampler(sampler_index);
 			let light: DomeLight = { env_map, linear_sampler, { importance_map, light_data.base_mip } };
 
 			ls = light.sample_li(position, sg);
@@ -237,7 +232,7 @@ func sample_light<S: SampleGenerator>(position: float3, inout sg: S, out light_p
 func closesthit(inout RayPayload payload, attributes: BuiltInTriangleIntersectionAttributes) {
 	payload.depth++;
 
-	let tlas = acceleration_structures[tlas_index];
+	let tlas = get_acceleration_structure(tlas_index);
 
 	let ctx = ShadingCtx.init(attributes);
 
@@ -295,7 +290,7 @@ func closesthit(inout RayPayload payload, attributes: BuiltInTriangleIntersectio
 [shader("miss")]
 func miss(inout RayPayload payload) {
 	for (uint i = 0; i < infinite_light_count; i++) {
-		let light_data_buffer = buffers[light_data_index];
+		let light_data_buffer = get_buffer(light_data_index);
 		let light_type = LightType(light_data_buffer.Load<uint>(i * LIGHT_SIZE));
 
 		if (light_type != LightType.Dome) {
@@ -304,8 +299,9 @@ func miss(inout RayPayload payload) {
 
 		let light_data = light_data_buffer.Load<DomeLightData>(i * LIGHT_SIZE + 4);
 
-		let env_map = textures_2d_float4[light_data.env_map_id];
-		let importance_map = textures_2d_float[light_data.importance_map_id];
+		let env_map = get_texture2d_float4(light_data.env_map_id);
+		let importance_map = get_texture2d_float(light_data.importance_map_id);
+		let linear_sampler = get_sampler(sampler_index);
 		let light: DomeLight = { env_map, linear_sampler, { importance_map, light_data.base_mip } };
 
 		var w_b: float = 1.0;

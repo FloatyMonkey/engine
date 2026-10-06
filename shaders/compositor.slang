@@ -1,3 +1,4 @@
+import bindless;
 import view_transform;
 
 [[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
@@ -7,18 +8,15 @@ import view_transform;
 	uint overlay_id;
 }
 
-[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space1);
-[[vk::binding(0, 2)]] RWTexture2D<float4> rw_textures_2d_float4[] : register(u0, space2);
-
 [shader("compute")]
 [numthreads(16, 16, 1)]
 void main(uint3 id : SV_DispatchThreadID) {
 	let pixel = id.xy;
 	if (any(pixel >= output_res)) return;
 
-	let input = textures_2d_float4[input_id];
-	let overlay = textures_2d_float4[overlay_id];
-	let output = rw_textures_2d_float4[output_id];
+	let input = get_texture2d_float4(input_id);
+	let overlay = get_texture2d_float4(overlay_id);
+	let output = get_rw_texture2d_float4(output_id);
 
 	var color = input[pixel].xyz;
 	color = agx(color);

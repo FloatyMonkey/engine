@@ -1,5 +1,5 @@
 use super::mipgen::MipGen;
-use gpu::{self, CmdListImpl, DeviceImpl, TextureImpl};
+use gpu::{self, CmdListImpl, DeviceImpl, SamplerImpl, TextureImpl};
 
 const RESOLUTION: usize = 512;
 const SAMPLES_PER_PIXEL: usize = 64;
@@ -7,6 +7,7 @@ const SAMPLES_PER_PIXEL: usize = 64;
 pub struct ImportanceMap {
 	pub importance_map: gpu::Texture,
 	prepare_pipeline: gpu::ComputePipeline,
+	sampler: gpu::Sampler,
 	uavs: Vec<gpu::TextureView>,
 	mipgen: MipGen,
 	dirty: bool,
@@ -21,6 +22,7 @@ struct PushConstants {
 	output_res_in_samples: [u32; 2],
 	num_samples: [u32; 2],
 	inv_samples: f32,
+	sampler_index: u32,
 }
 
 impl ImportanceMap {
@@ -30,30 +32,18 @@ impl ImportanceMap {
 		let shader =
 			shader_compiler.compile("shaders/pathtracer/kernels/env-map-prepare.slang", "main");
 
-		let descriptor_layout = gpu::DescriptorLayout {
-			push_constants: Some(gpu::PushConstantBinding {
-				size: size_of::<PushConstants>() as u32,
-			}),
-			bindings: Some(vec![
-				gpu::DescriptorBinding::bindless_srv(1),
-				gpu::DescriptorBinding::bindless_uav(2),
-			]),
-			static_samplers: Some(vec![gpu::SamplerBinding {
-				shader_register: 0,
-				register_space: 0,
-				sampler_desc: gpu::SamplerDesc {
-					filter_min: gpu::FilterMode::Linear,
-					filter_mag: gpu::FilterMode::Linear,
-					filter_mip: gpu::FilterMode::Linear,
-					..Default::default()
-				},
-			}]),
-		};
-
 		let compute_pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
 				cs: ("main", &shader),
-				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
+
+		let sampler = device
+			.create_sampler(&gpu::SamplerDesc {
+				filter_min: gpu::FilterMode::Linear,
+				filter_mag: gpu::FilterMode::Linear,
+				filter_mip: gpu::FilterMode::Linear,
+				..Default::default()
 			})
 			.unwrap();
 
@@ -89,6 +79,7 @@ impl ImportanceMap {
 		Self {
 			importance_map,
 			prepare_pipeline: compute_pipeline,
+			sampler,
 			uavs,
 			mipgen: MipGen::setup(device, shader_compiler),
 			dirty: true,
@@ -119,6 +110,7 @@ impl ImportanceMap {
 			output_res_in_samples: [dimension * samples_x, dimension * samples_y],
 			num_samples: [samples_x, samples_y],
 			inv_samples: 1.0 / (samples_x * samples_y) as f32,
+			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_compute_pipeline(&self.prepare_pipeline);

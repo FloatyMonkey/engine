@@ -2,7 +2,7 @@ use super::camera::GpuCamera;
 use super::scene;
 use gpu::{
 	self, AccelerationStructureImpl, BufferImpl, CmdListImpl, DeviceImpl, RaytracingPipelineImpl,
-	TextureImpl,
+	SamplerImpl, TextureImpl,
 };
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 
@@ -18,6 +18,7 @@ struct PushConstants {
 	infinite_light_count: u32,
 	seed: u32,
 	accumulation_factor: f32,
+	sampler_index: u32,
 }
 
 // TODO: Document depth pass:
@@ -25,6 +26,7 @@ struct PushConstants {
 pub struct PathTracer {
 	pipeline: gpu::RaytracingPipeline,
 	shader_table: gpu::Buffer,
+	sampler: gpu::Sampler,
 	sample_index: usize,
 	rng: StdRng,
 
@@ -66,40 +68,24 @@ impl PathTracer {
 			gpu::ShaderGroup::triangles("hit_group", Some(2), None),
 		];
 
-		let descriptor_layout = gpu::DescriptorLayout {
-			push_constants: Some(gpu::PushConstantBinding {
-				size: size_of::<PushConstants>() as u32,
-			}),
-			bindings: Some(vec![
-				gpu::DescriptorBinding::bindless_srv(1), // Buffers
-				gpu::DescriptorBinding::bindless_srv(2), // Acceleration structures
-				gpu::DescriptorBinding::bindless_srv(3), // Textures 2D Float4
-				gpu::DescriptorBinding::bindless_srv(4), // Textures 2D Float
-				gpu::DescriptorBinding::bindless_uav(5), // RWTextures 2D Float4
-				gpu::DescriptorBinding::bindless_uav(6), // RWTextures 2D Float
-			]),
-			static_samplers: Some(vec![gpu::SamplerBinding {
-				shader_register: 0,
-				register_space: 0,
-				sampler_desc: gpu::SamplerDesc {
-					filter_min: gpu::FilterMode::Linear,
-					filter_mag: gpu::FilterMode::Linear,
-					filter_mip: gpu::FilterMode::Linear,
-					..Default::default()
-				},
-			}]),
-		};
-
 		let pipeline_desc = gpu::RaytracingPipelineDesc {
 			max_trace_recursion_depth: 3, // TODO: Too high?
 			max_attribute_size: 8,
 			max_payload_size: 128, // TODO: Arbitrary
 			libraries,
 			groups,
-			descriptor_layout,
 		};
 
 		let pipeline = device.create_raytracing_pipeline(&pipeline_desc).unwrap();
+
+		let sampler = device
+			.create_sampler(&gpu::SamplerDesc {
+				filter_min: gpu::FilterMode::Linear,
+				filter_mag: gpu::FilterMode::Linear,
+				filter_mip: gpu::FilterMode::Linear,
+				..Default::default()
+			})
+			.unwrap();
 
 		// Create the shader table
 
@@ -157,6 +143,7 @@ impl PathTracer {
 		Self {
 			pipeline,
 			shader_table,
+			sampler,
 			resolution,
 			color_pass_texture,
 			depth_pass_texture,
@@ -177,6 +164,7 @@ impl PathTracer {
 			infinite_light_count: scene.infinite_light_count as _,
 			seed: self.rng.next_u32(),
 			accumulation_factor: 1.0 / (self.sample_index + 1) as f32,
+			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_raytracing_pipeline(&self.pipeline);
@@ -269,21 +257,9 @@ impl Compositor {
 	) -> Self {
 		let shader = shader_compiler.compile("shaders/compositor.slang", "main");
 
-		let descriptor_layout = gpu::DescriptorLayout {
-			push_constants: Some(gpu::PushConstantBinding {
-				size: size_of::<CompositorPushConstants>() as u32,
-			}),
-			bindings: Some(vec![
-				gpu::DescriptorBinding::bindless_srv(1),
-				gpu::DescriptorBinding::bindless_uav(2),
-			]),
-			static_samplers: None,
-		};
-
 		let pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
 				cs: ("main", &shader),
-				descriptor_layout: &descriptor_layout,
 			})
 			.unwrap();
 

@@ -345,40 +345,7 @@ bitflags! {
 	}
 }
 
-pub enum DescriptorType {
-	ConstantBuffer,
-	ShaderResource,
-	UnorderedAccess,
-	Sampler,
-}
-
-pub struct PushConstantBinding {
-	/// Number of bytes to push
-	pub size: u32,
-}
-
-pub struct DescriptorBinding {
-	pub shader_register: u32,
-	pub register_space: u32,
-	pub binding_type: DescriptorType,
-	/// Number of descriptors in this table, use `None` for unbounded.
-	pub num_descriptors: Option<u32>,
-	/// Offset in decriptors, use `None` to append to previous range.
-	pub offset: Option<u32>,
-}
-
-pub struct SamplerBinding {
-	pub shader_register: u32,
-	pub register_space: u32,
-	pub sampler_desc: SamplerDesc,
-}
-
-#[derive(Default)]
-pub struct DescriptorLayout {
-	pub push_constants: Option<PushConstantBinding>,
-	pub bindings: Option<Vec<DescriptorBinding>>,
-	pub static_samplers: Option<Vec<SamplerBinding>>,
-}
+pub const MAX_PUSH_CONSTANTS_SIZE: u32 = 128;
 
 #[derive(Clone, Copy, Default)]
 pub enum FilterMode {
@@ -633,7 +600,6 @@ pub struct GraphicsPipelineDesc<'a> {
 	pub vs: Option<(&'a str, &'a [u8])>,
 	pub ps: Option<(&'a str, &'a [u8])>,
 
-	pub descriptor_layout: DescriptorLayout,
 	pub rasterizer: RasterizerDesc,
 	pub depth_stencil: DepthStencilDesc,
 	pub color_attachments: &'a [ColorAttachment],
@@ -642,7 +608,6 @@ pub struct GraphicsPipelineDesc<'a> {
 
 pub struct ComputePipelineDesc<'a> {
 	pub cs: (&'a str, &'a [u8]),
-	pub descriptor_layout: &'a DescriptorLayout,
 }
 
 #[derive(Clone, Copy)]
@@ -732,7 +697,9 @@ pub trait TextureImpl<D: DeviceImpl> {
 	fn uav_index(&self) -> Option<u32>;
 }
 
-pub trait SamplerImpl<D: DeviceImpl> {}
+pub trait SamplerImpl<D: DeviceImpl> {
+	fn index(&self) -> u32;
+}
 pub trait GraphicsPipelineImpl<D: DeviceImpl> {}
 pub trait ComputePipelineImpl<D: DeviceImpl> {}
 
@@ -989,28 +956,6 @@ impl Default for DepthStencilDesc {
 	}
 }
 
-impl DescriptorBinding {
-	pub fn bindless_srv(space: u32) -> Self {
-		Self {
-			binding_type: DescriptorType::ShaderResource,
-			num_descriptors: None,
-			shader_register: 0,
-			register_space: space,
-			offset: Some(0),
-		}
-	}
-
-	pub fn bindless_uav(space: u32) -> Self {
-		Self {
-			binding_type: DescriptorType::UnorderedAccess,
-			num_descriptors: None,
-			shader_register: 0,
-			register_space: space,
-			offset: Some(0),
-		}
-	}
-}
-
 pub struct FormatInfo {
 	pub components: u8,
 	pub block_size: u8,
@@ -1164,8 +1109,6 @@ pub struct RaytracingPipelineDesc {
 
 	pub libraries: Vec<ShaderLibrary>,
 	pub groups: Vec<ShaderGroup>,
-
-	pub descriptor_layout: DescriptorLayout,
 }
 
 pub struct ShaderTable {

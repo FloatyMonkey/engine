@@ -1,4 +1,4 @@
-use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
+use gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, SamplerImpl, TextureImpl};
 use math::{Unit, UnitQuaternion, Vec2, Vec3};
 
 #[repr(C)]
@@ -162,6 +162,7 @@ struct PushConstants {
 	screen_size: [f32; 2],
 	vb_index: u32,
 	depth_texture_id: u32,
+	sampler_index: u32,
 }
 
 pub struct GizmoRenderer {
@@ -169,6 +170,7 @@ pub struct GizmoRenderer {
 	vb: gpu::Buffer,
 	pipeline: gpu::GraphicsPipeline,
 	pub texture: gpu::Texture,
+	sampler: gpu::Sampler,
 }
 
 impl GizmoRenderer {
@@ -185,31 +187,21 @@ impl GizmoRenderer {
 			})
 			.unwrap();
 
+		let sampler = device
+			.create_sampler(&gpu::SamplerDesc {
+				filter_min: gpu::FilterMode::Linear,
+				filter_mag: gpu::FilterMode::Linear,
+				filter_mip: gpu::FilterMode::Linear,
+				..Default::default()
+			})
+			.unwrap();
+
 		let vertex_shader = shader_compiler.compile("shaders/editor/gizmo.slang", "main_vs");
 		let pixel_shader = shader_compiler.compile("shaders/editor/gizmo.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
 			vs: Some(("main_vs", &vertex_shader)),
 			ps: Some(("main_ps", &pixel_shader)),
-			descriptor_layout: gpu::DescriptorLayout {
-				push_constants: Some(gpu::PushConstantBinding {
-					size: size_of::<PushConstants>() as u32,
-				}),
-				bindings: Some(vec![
-					gpu::DescriptorBinding::bindless_srv(1), // buffers
-					gpu::DescriptorBinding::bindless_srv(2), // textures
-				]),
-				static_samplers: Some(vec![gpu::SamplerBinding {
-					shader_register: 0,
-					register_space: 0,
-					sampler_desc: gpu::SamplerDesc {
-						filter_min: gpu::FilterMode::Linear,
-						filter_mag: gpu::FilterMode::Linear,
-						filter_mip: gpu::FilterMode::Linear,
-						..Default::default()
-					},
-				}]),
-			},
 			rasterizer: gpu::RasterizerDesc::default(),
 			depth_stencil: gpu::DepthStencilDesc::default(),
 			color_attachments: &[gpu::ColorAttachment {
@@ -247,6 +239,7 @@ impl GizmoRenderer {
 			vb,
 			pipeline,
 			texture,
+			sampler,
 		}
 	}
 
@@ -267,6 +260,7 @@ impl GizmoRenderer {
 			screen_size: [self.resolution[0] as f32, self.resolution[1] as f32],
 			vb_index: self.vb.srv_index().unwrap(),
 			depth_texture_id: depth_texture.srv_index().unwrap(),
+			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_graphics_pipeline(&self.pipeline);

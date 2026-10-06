@@ -37,6 +37,7 @@ pub struct Device {
 	sampler_heap: Heap,
 	rtv_heap: Heap,
 	dsv_heap: Heap,
+	root_signature: ID3D12RootSignature,
 }
 
 #[derive(Clone)]
@@ -84,6 +85,7 @@ pub struct CmdList {
 	command_lists: Vec<ID3D12GraphicsCommandList7>,
 	pix: Option<pix::WinPixEventRuntime>,
 	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
+	sampler_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE,  // TODO: Get from device itself.
 }
 
 #[derive(Clone)]
@@ -108,6 +110,7 @@ pub struct Texture {
 #[derive(Clone)]
 pub struct Sampler {
 	_sampler: D3D12_CPU_DESCRIPTOR_HANDLE,
+	index: usize,
 }
 
 fn map_box(offset: &[u32; 3], size: &[u32; 3]) -> D3D12_BOX {
@@ -236,14 +239,6 @@ fn map_border_color(border_color: super::BorderColor) -> [f32; 4] {
 	}
 }
 
-fn map_static_border_color(border_color: super::BorderColor) -> D3D12_STATIC_BORDER_COLOR {
-	match border_color {
-		super::BorderColor::TransparentBlack => D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
-		super::BorderColor::OpaqueBlack => D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK,
-		super::BorderColor::White => D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE,
-	}
-}
-
 fn map_compare_op(compare_op: super::CompareOp) -> D3D12_COMPARISON_FUNC {
 	match compare_op {
 		super::CompareOp::Never => D3D12_COMPARISON_FUNC_NEVER,
@@ -258,7 +253,7 @@ fn map_compare_op(compare_op: super::CompareOp) -> D3D12_COMPARISON_FUNC {
 }
 
 fn map_address_compare_op(op: Option<super::CompareOp>) -> D3D12_COMPARISON_FUNC {
-	op.map_or(D3D12_COMPARISON_FUNC_ALWAYS, map_compare_op)
+	op.map_or(D3D12_COMPARISON_FUNC_NONE, map_compare_op)
 }
 
 fn map_resource_dimension(desc: &super::TextureDesc) -> D3D12_RESOURCE_DIMENSION {
@@ -673,122 +668,109 @@ unsafe extern "system" fn debug_callback(
 	log::log!(target: "gpu::d3d12", log_level, "{}", unsafe { description.display() });
 }
 
-impl Device {
-	fn create_root_signature(
-		&self,
-		layout: &super::DescriptorLayout,
-	) -> result::Result<ID3D12RootSignature, super::Error> {
-		let mut root_params: Vec<D3D12_ROOT_PARAMETER1> = Vec::new();
+const BINDLESS_RESOURCE_RANGES: [(D3D12_DESCRIPTOR_RANGE_TYPE, u32); 7] = [
+	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1), // buffers
+	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2), // rw_buffers
+	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3), // textures_2d_float4
+	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4), // textures_2d_float
+	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5), // rw_textures_2d_float4
+	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 6), // rw_textures_2d_float
+	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7), // acceleration_structures
+];
+const BINDLESS_SAMPLER_SPACE: u32 = 8;
 
-		if let Some(push_constants) = &layout.push_constants {
-			assert_eq!(push_constants.size % 4, 0);
-			root_params.push(D3D12_ROOT_PARAMETER1 {
-				ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
-				Anonymous: D3D12_ROOT_PARAMETER1_0 {
-					Constants: D3D12_ROOT_CONSTANTS {
-						ShaderRegister: 0, // TODO: Hardcoded because Vulkan can't configure this for push constants.
-						RegisterSpace: 0,  // Maybe use different registers though, decide when implementing Vulkan.
-						Num32BitValues: push_constants.size / 4,
-					},
-				},
-				ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-			});
-		}
+fn create_root_signature(
+	device: &ID3D12Device10,
+) -> result::Result<ID3D12RootSignature, super::Error> {
+	let resource_ranges: Vec<D3D12_DESCRIPTOR_RANGE1> = BINDLESS_RESOURCE_RANGES
+		.iter()
+		.map(|&(range_type, space)| D3D12_DESCRIPTOR_RANGE1 {
+			RangeType: range_type,
+			NumDescriptors: u32::MAX,
+			BaseShaderRegister: 0,
+			RegisterSpace: space,
+			Flags: D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE
+				| D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE,
+			OffsetInDescriptorsFromTableStart: 0,
+		})
+		.collect();
 
-		if let Some(bindings) = &layout.bindings {
-			let mut ranges: Vec<D3D12_DESCRIPTOR_RANGE1> = Vec::new();
+	let sampler_ranges = [D3D12_DESCRIPTOR_RANGE1 {
+		RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+		NumDescriptors: u32::MAX,
+		BaseShaderRegister: 0,
+		RegisterSpace: BINDLESS_SAMPLER_SPACE,
+		Flags: D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE,
+		OffsetInDescriptorsFromTableStart: 0,
+	}];
 
-			for binding in bindings {
-				let range = D3D12_DESCRIPTOR_RANGE1 {
-					RangeType: match binding.binding_type {
-						super::DescriptorType::ShaderResource => D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-						super::DescriptorType::UnorderedAccess => D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
-						super::DescriptorType::ConstantBuffer => D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
-						super::DescriptorType::Sampler => D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
-					},
-					NumDescriptors: binding.num_descriptors.unwrap_or(u32::MAX),
-					BaseShaderRegister: binding.shader_register,
-					RegisterSpace: binding.register_space,
-					Flags: D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE
-						| D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE, // TODO: Optimization potential?
-					OffsetInDescriptorsFromTableStart: binding
-						.offset
-						.unwrap_or(D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND),
-				};
-
-				ranges.push(range);
-			}
-
-			root_params.push(D3D12_ROOT_PARAMETER1 {
-				ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-				Anonymous: D3D12_ROOT_PARAMETER1_0 {
-					DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE1 {
-						NumDescriptorRanges: ranges.len() as u32,
-						pDescriptorRanges: ranges.as_ptr() as *mut _,
-					},
-				},
-				ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-			});
-		}
-
-		let mut static_samplers: Vec<D3D12_STATIC_SAMPLER_DESC> = Vec::new();
-		if let Some(samplers) = &layout.static_samplers {
-			for sampler in samplers {
-				static_samplers.push(D3D12_STATIC_SAMPLER_DESC {
-					Filter: map_sampler_filter(&sampler.sampler_desc),
-					AddressU: map_address_mode(sampler.sampler_desc.address_u),
-					AddressV: map_address_mode(sampler.sampler_desc.address_v),
-					AddressW: map_address_mode(sampler.sampler_desc.address_w),
-					MipLODBias: sampler.sampler_desc.lod_bias,
-					MaxAnisotropy: sampler.sampler_desc.max_anisotropy,
-					ComparisonFunc: map_address_compare_op(sampler.sampler_desc.compare),
-					BorderColor: sampler.sampler_desc.border_color.map_or(
-						D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK,
-						map_static_border_color,
-					),
-					MinLOD: sampler.sampler_desc.min_lod,
-					MaxLOD: sampler.sampler_desc.max_lod,
-					ShaderRegister: sampler.shader_register,
-					RegisterSpace: sampler.register_space,
-					ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-				})
-			}
-		}
-
-		let desc = D3D12_VERSIONED_ROOT_SIGNATURE_DESC {
-			Version: D3D_ROOT_SIGNATURE_VERSION_1_1,
-			Anonymous: D3D12_VERSIONED_ROOT_SIGNATURE_DESC_0 {
-				Desc_1_1: D3D12_ROOT_SIGNATURE_DESC1 {
-					NumParameters: root_params.len() as u32,
-					pParameters: root_params.as_mut_ptr(),
-					NumStaticSamplers: static_samplers.len() as u32,
-					pStaticSamplers: static_samplers.as_mut_ptr(),
-					Flags: D3D12_ROOT_SIGNATURE_FLAG_NONE,
+	let root_params = [
+		D3D12_ROOT_PARAMETER1 {
+			ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+			Anonymous: D3D12_ROOT_PARAMETER1_0 {
+				Constants: D3D12_ROOT_CONSTANTS {
+					ShaderRegister: 0,
+					RegisterSpace: 0,
+					Num32BitValues: super::MAX_PUSH_CONSTANTS_SIZE / 4,
 				},
 			},
-		};
+			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+		},
+		D3D12_ROOT_PARAMETER1 {
+			ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+			Anonymous: D3D12_ROOT_PARAMETER1_0 {
+				DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE1 {
+					NumDescriptorRanges: resource_ranges.len() as u32,
+					pDescriptorRanges: resource_ranges.as_ptr() as *mut _,
+				},
+			},
+			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+		},
+		D3D12_ROOT_PARAMETER1 {
+			ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
+			Anonymous: D3D12_ROOT_PARAMETER1_0 {
+				DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE1 {
+					NumDescriptorRanges: sampler_ranges.len() as u32,
+					pDescriptorRanges: sampler_ranges.as_ptr() as *mut _,
+				},
+			},
+			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
+		},
+	];
 
-		unsafe {
-			let mut signature = None;
-			let mut error = None;
+	let desc = D3D12_VERSIONED_ROOT_SIGNATURE_DESC {
+		Version: D3D_ROOT_SIGNATURE_VERSION_1_1,
+		Anonymous: D3D12_VERSIONED_ROOT_SIGNATURE_DESC_0 {
+			Desc_1_1: D3D12_ROOT_SIGNATURE_DESC1 {
+				NumParameters: root_params.len() as u32,
+				pParameters: root_params.as_ptr() as *mut _,
+				NumStaticSamplers: 0,
+				pStaticSamplers: std::ptr::null(),
+				Flags: D3D12_ROOT_SIGNATURE_FLAG_NONE,
+			},
+		},
+	};
 
-			D3D12SerializeVersionedRootSignature(&desc, &mut signature, Some(&mut error)).unwrap();
+	unsafe {
+		let mut signature = None;
+		let mut error = None;
 
-			if let Some(blob) = error {
-				let error = String::from_raw_parts(
-					blob.GetBufferPointer() as *mut _,
-					blob.GetBufferSize(),
-					blob.GetBufferSize(),
-				);
-				return Err(super::Error { error });
-			}
+		D3D12SerializeVersionedRootSignature(&desc, &mut signature, Some(&mut error)).unwrap();
 
-			let sig = signature.unwrap();
-			let slice =
-				std::slice::from_raw_parts(sig.GetBufferPointer() as *mut u8, sig.GetBufferSize());
-			let sig = self.device.CreateRootSignature(0, slice)?;
-			Ok(sig)
+		if let Some(blob) = error {
+			let error = String::from_raw_parts(
+				blob.GetBufferPointer() as *mut _,
+				blob.GetBufferSize(),
+				blob.GetBufferSize(),
+			);
+			return Err(super::Error { error });
 		}
+
+		let sig = signature.unwrap();
+		let slice =
+			std::slice::from_raw_parts(sig.GetBufferPointer() as *mut u8, sig.GetBufferSize());
+		let sig = device.CreateRootSignature(0, slice)?;
+		Ok(sig)
 	}
 }
 
@@ -874,6 +856,8 @@ impl super::DeviceImpl for Device {
 			let rtv_heap = Heap::new(&device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 100); // TODO: Hardcoded
 			let dsv_heap = Heap::new(&device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 100); // TODO: Hardcoded
 
+			let root_signature = create_root_signature(&device).unwrap();
+
 			let pix = desc
 				.validation
 				.contains(super::Validation::DEBUGGER)
@@ -891,6 +875,7 @@ impl super::DeviceImpl for Device {
 				sampler_heap,
 				rtv_heap,
 				dsv_heap,
+				root_signature,
 			}
 		}
 	}
@@ -973,6 +958,7 @@ impl super::DeviceImpl for Device {
 				command_lists,
 				pix: self.pix,
 				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
+				sampler_heap_base: self.sampler_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
 		}
 	}
@@ -1220,7 +1206,9 @@ impl super::DeviceImpl for Device {
 		let h = self.sampler_heap.allocate();
 		unsafe { self.device.CreateSampler(&dx_desc, h) };
 
-		Ok(Sampler { _sampler: h })
+		let index = self.sampler_heap.handle_to_index(&h);
+
+		Ok(Sampler { _sampler: h, index })
 	}
 
 	fn create_acceleration_structure(
@@ -1265,7 +1253,7 @@ impl super::DeviceImpl for Device {
 		&self,
 		desc: &super::GraphicsPipelineDesc,
 	) -> result::Result<GraphicsPipeline, super::Error> {
-		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
+		let root_signature = self.root_signature.clone();
 
 		let raster = &desc.rasterizer;
 		let depth_stencil = &desc.depth_stencil;
@@ -1362,7 +1350,7 @@ impl super::DeviceImpl for Device {
 		desc: &super::ComputePipelineDesc,
 	) -> result::Result<ComputePipeline, super::Error> {
 		let cs = &desc.cs;
-		let root_signature = self.create_root_signature(desc.descriptor_layout)?;
+		let root_signature = self.root_signature.clone();
 
 		let dx_desc = D3D12_COMPUTE_PIPELINE_STATE_DESC {
 			CS: D3D12_SHADER_BYTECODE {
@@ -1388,7 +1376,7 @@ impl super::DeviceImpl for Device {
 		let subobject_count = desc.libraries.len() + desc.groups.len() + 3; // TODO: Only count groups that are not general
 		let mut subobjects: Vec<D3D12_STATE_SUBOBJECT> = Vec::with_capacity(subobject_count);
 
-		let root_signature = self.create_root_signature(&desc.descriptor_layout)?;
+		let root_signature = self.root_signature.clone();
 
 		let pipeline_config = D3D12_RAYTRACING_PIPELINE_CONFIG {
 			MaxTraceRecursionDepth: desc.max_trace_recursion_depth,
@@ -1712,7 +1700,11 @@ impl super::TextureImpl<Device> for Texture {
 	}
 }
 
-impl super::SamplerImpl<Device> for Sampler {}
+impl super::SamplerImpl<Device> for Sampler {
+	fn index(&self) -> u32 {
+		self.index as u32
+	}
+}
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
 	fn srv_index(&self) -> Option<u32> {

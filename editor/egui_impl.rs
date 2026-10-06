@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use std::ops::Range;
 
-use crate::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, TextureImpl};
+use crate::gpu::{self, BufferImpl, CmdListImpl, DeviceImpl, SamplerImpl, TextureImpl};
 use crate::os::{self, App, Window};
 
 // TODO: Dynamically reallocate
@@ -29,6 +29,7 @@ pub struct EguiRenderer {
 	ib: gpu::Buffer,
 	ib_ranges: Vec<Range<u32>>,
 	textures: HashMap<egui::TextureId, gpu::Texture>,
+	sampler: gpu::Sampler,
 }
 
 impl EguiRenderer {
@@ -49,29 +50,21 @@ impl EguiRenderer {
 			})
 			.unwrap();
 
+		let sampler = device
+			.create_sampler(&gpu::SamplerDesc {
+				filter_min: gpu::FilterMode::Linear,
+				filter_mag: gpu::FilterMode::Linear,
+				filter_mip: gpu::FilterMode::Linear,
+				..Default::default()
+			})
+			.unwrap();
+
 		let vertex_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_vs");
 		let pixel_shader = shader_compiler.compile("shaders/editor/egui.slang", "main_ps");
 
 		let pipeline_desc = gpu::GraphicsPipelineDesc {
 			vs: Some(("main_vs", &vertex_shader)),
 			ps: Some(("main_ps", &pixel_shader)),
-			descriptor_layout: gpu::DescriptorLayout {
-				push_constants: Some(gpu::PushConstantBinding { size: 5 * 4 }),
-				bindings: Some(vec![
-					gpu::DescriptorBinding::bindless_srv(1), // buffers
-					gpu::DescriptorBinding::bindless_srv(2), // textures
-				]),
-				static_samplers: Some(vec![gpu::SamplerBinding {
-					shader_register: 0,
-					register_space: 0,
-					sampler_desc: gpu::SamplerDesc {
-						filter_min: gpu::FilterMode::Linear,
-						filter_mag: gpu::FilterMode::Linear,
-						filter_mip: gpu::FilterMode::Linear,
-						..Default::default()
-					},
-				}]),
-			},
 			rasterizer: gpu::RasterizerDesc::default(),
 			depth_stencil: gpu::DepthStencilDesc::default(),
 			color_attachments: &[gpu::ColorAttachment {
@@ -97,6 +90,7 @@ impl EguiRenderer {
 			ib,
 			ib_ranges: Vec::new(),
 			textures: Default::default(),
+			sampler,
 		}
 	}
 
@@ -114,10 +108,13 @@ impl EguiRenderer {
 
 		cmd.set_viewport(&gpu::Rect::from_size(size_in_pixels).into(), 0.0..1.0);
 
+		let sampler_index = self.sampler.index();
+
 		cmd.set_index_buffer(&self.ib, 0, gpu::Format::R32UInt);
 		cmd.set_graphics_pipeline(&self.pipeline);
 		cmd.graphics_push_constants(0, gpu::slice_as_u8_slice(&size_in_points));
 		cmd.graphics_push_constants(2 * 4, gpu::as_u8_slice(&vb_id));
+		cmd.graphics_push_constants(4 * 4, gpu::as_u8_slice(&sampler_index));
 
 		self.paint_primitives(cmd, clipped_primitives, screen_desc);
 	}

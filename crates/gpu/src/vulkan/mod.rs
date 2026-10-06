@@ -501,9 +501,14 @@ impl super::TextureImpl<Device> for Texture {
 
 pub struct Sampler {
 	sampler: vk::Sampler,
+	index: u32,
 }
 
-impl super::SamplerImpl<Device> for Sampler {}
+impl super::SamplerImpl<Device> for Sampler {
+	fn index(&self) -> u32 {
+		self.index
+	}
+}
 
 pub struct AccelerationStructure {
 	acceleration_structure: vk::AccelerationStructureKHR,
@@ -1195,13 +1200,13 @@ impl super::DeviceImpl for Device {
 		let srv_index = desc
 			.usage
 			.contains(super::BufferUsage::SHADER_RESOURCE)
-			.then(|| srv_uav_index)
+			.then_some(srv_uav_index)
 			.flatten();
 
 		let uav_index = desc
 			.usage
 			.intersects(super::BufferUsage::UNORDERED_ACCESS)
-			.then(|| srv_uav_index)
+			.then_some(srv_uav_index)
 			.flatten();
 
 		Ok(Buffer {
@@ -1355,10 +1360,11 @@ impl super::DeviceImpl for Device {
 
 		let sampler = unsafe { self.device.create_sampler(&create_info, None) }.unwrap();
 
-		self.bindless_manager
+		let index = self
+			.bindless_manager
 			.register_sampler(&self.device, sampler);
 
-		Ok(Sampler { sampler })
+		Ok(Sampler { sampler, index })
 	}
 
 	fn create_acceleration_structure(
@@ -2016,8 +2022,6 @@ struct BindlessManager {
 	storage_image_index: u32,
 	acceleration_structure_index: u32,
 	sampler_index: u32,
-
-	default_samplers: Vec<vk::Sampler>,
 }
 
 impl BindlessManager {
@@ -2095,7 +2099,7 @@ impl BindlessManager {
 
 		let descriptor_sets = unsafe { device.allocate_descriptor_sets(&alloc_info).unwrap() };
 
-		let mut manager = Self {
+		Self {
 			descriptor_pool,
 			descriptor_set_layouts: descriptor_layouts.try_into().unwrap(),
 			descriptor_sets: descriptor_sets.try_into().unwrap(),
@@ -2105,26 +2109,7 @@ impl BindlessManager {
 			storage_image_index: 0,
 			acceleration_structure_index: 0,
 			sampler_index: 0,
-
-			default_samplers: Vec::new(),
-		};
-
-		// All shaders declare [[vk::binding(0, 4)]] SamplerState linear_sampler, which
-		// maps to array element 0 of the bindless sampler set. Register it here so it is
-		// always available regardless of which pipelines have been created.
-		let linear_sampler_info = vk::SamplerCreateInfo::default()
-			.min_filter(vk::Filter::LINEAR)
-			.mag_filter(vk::Filter::LINEAR)
-			.mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-			.address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-			.max_lod(1000.0);
-		let linear_sampler = unsafe { device.create_sampler(&linear_sampler_info, None).unwrap() };
-		manager.register_sampler(device, linear_sampler);
-		manager.default_samplers.push(linear_sampler);
-
-		manager
+		}
 	}
 
 	fn register_buffer_uav(&mut self, device: &ash::Device, buffer: vk::Buffer) -> u32 {
@@ -2223,7 +2208,7 @@ impl BindlessManager {
 		assigned_index
 	}
 
-	fn register_sampler(&mut self, device: &ash::Device, sampler: vk::Sampler) {
+	fn register_sampler(&mut self, device: &ash::Device, sampler: vk::Sampler) -> u32 {
 		if self.sampler_index >= MAX_BINDLESS_RESOURCES {
 			panic!("Exceeded MAX_BINDLESS_RESOURCES for Samplers");
 		}
@@ -2239,14 +2224,14 @@ impl BindlessManager {
 			.image_info(std::slice::from_ref(&sampler_info));
 
 		unsafe { device.update_descriptor_sets(std::slice::from_ref(&write_set), &[]) };
+
+		let index = self.sampler_index;
 		self.sampler_index += 1;
+		index
 	}
 
 	fn destroy(&self, device: &ash::Device) {
 		unsafe {
-			for &sampler in &self.default_samplers {
-				device.destroy_sampler(sampler, None);
-			}
 			device.destroy_descriptor_pool(self.descriptor_pool, None);
 		}
 	}
@@ -2256,14 +2241,12 @@ fn create_pipeline_layout(device: &ash::Device, bindless: &BindlessManager) -> v
 	let push_constant_ranges = [vk::PushConstantRange {
 		stage_flags: vk::ShaderStageFlags::ALL,
 		offset: 0,
-		size: 128, // TODO: Hardcoded guaranteed minimum size
+		size: super::MAX_PUSH_CONSTANTS_SIZE,
 	}];
 
 	let layout_info = vk::PipelineLayoutCreateInfo::default()
 		.set_layouts(&bindless.descriptor_set_layouts)
 		.push_constant_ranges(&push_constant_ranges);
 
-	let layout = unsafe { device.create_pipeline_layout(&layout_info, None).unwrap() };
-
-	layout
+	unsafe { device.create_pipeline_layout(&layout_info, None).unwrap() }
 }

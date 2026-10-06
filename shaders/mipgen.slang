@@ -1,3 +1,4 @@
+import bindless;
 import math;
 
 [[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
@@ -5,12 +6,8 @@ import math;
 	uint output_id;
 	uint input_id;
 	uint input_mip;
+	uint sampler_index;
 }
-
-[[vk::binding(0, 1)]] Texture2D<float> textures_2d_float[] : register(t0, space1);
-[[vk::binding(0, 2)]] RWTexture2D<float> rw_textures_2d_float[] : register(u0, space2);
-
-[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0, space0);
 
 [shader("compute")]
 [numthreads(16, 16, 1)]
@@ -18,8 +15,9 @@ void main(uint3 id : SV_DispatchThreadID) {
 	let pixel = id.xy;
 	if (any(pixel >= output_res)) return;
 
-	let input = textures_2d_float[input_id];
-	let output = rw_textures_2d_float[output_id];
+	let input = get_texture2d_float(input_id);
+	let output = get_rw_texture2d_float(output_id);
+	let linear_sampler = get_sampler(sampler_index);
 
 	let uv = ((float2)pixel + 0.5) / (float2)output_res;
 	let color = input.SampleLevel(linear_sampler, uv, input_mip);

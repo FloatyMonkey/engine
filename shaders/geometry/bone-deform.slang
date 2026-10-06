@@ -1,3 +1,5 @@
+import bindless;
+
 [[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	uint num_vertices;
 
@@ -8,9 +10,6 @@
 	uint weight_stream;
 	uint bone_matrices;
 }
-
-[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
-[[vk::binding(0, 0)]] RWByteAddressBuffer rw_buffers[] : register(u0, space2);
 
 struct Vertex {
 	float3 position;
@@ -40,12 +39,12 @@ func get_bone_transform(vertex_id: uint, lookup: ByteAddressBuffer, weights: Byt
 func main(uint id : SV_DispatchThreadID) {
 	if (id >= num_vertices) return;
 
-	let in_vertices = buffers[in_vertices];
-	let out_vertices = rw_buffers[out_vertices];
+	let in_vertices = get_buffer(in_vertices);
+	let out_vertices = get_rw_buffer(out_vertices);
 
-	let lookup = buffers[lookup_stream];
-	let weights = buffers[weight_stream];
-	let bones = buffers[bone_matrices];
+	let lookup = get_buffer(lookup_stream);
+	let weights = get_buffer(weight_stream);
+	let bones = get_buffer(bone_matrices);
 
 	var vertex = in_vertices.Load<Vertex>(id * sizeof(Vertex));
 

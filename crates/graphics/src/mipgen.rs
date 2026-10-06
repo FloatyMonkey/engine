@@ -1,4 +1,4 @@
-use gpu::{self, CmdListImpl, DeviceImpl, TextureImpl};
+use gpu::{self, CmdListImpl, DeviceImpl, SamplerImpl, TextureImpl};
 
 #[repr(C)]
 struct PushConstants {
@@ -6,45 +6,36 @@ struct PushConstants {
 	output_id: u32,
 	input_id: u32,
 	input_mip: u32,
+	sampler_index: u32,
 }
 
 pub struct MipGen {
 	mipgen_pipeline: gpu::ComputePipeline,
+	sampler: gpu::Sampler,
 }
 
 impl MipGen {
 	pub fn setup(device: &mut gpu::Device, shader_compiler: &gpu::ShaderCompiler) -> Self {
 		let shader = shader_compiler.compile("shaders/mipgen.slang", "main");
 
-		let descriptor_layout = gpu::DescriptorLayout {
-			push_constants: Some(gpu::PushConstantBinding {
-				size: size_of::<PushConstants>() as u32,
-			}),
-			bindings: Some(vec![
-				gpu::DescriptorBinding::bindless_srv(1),
-				gpu::DescriptorBinding::bindless_uav(2),
-			]),
-			static_samplers: Some(vec![gpu::SamplerBinding {
-				shader_register: 0,
-				register_space: 0,
-				sampler_desc: gpu::SamplerDesc {
-					filter_min: gpu::FilterMode::Linear,
-					filter_mag: gpu::FilterMode::Linear,
-					filter_mip: gpu::FilterMode::Linear,
-					..Default::default()
-				},
-			}]),
-		};
-
 		let compute_pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
 				cs: ("main", &shader),
-				descriptor_layout: &descriptor_layout,
+			})
+			.unwrap();
+
+		let sampler = device
+			.create_sampler(&gpu::SamplerDesc {
+				filter_min: gpu::FilterMode::Linear,
+				filter_mag: gpu::FilterMode::Linear,
+				filter_mip: gpu::FilterMode::Linear,
+				..Default::default()
 			})
 			.unwrap();
 
 		Self {
 			mipgen_pipeline: compute_pipeline,
+			sampler,
 		}
 	}
 
@@ -67,6 +58,7 @@ impl MipGen {
 				output_res: [output_res; 2],
 				input_id: texture.srv_index().unwrap(),
 				input_mip: (i - 1) as u32,
+				sampler_index: self.sampler.index(),
 			};
 
 			cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));

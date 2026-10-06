@@ -53,21 +53,9 @@ impl BoneDeform {
 	) -> Self {
 		let shader = shader_compiler.compile("shaders/geometry/bone-deform.slang", "main");
 
-		let descriptor_layout = gpu::DescriptorLayout {
-			push_constants: Some(gpu::PushConstantBinding {
-				size: size_of::<PushConstants>() as u32,
-			}),
-			bindings: Some(vec![
-				gpu::DescriptorBinding::bindless_srv(1),
-				gpu::DescriptorBinding::bindless_uav(2),
-			]),
-			static_samplers: None,
-		};
-
 		let compute_pipeline = device
 			.create_compute_pipeline(&gpu::ComputePipelineDesc {
 				cs: ("main", &shader),
-				descriptor_layout: &descriptor_layout,
 			})
 			.unwrap();
 

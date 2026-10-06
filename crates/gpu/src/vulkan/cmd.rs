@@ -96,11 +96,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		dst_offset: [u32; 3],
 		size: [u32; 3],
 	) {
-		let buffer_row_length = if dst.block_size > 0 {
-			src_bytes_per_row / dst.block_size
-		} else {
-			0
-		};
+		let buffer_row_length = src_bytes_per_row.checked_div(dst.block_size).unwrap_or(0);
 
 		unsafe {
 			self.device.cmd_copy_buffer_to_image(
@@ -136,11 +132,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		dst_bytes_per_row: u32,
 		size: [u32; 3],
 	) {
-		let buffer_row_length = if src.block_size > 0 {
-			dst_bytes_per_row / src.block_size
-		} else {
-			0
-		};
+		let buffer_row_length = dst_bytes_per_row.checked_div(src.block_size).unwrap_or(0);
 
 		unsafe {
 			self.device.cmd_copy_image_to_buffer(

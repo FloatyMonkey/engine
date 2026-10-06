@@ -1,13 +1,11 @@
+import bindless;
+
 [[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
 	float2 screen_size;
 	uint vb_index;
 	uint texture_index;
+	uint sampler_index;
 }
-
-[[vk::binding(0, 0)]] ByteAddressBuffer buffers[] : register(t0, space1);
-[[vk::binding(0, 1)]] Texture2D<float4> textures_2d_float4[] : register(t0, space2);
-
-[[vk::binding(0, 4)]] SamplerState linear_sampler : register(s0);
 
 func unpack_float4(u: uint) -> float4 {
 	float4 f;
@@ -38,7 +36,7 @@ struct PsInput {
 
 [shader("vertex")]
 PsInput main_vs(VsInput input) {
-	let vertex_buffer = buffers[vb_index];
+	let vertex_buffer = get_buffer(vb_index);
 	let vertex = vertex_buffer.Load<Vertex>(input.vertex_id * sizeof(Vertex));
 
 	var output: PsInput;
@@ -56,7 +54,8 @@ PsInput main_vs(VsInput input) {
 
 [shader("pixel")]
 float4 main_ps(PsInput input) : SV_Target {
-	let texture = textures_2d_float4[texture_index];
+	let texture = get_texture2d_float4(texture_index);
+	let linear_sampler = get_sampler(sampler_index);
 
 	return input.color * texture.Sample(linear_sampler, input.uv);
 }

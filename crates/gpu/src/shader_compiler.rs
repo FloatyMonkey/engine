@@ -19,7 +19,8 @@ impl ShaderCompiler {
 		let session_options = slang::CompilerOptions::default()
 			.optimization(slang::OptimizationLevel::High)
 			.matrix_layout_row(true)
-			.vulkan_use_entry_point_name(true);
+			.vulkan_use_entry_point_name(true)
+			.glsl_force_scalar_layout(true); // Makes Vulkan buffers and push constants match `#[repr(C)]` Rust structs.
 
 		let target_desc = slang::TargetDesc::default()
 			.format(match self.backend {
@@ -27,7 +28,7 @@ impl ShaderCompiler {
 				super::Backend::Vulkan => slang::CompileTarget::Spirv,
 			})
 			.profile(self.global_session.find_profile(match self.backend {
-				super::Backend::D3D12 => "sm_6_5",
+				super::Backend::D3D12 => "sm_6_6",
 				super::Backend::Vulkan => "glsl_450",
 			}));
 

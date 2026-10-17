@@ -2,11 +2,11 @@ use gpu::{self, CmdListImpl, DeviceImpl, SamplerImpl, TextureImpl};
 
 #[repr(C)]
 struct PushConstants {
+	input: gpu::DescriptorHandle,
+	output: gpu::DescriptorHandle,
+	linear_sampler: gpu::DescriptorHandle,
 	output_res: [u32; 2],
-	output_id: u32,
-	input_id: u32,
 	input_mip: u32,
-	sampler_index: u32,
 }
 
 pub struct MipGen {
@@ -44,7 +44,7 @@ impl MipGen {
 		cmd: &gpu::CmdList,
 		texture: &gpu::Texture,
 		base_resolution: u32,
-		uavs: &[gpu::TextureView], // Largest to smallest mip resolution, excluding the base mip.
+		uavs: &[gpu::DescriptorHandle], // Largest to smallest mip resolution, excluding the base mip.
 	) {
 		let mip_levels = uavs.len() + 1; // TODO: Get from texture.
 
@@ -54,11 +54,11 @@ impl MipGen {
 			let output_res = gpu::at_mip_level(base_resolution, i as u32);
 
 			let push_constants = PushConstants {
-				output_id: uavs[i - 1].index,
+				input: texture.srv().unwrap(),
+				output: uavs[i - 1],
+				linear_sampler: self.sampler.handle(),
 				output_res: [output_res; 2],
-				input_id: texture.srv_index().unwrap(),
 				input_mip: (i - 1) as u32,
-				sampler_index: self.sampler.index(),
 			};
 
 			cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));

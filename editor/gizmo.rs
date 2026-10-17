@@ -159,10 +159,10 @@ const VERTEX_BUFFER_SIZE: usize = 1024 * 1024;
 #[repr(C)]
 struct PushConstants {
 	view_projection: [[f32; 4]; 4],
+	vertex_buffer: gpu::DescriptorHandle,
+	scene_depth_texture: gpu::DescriptorHandle,
+	linear_sampler: gpu::DescriptorHandle,
 	screen_size: [f32; 2],
-	vb_index: u32,
-	depth_texture_id: u32,
-	sampler_index: u32,
 }
 
 pub struct GizmoRenderer {
@@ -257,10 +257,10 @@ impl GizmoRenderer {
 
 		let push_constants = PushConstants {
 			view_projection: *view_projection,
+			vertex_buffer: self.vb.srv().unwrap(),
+			scene_depth_texture: depth_texture.srv().unwrap(),
+			linear_sampler: self.sampler.handle(),
 			screen_size: [self.resolution[0] as f32, self.resolution[1] as f32],
-			vb_index: self.vb.srv_index().unwrap(),
-			depth_texture_id: depth_texture.srv_index().unwrap(),
-			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_graphics_pipeline(&self.pipeline);

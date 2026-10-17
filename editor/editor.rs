@@ -11,7 +11,7 @@ const EDITOR_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct MyContext {
 	pub world: World,
 	pub selection: HashSet<Entity>,
-	pub viewport_texture_srv: u32,
+	pub viewport_texture: Option<gpu::DescriptorHandle>,
 }
 
 pub struct Editor {
@@ -62,7 +62,7 @@ impl Editor {
 			context: MyContext {
 				world,
 				selection: HashSet::new(),
-				viewport_texture_srv: 0,
+				viewport_texture: None,
 			},
 			tree: Self::setup_tree(),
 		}

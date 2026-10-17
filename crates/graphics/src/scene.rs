@@ -37,10 +37,15 @@ pub struct Vertex {
 
 #[repr(C)]
 struct Instance {
-	vertex_buffer_id: u32,
-	index_buffer_id: u32,
+	vertex_buffer: gpu::DescriptorHandle,
+	index_buffer: gpu::DescriptorHandle,
 	material_offset: u32,
 }
+
+// Must match `Instance` and `LIGHT_SIZE` in the path tracer kernel.
+const _: () = assert!(size_of::<Instance>() == 24);
+const _: () = assert!(size_of::<GpuLight>() == 64);
+const _: () = assert!(std::mem::offset_of!(GpuDomeLight, env_map) == 8); // `DomeLightData` loaded at offset 4.
 
 #[repr(C)]
 enum GpuLightType {
@@ -53,8 +58,8 @@ enum GpuLightType {
 #[derive(Clone, Copy)]
 struct GpuDomeLight {
 	ty: u32,
-	env_map_id: u32,
-	importance_map_id: u32,
+	env_map: gpu::DescriptorHandle,
+	importance_map: gpu::DescriptorHandle,
 	base_mip: u32,
 }
 
@@ -262,18 +267,18 @@ impl Scene {
 		let mut infinite_light_count = 0;
 
 		for light in &world.query::<&DomeLight>() {
-			let env_map_srv_index = self
+			let env_map = self
 				.get_texture_from_cache(&light.image, device, assets)
-				.srv_index()
+				.srv()
 				.unwrap();
 
 			// TODO: Currently only supports single dome light
-			self.importance_map.update(cmd, env_map_srv_index);
+			self.importance_map.update(cmd, env_map);
 
 			lights[light_index].dome = GpuDomeLight {
 				ty: GpuLightType::Dome as _,
-				env_map_id: env_map_srv_index,
-				importance_map_id: self.importance_map.importance_map.srv_index().unwrap(),
+				env_map,
+				importance_map: self.importance_map.importance_map.srv().unwrap(),
 				base_mip: self.importance_map.base_mip(),
 			};
 
@@ -337,8 +342,8 @@ impl Scene {
 			let mesh_data = self.get_mesh_from_cache(&renderable.mesh, device, cmd, assets);
 
 			instance_data[instance_index] = Instance {
-				vertex_buffer_id: mesh_data.vertex_buffer.srv_index().unwrap(),
-				index_buffer_id: mesh_data.index_buffer.srv_index().unwrap(),
+				vertex_buffer: mesh_data.vertex_buffer.srv().unwrap(),
+				index_buffer: mesh_data.index_buffer.srv().unwrap(),
 				material_offset: 0,
 			};
 

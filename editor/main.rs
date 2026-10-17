@@ -79,6 +79,8 @@ fn main() {
 
 		let raw_input = get_raw_input(&app, &window);
 
+		editor.context.viewport_texture = compositor.texture().srv();
+
 		let full_output = editor.run(raw_input);
 
 		set_full_output(&mut app, &mut window, &full_output);
@@ -139,8 +141,6 @@ fn main() {
 				&gizmo_renderer.texture,
 			);
 		}
-
-		editor.context.viewport_texture_srv = compositor.texture().srv_index().unwrap();
 
 		cmd.debug_event_pop();
 

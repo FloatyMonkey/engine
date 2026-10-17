@@ -1,15 +1,14 @@
-import bindless;
 import math;
 
-[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
-	uint env_map_id;
-	uint importance_map_id;
+[[vk::push_constant]] cbuffer ConstantBuffer {
+	Texture2D<float4>.Handle env_map;
+	RWTexture2D<float>.Handle importance_map;
+	SamplerState.Handle linear_sampler;
 
 	uint2 output_res;
 	uint2 output_res_in_samples;
 	uint2 num_samples;
 	float inv_samples;
-	uint sampler_index;
 }
 
 [shader("compute")]
@@ -17,10 +16,6 @@ import math;
 void main(uint3 id : SV_DispatchThreadID) {
 	let pixel = id.xy;
 	if (any(pixel >= output_res)) return;
-
-	let env_map = get_texture2d_float4(env_map_id);
-	let importance_map = get_rw_texture2d_float(importance_map_id);
-	let linear_sampler = get_sampler(sampler_index);
 
 	var L = 0.0;
 	for (uint y = 0; y < num_samples.y; y++) {

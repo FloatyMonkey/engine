@@ -416,8 +416,6 @@ impl gpu::CmdListImpl<Device> for CmdList {
 			cmd.SetGraphicsRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState(&pipeline.pipeline_state);
 			cmd.IASetPrimitiveTopology(pipeline.topology);
-			cmd.SetGraphicsRootDescriptorTable(1, self.resource_heap_base);
-			cmd.SetGraphicsRootDescriptorTable(2, self.sampler_heap_base);
 		}
 	}
 
@@ -426,8 +424,6 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		unsafe {
 			cmd.SetComputeRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState(&pipeline.pipeline_state);
-			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
-			cmd.SetComputeRootDescriptorTable(2, self.sampler_heap_base);
 		}
 	}
 
@@ -436,8 +432,6 @@ impl gpu::CmdListImpl<Device> for CmdList {
 		unsafe {
 			cmd.SetComputeRootSignature(&pipeline.root_signature);
 			cmd.SetPipelineState1(&pipeline.state_object);
-			cmd.SetComputeRootDescriptorTable(1, self.resource_heap_base);
-			cmd.SetComputeRootDescriptorTable(2, self.sampler_heap_base);
 		}
 	}
 

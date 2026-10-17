@@ -104,17 +104,17 @@ impl EguiRenderer {
 
 		let size_in_pixels = screen_desc.size_in_pixels;
 		let size_in_points = screen_desc.size_in_points();
-		let vb_id = self.vb.srv_index().unwrap();
+		let vb = self.vb.srv().unwrap();
 
 		cmd.set_viewport(&gpu::Rect::from_size(size_in_pixels).into(), 0.0..1.0);
 
-		let sampler_index = self.sampler.index();
+		let sampler = self.sampler.handle();
 
 		cmd.set_index_buffer(&self.ib, 0, gpu::Format::R32UInt);
 		cmd.set_graphics_pipeline(&self.pipeline);
-		cmd.graphics_push_constants(0, gpu::slice_as_u8_slice(&size_in_points));
-		cmd.graphics_push_constants(2 * 4, gpu::as_u8_slice(&vb_id));
-		cmd.graphics_push_constants(4 * 4, gpu::as_u8_slice(&sampler_index));
+		cmd.graphics_push_constants(0, gpu::as_u8_slice(&vb));
+		cmd.graphics_push_constants(4 * 4, gpu::as_u8_slice(&sampler));
+		cmd.graphics_push_constants(6 * 4, gpu::slice_as_u8_slice(&size_in_points));
 
 		self.paint_primitives(cmd, clipped_primitives, screen_desc);
 	}
@@ -221,17 +221,14 @@ impl EguiRenderer {
 			bottom: clip_max_y,
 		});
 
-		let texture_id = match &mesh.texture_id {
-			egui::TextureId::Managed(_) => self
-				.textures
-				.get(&mesh.texture_id)
-				.unwrap()
-				.srv_index()
-				.unwrap(),
-			egui::TextureId::User(id) => *id as u32,
+		let texture = match &mesh.texture_id {
+			egui::TextureId::Managed(_) => {
+				self.textures.get(&mesh.texture_id).unwrap().srv().unwrap()
+			}
+			egui::TextureId::User(index) => gpu::DescriptorHandle::from_index(*index as u32),
 		};
 
-		cmd.graphics_push_constants(3 * 4, gpu::as_u8_slice(&texture_id));
+		cmd.graphics_push_constants(2 * 4, gpu::as_u8_slice(&texture));
 		cmd.draw_indexed(self.ib_ranges[i].clone(), 0, 0..1);
 	}
 

@@ -116,7 +116,7 @@ impl tabs::Tab<MyContext> for ViewportTab {
 
 		let response = ui.add(
 			egui::Image::from_texture((
-				egui::TextureId::User(ctx.viewport_texture_srv as u64),
+				egui::TextureId::User(ctx.viewport_texture.unwrap().index() as u64),
 				max_rect.size(),
 			))
 			.rounding(egui::Rounding {

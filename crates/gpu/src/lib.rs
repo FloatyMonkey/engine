@@ -312,8 +312,35 @@ pub struct TextureDesc {
 	pub layout: TextureLayout,
 }
 
-pub struct TextureView {
-	pub index: u32,
+/// Shader visible descriptor, layout compatible with Slang's `DescriptorHandle<T>` (`T.Handle`).
+/// It's 8 bytes and must be 8 byte aligned in push constants and gpu buffers.
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
+pub struct DescriptorHandle {
+	low: u32,
+	high: u32,
+}
+
+impl DescriptorHandle {
+	// TODO: Make this pub(crate), handles should be opaque to the user
+	pub fn from_index(index: u32) -> Self {
+		Self {
+			low: index,
+			high: 0,
+		}
+	}
+
+	pub(crate) fn from_address(address: u64) -> Self {
+		Self {
+			low: address as u32,
+			high: (address >> 32) as u32,
+		}
+	}
+
+	// TODO: Remove this
+	pub fn index(self) -> u32 {
+		self.low
+	}
 }
 
 pub struct TextureViewDesc {
@@ -685,20 +712,20 @@ impl<'a, D: DeviceImpl> Barriers<'a, D> {
 }
 
 pub trait BufferImpl<D: DeviceImpl> {
-	fn srv_index(&self) -> Option<u32>;
-	fn uav_index(&self) -> Option<u32>;
+	fn srv(&self) -> Option<DescriptorHandle>;
+	fn uav(&self) -> Option<DescriptorHandle>;
 
 	fn cpu_ptr(&self) -> *mut u8;
 	fn gpu_ptr(&self) -> GpuPtr;
 }
 
 pub trait TextureImpl<D: DeviceImpl> {
-	fn srv_index(&self) -> Option<u32>;
-	fn uav_index(&self) -> Option<u32>;
+	fn srv(&self) -> Option<DescriptorHandle>;
+	fn uav(&self) -> Option<DescriptorHandle>;
 }
 
 pub trait SamplerImpl<D: DeviceImpl> {
-	fn index(&self) -> u32;
+	fn handle(&self) -> DescriptorHandle;
 }
 pub trait GraphicsPipelineImpl<D: DeviceImpl> {}
 pub trait ComputePipelineImpl<D: DeviceImpl> {}
@@ -710,7 +737,7 @@ pub trait RaytracingPipelineImpl<D: DeviceImpl> {
 
 pub trait AccelerationStructureImpl<D: DeviceImpl> {
 	/// Only valid for top-level acceleration structures.
-	fn srv_index(&self) -> Option<u32>;
+	fn srv(&self) -> Option<DescriptorHandle>;
 
 	/// Only valid for bottom-level acceleration structures.
 	fn gpu_ptr(&self) -> GpuPtr;
@@ -768,7 +795,7 @@ pub trait DeviceImpl: 'static + Send + Sync + Sized {
 		&mut self,
 		desc: &TextureViewDesc,
 		texture: &Self::Texture,
-	) -> TextureView;
+	) -> DescriptorHandle;
 
 	fn submit(&self, cmd: &Self::CmdList);
 	fn queue_wait(&self);

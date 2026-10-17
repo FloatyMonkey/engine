@@ -9,16 +9,16 @@ use rand::{RngCore, SeedableRng, rngs::StdRng};
 #[repr(C)]
 struct PushConstants {
 	camera: GpuCamera,
-	tlas_index: u32,
-	color_pass_index: u32,
-	depth_pass_index: u32,
-	instance_data_index: u32,
-	light_data_index: u32,
+	tlas: gpu::DescriptorHandle,
+	color_pass: gpu::DescriptorHandle,
+	depth_pass: gpu::DescriptorHandle,
+	instance_data: gpu::DescriptorHandle,
+	light_data: gpu::DescriptorHandle,
+	linear_sampler: gpu::DescriptorHandle,
 	light_count: u32,
 	infinite_light_count: u32,
 	seed: u32,
 	accumulation_factor: f32,
-	sampler_index: u32,
 }
 
 // TODO: Document depth pass:
@@ -155,16 +155,16 @@ impl PathTracer {
 	fn render(&mut self, cmd: &mut gpu::CmdList, scene: &scene::Scene) {
 		let push_constants = PushConstants {
 			camera: GpuCamera::from_camera(&scene.camera, &scene.camera_transform),
-			tlas_index: scene.tlas.accel.srv_index().unwrap(),
-			color_pass_index: self.color_pass_texture.uav_index().unwrap(),
-			depth_pass_index: self.depth_pass_texture.uav_index().unwrap(),
-			instance_data_index: scene.instance_data_buffer.srv_index().unwrap(),
-			light_data_index: scene.light_data_buffer.srv_index().unwrap(),
+			tlas: scene.tlas.accel.srv().unwrap(),
+			color_pass: self.color_pass_texture.uav().unwrap(),
+			depth_pass: self.depth_pass_texture.uav().unwrap(),
+			instance_data: scene.instance_data_buffer.srv().unwrap(),
+			light_data: scene.light_data_buffer.srv().unwrap(),
+			linear_sampler: self.sampler.handle(),
 			light_count: scene.light_count as _,
 			infinite_light_count: scene.infinite_light_count as _,
 			seed: self.rng.next_u32(),
 			accumulation_factor: 1.0 / (self.sample_index + 1) as f32,
-			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_raytracing_pipeline(&self.pipeline);
@@ -237,10 +237,10 @@ impl PathTracer {
 
 #[repr(C)]
 struct CompositorPushConstants {
-	input_id: u32,
-	output_id: u32,
+	input: gpu::DescriptorHandle,
+	overlay: gpu::DescriptorHandle,
+	output: gpu::DescriptorHandle,
 	output_res: [u32; 2],
-	overlay_id: u32,
 }
 
 pub struct Compositor {
@@ -298,10 +298,10 @@ impl Compositor {
 		cmd.set_compute_pipeline(&self.pipeline);
 
 		let push_constants = CompositorPushConstants {
-			input_id: input.srv_index().unwrap(),
-			output_id: self.texture.uav_index().unwrap(),
+			input: input.srv().unwrap(),
+			overlay: overlay.srv().unwrap(),
+			output: self.texture.uav().unwrap(),
 			output_res: self.res,
-			overlay_id: overlay.srv_index().unwrap(),
 		};
 
 		cmd.compute_push_constants(0, gpu::as_u8_slice(&push_constants));

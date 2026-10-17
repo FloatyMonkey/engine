@@ -8,21 +8,21 @@ pub struct ImportanceMap {
 	pub importance_map: gpu::Texture,
 	prepare_pipeline: gpu::ComputePipeline,
 	sampler: gpu::Sampler,
-	uavs: Vec<gpu::TextureView>,
+	uavs: Vec<gpu::DescriptorHandle>,
 	mipgen: MipGen,
 	dirty: bool,
 }
 
 #[repr(C)]
 struct PushConstants {
-	env_map_id: u32,
-	importance_map_id: u32,
+	env_map: gpu::DescriptorHandle,
+	importance_map: gpu::DescriptorHandle,
+	linear_sampler: gpu::DescriptorHandle,
 
 	output_res: [u32; 2],
 	output_res_in_samples: [u32; 2],
 	num_samples: [u32; 2],
 	inv_samples: f32,
-	sampler_index: u32,
 }
 
 impl ImportanceMap {
@@ -86,7 +86,7 @@ impl ImportanceMap {
 		}
 	}
 
-	pub fn update(&mut self, cmd: &mut gpu::CmdList, env_map_srv_index: u32) {
+	pub fn update(&mut self, cmd: &mut gpu::CmdList, env_map: gpu::DescriptorHandle) {
 		if !self.dirty {
 			return;
 		}
@@ -103,14 +103,14 @@ impl ImportanceMap {
 
 		// Transform the env map to the importance map.
 		let push_constants = PushConstants {
-			env_map_id: env_map_srv_index,
-			importance_map_id: self.importance_map.uav_index().unwrap(),
+			env_map,
+			importance_map: self.importance_map.uav().unwrap(),
+			linear_sampler: self.sampler.handle(),
 
 			output_res: [dimension; 2],
 			output_res_in_samples: [dimension * samples_x, dimension * samples_y],
 			num_samples: [samples_x, samples_y],
 			inv_samples: 1.0 / (samples_x * samples_y) as f32,
-			sampler_index: self.sampler.index(),
 		};
 
 		cmd.set_compute_pipeline(&self.prepare_pipeline);

@@ -20,14 +20,14 @@ fn to_gpu_data(vertex_groups: &AttributeGroup<f32>) -> (Vec<u32>, Vec<u32>) {
 
 #[repr(C)]
 struct PushConstants {
+	in_vertices: gpu::DescriptorHandle,
+	out_vertices: gpu::DescriptorHandle,
+
+	lookup_stream: gpu::DescriptorHandle,
+	weight_stream: gpu::DescriptorHandle,
+	bone_matrices: gpu::DescriptorHandle,
+
 	num_vertices: u32,
-
-	in_vertices: u32,
-	out_vertices: u32,
-
-	lookup_stream: u32,
-	weight_stream: u32,
-	bone_matrices: u32,
 }
 
 pub struct Vertex {
@@ -113,14 +113,14 @@ impl BoneDeform {
 		}
 	}
 
-	pub fn execute(&self, cmd: &gpu::CmdList, vertex_srv: u32) {
+	pub fn execute(&self, cmd: &gpu::CmdList, vertex_srv: gpu::DescriptorHandle) {
 		let push_constants = PushConstants {
-			num_vertices: self.num_vertices as u32,
 			in_vertices: vertex_srv,
-			out_vertices: self.transformed_vertex_buffer.uav_index().unwrap(),
-			lookup_stream: self.lookup_buffer.srv_index().unwrap(),
-			weight_stream: self.weights_buffer.srv_index().unwrap(),
-			bone_matrices: self.bone_transforms_buffer.srv_index().unwrap(),
+			out_vertices: self.transformed_vertex_buffer.uav().unwrap(),
+			lookup_stream: self.lookup_buffer.srv().unwrap(),
+			weight_stream: self.weights_buffer.srv().unwrap(),
+			bone_matrices: self.bone_transforms_buffer.srv().unwrap(),
+			num_vertices: self.num_vertices as u32,
 		};
 
 		cmd.set_compute_pipeline(&self.compute_pipeline);

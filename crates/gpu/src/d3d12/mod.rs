@@ -84,8 +84,6 @@ pub struct CmdList {
 	command_allocators: Vec<ID3D12CommandAllocator>,
 	command_lists: Vec<ID3D12GraphicsCommandList7>,
 	pix: Option<pix::WinPixEventRuntime>,
-	resource_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE, // TODO: Get from device itself.
-	sampler_heap_base: D3D12_GPU_DESCRIPTOR_HANDLE,  // TODO: Get from device itself.
 }
 
 #[derive(Clone)]
@@ -668,75 +666,20 @@ unsafe extern "system" fn debug_callback(
 	log::log!(target: "gpu::d3d12", log_level, "{}", unsafe { description.display() });
 }
 
-const BINDLESS_RESOURCE_RANGES: [(D3D12_DESCRIPTOR_RANGE_TYPE, u32); 7] = [
-	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1), // buffers
-	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2), // rw_buffers
-	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3), // textures_2d_float4
-	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4), // textures_2d_float
-	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5), // rw_textures_2d_float4
-	(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 6), // rw_textures_2d_float
-	(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7), // acceleration_structures
-];
-const BINDLESS_SAMPLER_SPACE: u32 = 8;
-
 fn create_root_signature(
 	device: &ID3D12Device10,
 ) -> result::Result<ID3D12RootSignature, super::Error> {
-	let resource_ranges: Vec<D3D12_DESCRIPTOR_RANGE1> = BINDLESS_RESOURCE_RANGES
-		.iter()
-		.map(|&(range_type, space)| D3D12_DESCRIPTOR_RANGE1 {
-			RangeType: range_type,
-			NumDescriptors: u32::MAX,
-			BaseShaderRegister: 0,
-			RegisterSpace: space,
-			Flags: D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE
-				| D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE,
-			OffsetInDescriptorsFromTableStart: 0,
-		})
-		.collect();
-
-	let sampler_ranges = [D3D12_DESCRIPTOR_RANGE1 {
-		RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
-		NumDescriptors: u32::MAX,
-		BaseShaderRegister: 0,
-		RegisterSpace: BINDLESS_SAMPLER_SPACE,
-		Flags: D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE,
-		OffsetInDescriptorsFromTableStart: 0,
+	let root_params = [D3D12_ROOT_PARAMETER1 {
+		ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+		Anonymous: D3D12_ROOT_PARAMETER1_0 {
+			Constants: D3D12_ROOT_CONSTANTS {
+				ShaderRegister: 0,
+				RegisterSpace: 0,
+				Num32BitValues: super::MAX_PUSH_CONSTANTS_SIZE / 4,
+			},
+		},
+		ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
 	}];
-
-	let root_params = [
-		D3D12_ROOT_PARAMETER1 {
-			ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
-			Anonymous: D3D12_ROOT_PARAMETER1_0 {
-				Constants: D3D12_ROOT_CONSTANTS {
-					ShaderRegister: 0,
-					RegisterSpace: 0,
-					Num32BitValues: super::MAX_PUSH_CONSTANTS_SIZE / 4,
-				},
-			},
-			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-		},
-		D3D12_ROOT_PARAMETER1 {
-			ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-			Anonymous: D3D12_ROOT_PARAMETER1_0 {
-				DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE1 {
-					NumDescriptorRanges: resource_ranges.len() as u32,
-					pDescriptorRanges: resource_ranges.as_ptr() as *mut _,
-				},
-			},
-			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-		},
-		D3D12_ROOT_PARAMETER1 {
-			ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
-			Anonymous: D3D12_ROOT_PARAMETER1_0 {
-				DescriptorTable: D3D12_ROOT_DESCRIPTOR_TABLE1 {
-					NumDescriptorRanges: sampler_ranges.len() as u32,
-					pDescriptorRanges: sampler_ranges.as_ptr() as *mut _,
-				},
-			},
-			ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
-		},
-	];
 
 	let desc = D3D12_VERSIONED_ROOT_SIGNATURE_DESC {
 		Version: D3D_ROOT_SIGNATURE_VERSION_1_1,
@@ -746,7 +689,8 @@ fn create_root_signature(
 				pParameters: root_params.as_ptr() as *mut _,
 				NumStaticSamplers: 0,
 				pStaticSamplers: std::ptr::null(),
-				Flags: D3D12_ROOT_SIGNATURE_FLAG_NONE,
+				Flags: D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED
+					| D3D12_ROOT_SIGNATURE_FLAG_SAMPLER_HEAP_DIRECTLY_INDEXED,
 			},
 		},
 	};
@@ -957,8 +901,6 @@ impl super::DeviceImpl for Device {
 				command_allocators,
 				command_lists,
 				pix: self.pix,
-				resource_heap_base: self.resource_heap.heap.GetGPUDescriptorHandleForHeapStart(),
-				sampler_heap_base: self.sampler_heap.heap.GetGPUDescriptorHandleForHeapStart(),
 			}
 		}
 	}
@@ -1504,7 +1446,7 @@ impl super::DeviceImpl for Device {
 		&mut self,
 		desc: &super::TextureViewDesc,
 		texture: &Texture,
-	) -> super::TextureView {
+	) -> super::DescriptorHandle {
 		let h = self.resource_heap.allocate();
 
 		unsafe {
@@ -1525,9 +1467,7 @@ impl super::DeviceImpl for Device {
 
 		let index = self.resource_heap.handle_to_index(&h);
 
-		super::TextureView {
-			index: index as u32,
-		}
+		super::DescriptorHandle::from_index(index as u32)
 	}
 
 	fn submit(&self, cmd: &CmdList) {
@@ -1673,12 +1613,14 @@ impl super::SurfaceImpl<Device> for Surface {
 }
 
 impl super::BufferImpl<Device> for Buffer {
-	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+	fn srv(&self) -> Option<super::DescriptorHandle> {
+		self.srv_index
+			.map(|i| super::DescriptorHandle::from_index(i as u32))
 	}
 
-	fn uav_index(&self) -> Option<u32> {
-		self.uav_index.map(|i| i as u32)
+	fn uav(&self) -> Option<super::DescriptorHandle> {
+		self.uav_index
+			.map(|i| super::DescriptorHandle::from_index(i as u32))
 	}
 
 	fn cpu_ptr(&self) -> *mut u8 {
@@ -1691,24 +1633,27 @@ impl super::BufferImpl<Device> for Buffer {
 }
 
 impl super::TextureImpl<Device> for Texture {
-	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+	fn srv(&self) -> Option<super::DescriptorHandle> {
+		self.srv_index
+			.map(|i| super::DescriptorHandle::from_index(i as u32))
 	}
 
-	fn uav_index(&self) -> Option<u32> {
-		self.uav_index.map(|i| i as u32)
+	fn uav(&self) -> Option<super::DescriptorHandle> {
+		self.uav_index
+			.map(|i| super::DescriptorHandle::from_index(i as u32))
 	}
 }
 
 impl super::SamplerImpl<Device> for Sampler {
-	fn index(&self) -> u32 {
-		self.index as u32
+	fn handle(&self) -> super::DescriptorHandle {
+		super::DescriptorHandle::from_index(self.index as u32)
 	}
 }
 
 impl super::AccelerationStructureImpl<Device> for AccelerationStructure {
-	fn srv_index(&self) -> Option<u32> {
-		self.srv_index.map(|i| i as u32)
+	fn srv(&self) -> Option<super::DescriptorHandle> {
+		self.srv_index
+			.map(|i| super::DescriptorHandle::from_index(i as u32))
 	}
 
 	fn gpu_ptr(&self) -> super::GpuPtr {

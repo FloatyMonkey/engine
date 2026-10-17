@@ -4,9 +4,11 @@ import math;
 import pathtracer.importance_map;
 import sample_generator;
 
+// Loaded right after the 4 byte light type, the padding keeps the handles 8 byte aligned.
 public struct DomeLightData {
-	public uint env_map_id;
-	public uint importance_map_id;
+	public uint _padding;
+	public Texture2D<float4>.Handle env_map;
+	public Texture2D<float>.Handle importance_map;
 	public uint base_mip;
 }
 

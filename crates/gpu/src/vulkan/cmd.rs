@@ -355,7 +355,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::PipelineBindPoint::GRAPHICS,
 				self.pipeline_layout,
 				0,
-				&self.descriptor_sets,
+				std::slice::from_ref(&self.descriptor_set),
 				&[],
 			);
 		}
@@ -374,7 +374,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::PipelineBindPoint::COMPUTE,
 				self.pipeline_layout,
 				0,
-				&self.descriptor_sets,
+				std::slice::from_ref(&self.descriptor_set),
 				&[],
 			);
 		}
@@ -393,7 +393,7 @@ impl gpu::CmdListImpl<Device> for CmdList {
 				vk::PipelineBindPoint::RAY_TRACING_KHR,
 				self.pipeline_layout,
 				0,
-				&self.descriptor_sets,
+				std::slice::from_ref(&self.descriptor_set),
 				&[],
 			);
 		}

@@ -1,14 +1,13 @@
-import bindless;
 
-[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer {
+	ByteAddressBuffer.Handle in_vertices;
+	RWByteAddressBuffer.Handle out_vertices;
+
+	ByteAddressBuffer.Handle lookup_stream;
+	ByteAddressBuffer.Handle weight_stream;
+	ByteAddressBuffer.Handle bone_matrices;
+
 	uint num_vertices;
-
-	uint in_vertices;
-	uint out_vertices;
-
-	uint lookup_stream;
-	uint weight_stream;
-	uint bone_matrices;
 }
 
 struct Vertex {
@@ -16,7 +15,7 @@ struct Vertex {
 	float3 normal;
 }
 
-func get_bone_transform(vertex_id: uint, lookup: ByteAddressBuffer, weights: ByteAddressBuffer, bones: ByteAddressBuffer) -> float3x4 {
+func get_bone_transform(vertex_id: uint, lookup: ByteAddressBuffer.Handle, weights: ByteAddressBuffer.Handle, bones: ByteAddressBuffer.Handle) -> float3x4 {
 	let offsets = lookup.Load<uint2>(vertex_id * sizeof(uint));
 	let weights_offset = offsets[0];
 	let weights_count = offsets[1] - offsets[0];
@@ -39,16 +38,9 @@ func get_bone_transform(vertex_id: uint, lookup: ByteAddressBuffer, weights: Byt
 func main(uint id : SV_DispatchThreadID) {
 	if (id >= num_vertices) return;
 
-	let in_vertices = get_buffer(in_vertices);
-	let out_vertices = get_rw_buffer(out_vertices);
-
-	let lookup = get_buffer(lookup_stream);
-	let weights = get_buffer(weight_stream);
-	let bones = get_buffer(bone_matrices);
-
 	var vertex = in_vertices.Load<Vertex>(id * sizeof(Vertex));
 
-	let transform = get_bone_transform(id, lookup, weights, bones);
+	let transform = get_bone_transform(id, lookup_stream, weight_stream, bone_matrices);
 
 	vertex.position = mul(transform, float4(vertex.position, 1.0));
 	vertex.normal = normalize(mul((float3x3)transform, vertex.normal));

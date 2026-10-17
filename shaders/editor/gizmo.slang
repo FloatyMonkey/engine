@@ -1,12 +1,11 @@
-import bindless;
 import util;
 
-[[vk::push_constant]] cbuffer ConstantBuffer : register(b0) {
+[[vk::push_constant]] cbuffer ConstantBuffer {
 	float4x4 view_projection;
+	ByteAddressBuffer.Handle vertex_buffer;
+	Texture2D<float>.Handle scene_depth_texture;
+	SamplerState.Handle linear_sampler;
 	float2 screen_size;
-	uint vb_index;
-	uint depth_texture_id;
-	uint sampler_index;
 }
 
 static const float ANTIALIASING = 1.0;
@@ -39,8 +38,6 @@ struct PsInput {
 
 [shader("vertex")]
 PsInput main_vs(VsInput input) {
-	let vertex_buffer = get_buffer(vb_index);
-
 	let position = POSITIONS[input.vertex_id];
 
 	int v0_id = input.instance_id * 2;
@@ -70,9 +67,6 @@ PsInput main_vs(VsInput input) {
 
 [shader("pixel")]
 float4 main_ps(PsInput input) : SV_Target {
-	let scene_depth_texture = get_texture2d_float(depth_texture_id);
-	let linear_sampler = get_sampler(sampler_index);
-
 	float2 uv = input.position.xy / screen_size;
 	float scene_depth = scene_depth_texture.Sample(linear_sampler, uv).r;
 
